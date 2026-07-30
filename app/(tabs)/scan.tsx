@@ -292,11 +292,15 @@ export default function ScanScreen() {
       borderRadius: t.radius.full,
       backgroundColor: t.colors.primaryFaint,
       borderWidth: 1,
-      borderColor: t.colors.primary,
+      borderColor: t.colors.accent,
       marginTop: 8,
     },
     aiChipText: {
-      color: t.colors.primary,
+      // NOT t.colors.primary — that's dark navy in both themes, so it
+      // renders near-invisible (dark-navy text on a dark-navy-ish
+      // background) in dark mode. accent (slate blue) stays visible
+      // against both light and dark surfaces.
+      color: t.colors.accent,
       fontSize: t.font.xs,
       fontWeight: '700',
     },
@@ -461,7 +465,10 @@ export default function ScanScreen() {
       paddingVertical: 10,
     },
     addItemText: {
-      color: t.colors.primary,
+      // accent, not primary — primary is dark navy in both themes and
+      // is invisible against this screen's dark-navy-ish background
+      // in dark mode.
+      color: t.colors.accent,
       fontSize: t.font.sm,
       fontWeight: '700',
       fontFamily: t.fonts.body.medium,
@@ -682,6 +689,14 @@ export default function ScanScreen() {
   const [itemAmount, setItemAmount] = useState('');
   const [itemCategory, setItemCategory] = useState<Category>('Other');
   const [itemSplit, setItemSplit] = useState<Set<string>>(new Set());
+  // Tracks whether the user actually tapped a split-with avatar this
+  // time the modal is open. Household members load async (Firestore),
+  // so `participantIds` at the moment openAddItem() seeds `itemSplit`
+  // can be stale/incomplete on a slow connection — snapshotting that
+  // set as "the split" would silently exclude a member who just hadn't
+  // loaded yet. Untouched means "always everyone, whoever that ends up
+  // being" resolved fresh at save time instead of at open time.
+  const [itemSplitTouched, setItemSplitTouched] = useState(false);
 
   const openAddItem = () => {
     setEditingItemId(null);
@@ -689,6 +704,7 @@ export default function ScanScreen() {
     setItemAmount('');
     setItemCategory('Other');
     setItemSplit(new Set(participantIds));
+    setItemSplitTouched(false);
     setItemModalVisible(true);
   };
 
@@ -697,17 +713,19 @@ export default function ScanScreen() {
     setItemName(item.name);
     setItemAmount(item.amount ? String(item.amount) : '');
     setItemCategory(((item.category as Category) || 'Other') as Category);
-    setItemSplit(
-      item.splitWith && item.splitWith.length
-        ? new Set(item.splitWith)
-        : new Set(participantIds),
-    );
+    // An item that already has an explicit (proper-subset) splitWith was
+    // deliberately customized before — honor it as "touched" so re-saving
+    // without changes doesn't silently widen it back to everyone.
+    const hasExplicitSplit = !!item.splitWith && item.splitWith.length > 0;
+    setItemSplit(hasExplicitSplit ? new Set(item.splitWith) : new Set(participantIds));
+    setItemSplitTouched(hasExplicitSplit);
     setItemModalVisible(true);
   };
 
   const closeItemModal = () => setItemModalVisible(false);
 
   const toggleItemSplit = (id: string) => {
+    setItemSplitTouched(true);
     setItemSplit((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
@@ -730,8 +748,15 @@ export default function ScanScreen() {
     // Solo household (no other members) — nothing to split, so this
     // item's splitWith always stays undefined regardless of the (not
     // rendered) picker state.
+    //
+    // "Untouched" also counts as shared-by-everyone REGARDLESS of what
+    // itemSplit happens to contain — see itemSplitTouched's declaration
+    // for the fetch-race this guards against. Only an itemSplit the
+    // user actually edited is trusted as an intentional subset.
     const sharedByEveryone =
-      otherMembers.length === 0 || itemSplit.size >= participantIds.length;
+      otherMembers.length === 0 ||
+      !itemSplitTouched ||
+      itemSplit.size >= participantIds.length;
     const newItem: LineItem = {
       id: editingItemId ?? uuidv4(),
       name: trimmedName,
@@ -1418,13 +1443,13 @@ export default function ScanScreen() {
         )}
         {aiPending && (
           <View style={styles.aiChipPending}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
+            <ActivityIndicator size="small" color={theme.colors.accent} />
             <Text style={styles.aiChipText}>Improving with AI…</Text>
           </View>
         )}
         {!aiPending && aiApplied && (
           <View style={styles.aiChipApplied}>
-            <Ionicons name="sparkles" size={14} color={theme.colors.primary} />
+            <Ionicons name="sparkles" size={14} color={theme.colors.accent} />
             <Text style={styles.aiChipText}>AI improved this receipt</Text>
           </View>
         )}
@@ -1448,7 +1473,7 @@ export default function ScanScreen() {
             onPress={() => runAiParse(rawText)}
             style={styles.aiRetryBtn}
           >
-            <Ionicons name="sparkles-outline" size={14} color={theme.colors.primary} />
+            <Ionicons name="sparkles-outline" size={14} color={theme.colors.accent} />
             <Text style={styles.aiChipText}>Re-parse with AI</Text>
           </TouchableOpacity>
         )}
@@ -1590,7 +1615,7 @@ export default function ScanScreen() {
             </View>
           ))}
           <TouchableOpacity style={styles.addItemRow} onPress={openAddItem} activeOpacity={0.7}>
-            <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
+            <Ionicons name="add-circle-outline" size={18} color={theme.colors.accent} />
             <Text style={styles.addItemText}>Add item</Text>
           </TouchableOpacity>
         </Card>

@@ -615,6 +615,14 @@ function EditReceiptScreen() {
   const [itemAmount, setItemAmount] = useState('');
   const [itemCategory, setItemCategory] = useState<Category>('Other');
   const [itemSplit, setItemSplit] = useState<Set<string>>(new Set());
+  // Tracks whether the user actually tapped a split-with avatar this
+  // time the modal is open. Household members load async (Firestore),
+  // so `participantIds` at the moment openAddItem() seeds `itemSplit`
+  // can be stale/incomplete on a slow connection — snapshotting that
+  // set as "the split" would silently exclude a member who just hadn't
+  // loaded yet. Untouched means "always everyone, whoever that ends up
+  // being" resolved fresh at save time instead of at open time.
+  const [itemSplitTouched, setItemSplitTouched] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -906,8 +914,14 @@ function EditReceiptScreen() {
       return validSw.length > 0 && validSw.length < fullParticipantIds.length;
     });
 
+  // Hoisted out of the `if` below so the per-participant row rendering
+  // can look up each OTHER member's own share too, not just yours —
+  // populated only when usesPerItemSplit is active; empty otherwise
+  // (the flat Equal/%/$ math already gives everyone the right number
+  // in that case, since every row can safely fall back to yourShare/
+  // the shared per-person amount).
+  const perItemShares: Record<string, number> = {};
   if (usesPerItemSplit) {
-    const perItemShares: Record<string, number> = {};
     for (const pid of fullParticipantIds) perItemShares[pid] = 0;
     for (const li of lineItemsForSplit) {
       const itemAmt =
@@ -948,6 +962,7 @@ function EditReceiptScreen() {
     setItemAmount('');
     setItemCategory('Other');
     setItemSplit(new Set(participantIds));
+    setItemSplitTouched(false);
     setItemModalVisible(true);
   };
 
@@ -956,17 +971,19 @@ function EditReceiptScreen() {
     setItemName(item.name);
     setItemAmount(item.amount ? String(item.amount) : '');
     setItemCategory(((item.category as Category) || 'Other') as Category);
-    setItemSplit(
-      item.splitWith && item.splitWith.length
-        ? new Set(item.splitWith)
-        : new Set(participantIds),
-    );
+    // An item that already has an explicit (proper-subset) splitWith was
+    // deliberately customized before — honor it as "touched" so re-saving
+    // without changes doesn't silently widen it back to everyone.
+    const hasExplicitSplit = !!item.splitWith && item.splitWith.length > 0;
+    setItemSplit(hasExplicitSplit ? new Set(item.splitWith) : new Set(participantIds));
+    setItemSplitTouched(hasExplicitSplit);
     setItemModalVisible(true);
   };
 
   const closeItemModal = () => setItemModalVisible(false);
 
   const toggleItemSplit = (uid: string) => {
+    setItemSplitTouched(true);
     setItemSplit((prev) => {
       const next = new Set(prev);
       if (next.has(uid)) next.delete(uid);
@@ -990,8 +1007,17 @@ function EditReceiptScreen() {
     // item's splitWith always stays undefined regardless of the (not
     // rendered) picker state. Same "everyone selected → undefined"
     // shorthand as app/(tabs)/scan.tsx.
+    //
+    // "Untouched" also counts as shared-by-everyone REGARDLESS of what
+    // itemSplit happens to contain — household members load async, so
+    // itemSplit may have been seeded from a stale/incomplete participant
+    // list (see itemSplitTouched's declaration for the full race). Only
+    // an itemSplit the user actually edited is trusted as an intentional
+    // subset.
     const sharedByEveryone =
-      otherMembers.length === 0 || itemSplit.size >= participantIds.length;
+      otherMembers.length === 0 ||
+      !itemSplitTouched ||
+      itemSplit.size >= participantIds.length;
     const newItem: LineItem = {
       id: editingItemId ?? uuidv4(),
       name: trimmedName,
@@ -1502,7 +1528,17 @@ function EditReceiptScreen() {
                     <Text style={styles.participantName} numberOfLines={1}>{label}</Text>
                     {splitMethod === 'equal' && (
                       <Text style={styles.participantValueReadOnly}>
-                        {formatCurrency(yourShare, currencyCode)}
+                        {formatCurrency(
+                          // Under per-item overrides, everyone's share can
+                          // differ — this member's own computed share, NOT
+                          // yourShare (that bug showed every row as YOUR
+                          // amount). Plain flat equal split still falls
+                          // back to yourShare, which is correct there since
+                          // equal-split-by-total gives everyone the same
+                          // number by definition.
+                          usesPerItemSplit ? perItemShares[m.uid] ?? 0 : yourShare,
+                          currencyCode,
+                        )}
                       </Text>
                     )}
                     {splitMethod === 'percent' && (
