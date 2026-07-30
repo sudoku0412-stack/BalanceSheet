@@ -29,10 +29,13 @@ function greeting(): string {
 
 type BudgetStatus = 'onTrack' | 'watch' | 'over';
 
+// Exact thresholds from the design spec: ≤70% = on track, 70-90% =
+// watch, >90% = over (the progress bar itself also turns error-red
+// past 90%, independent of the status-chip color).
 function budgetStatus(spent: number, limit: number): BudgetStatus {
   const ratio = limit > 0 ? spent / limit : 0;
-  if (ratio >= 1) return 'over';
-  if (ratio >= 0.8) return 'watch';
+  if (ratio > 0.9) return 'over';
+  if (ratio > 0.7) return 'watch';
   return 'onTrack';
 }
 
@@ -43,23 +46,39 @@ export default function DashboardScreen() {
     content: { padding: t.spacing.md, gap: t.spacing.lg, paddingBottom: 32 },
 
     heroCard: {
-      borderRadius: t.radius.xl,
-      padding: t.spacing.lg,
-      backgroundColor: t.colors.surfaceHigh,
+      borderRadius: t.radius.lg,
+      paddingHorizontal: 20,
+      paddingVertical: 22,
+      backgroundColor: t.colors.primary,
       overflow: 'hidden',
+      position: 'relative',
+    },
+    heroDecorCircle: {
+      position: 'absolute',
+      top: -40,
+      right: -40,
+      width: 140,
+      height: 140,
+      borderRadius: t.radius.full,
+      backgroundColor: 'rgba(255,255,255,0.08)',
+    },
+    heroDecorWatermark: {
+      position: 'absolute',
+      bottom: -18,
+      right: -10,
+      opacity: 0.08,
     },
     heroLabel: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.xs,
-      fontWeight: '700',
+      color: 'rgba(255,255,255,0.6)',
+      fontFamily: t.fonts.display.bold,
+      fontSize: 11,
       letterSpacing: 1.2,
       textTransform: 'uppercase',
     },
     heroAmount: {
-      color: t.colors.textPrimary,
-      fontSize: 42,
-      fontWeight: '800',
-      letterSpacing: -1,
+      color: '#fff',
+      fontFamily: t.fonts.mono.medium,
+      fontSize: 38,
       marginTop: 4,
     },
     heroMetaRow: {
@@ -69,17 +88,17 @@ export default function DashboardScreen() {
       marginTop: t.spacing.sm,
     },
     heroMetaText: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.sm,
+      color: 'rgba(255,255,255,0.6)',
+      fontFamily: t.fonts.body.regular,
+      fontSize: 12,
     },
     trendPill: {
       paddingHorizontal: 10,
       paddingVertical: 3,
       borderRadius: t.radius.full,
+      backgroundColor: 'rgba(255,255,255,0.12)',
     },
-    trendPillDown: { backgroundColor: t.colors.successFaint },
-    trendPillUp: { backgroundColor: t.colors.errorFaint },
-    trendPillText: { fontSize: t.font.xs, fontWeight: '700' },
+    trendPillText: { fontFamily: t.fonts.display.bold, fontSize: 10 },
 
     monthNavRow: {
       flexDirection: 'row',
@@ -88,9 +107,9 @@ export default function DashboardScreen() {
       marginTop: t.spacing.sm,
     },
     monthNavLabel: {
-      color: t.colors.textMuted,
+      color: 'rgba(255,255,255,0.6)',
+      fontFamily: t.fonts.body.medium,
       fontSize: t.font.xs,
-      fontWeight: '600',
     },
 
     actionRow: {
@@ -101,16 +120,16 @@ export default function DashboardScreen() {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      paddingVertical: 14,
-      borderRadius: t.radius.md,
+      height: 44,
+      borderRadius: t.radius.sm,
       borderWidth: 1,
       borderColor: t.colors.border,
       backgroundColor: t.colors.surface,
     },
     actionBtnText: {
       color: t.colors.textPrimary,
+      fontFamily: t.fonts.display.bold,
       fontSize: t.font.sm,
-      fontWeight: '700',
       letterSpacing: 0.3,
     },
 
@@ -122,15 +141,15 @@ export default function DashboardScreen() {
     },
     sectionTitle: {
       color: t.colors.textPrimary,
-      fontSize: t.font.xs,
-      fontWeight: '700',
+      fontFamily: t.fonts.display.bold,
+      fontSize: 12,
       letterSpacing: 1,
       textTransform: 'uppercase',
     },
     sectionLink: {
-      color: t.colors.primary,
+      color: t.colors.accent,
+      fontFamily: t.fonts.display.bold,
       fontSize: t.font.sm,
-      fontWeight: '600',
     },
 
     budgetCard: {
@@ -151,10 +170,27 @@ export default function DashboardScreen() {
     budgetRowFirst: { borderTopWidth: 0 },
     budgetAccent: { width: 4, height: '100%', marginRight: t.spacing.md },
     budgetInfo: { flex: 1 },
-    budgetName: { color: t.colors.textPrimary, fontSize: t.font.md, fontWeight: '600' },
-    budgetAmounts: { color: t.colors.textSecondary, fontSize: t.font.xs, marginTop: 2 },
+    budgetNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    budgetName: { color: t.colors.textPrimary, fontFamily: t.fonts.display.bold, fontSize: t.font.md },
+    budgetAmounts: {
+      color: t.colors.textSecondary,
+      fontFamily: t.fonts.mono.regular,
+      fontSize: t.font.xs,
+      marginTop: 2,
+    },
+    progressTrack: {
+      height: 6,
+      borderRadius: t.radius.full,
+      backgroundColor: t.colors.surfaceHigh,
+      marginTop: 6,
+      overflow: 'hidden',
+    },
+    progressFill: {
+      height: 6,
+      borderRadius: t.radius.full,
+    },
     statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: t.radius.full },
-    statusPillText: { fontSize: t.font.xs, fontWeight: '700' },
+    statusPillText: { fontFamily: t.fonts.display.bold, fontSize: t.font.xs },
 
     list: { gap: t.spacing.sm },
   }));
@@ -232,6 +268,7 @@ export default function DashboardScreen() {
 
   const budgetRows = stats.categories
     .filter((c) => (budgets[c.category] ?? 0) > 0)
+    .slice(0, 3)
     .map((c) => ({
       category: c.category,
       spent: c.total,
@@ -241,7 +278,7 @@ export default function DashboardScreen() {
 
   const statusMeta: Record<BudgetStatus, { label: string; color: string; faint: string }> = {
     onTrack: { label: 'ON TRACK', color: theme.colors.success, faint: theme.colors.successFaint },
-    watch: { label: 'WATCH', color: theme.colors.primary, faint: theme.colors.primaryFaint },
+    watch: { label: 'WATCH', color: theme.colors.accent, faint: `${theme.colors.accent}22` },
     over: { label: 'OVER', color: theme.colors.error, faint: theme.colors.errorFaint },
   };
 
@@ -256,6 +293,13 @@ export default function DashboardScreen() {
     >
       {/* Hero total card */}
       <View style={styles.heroCard}>
+        <View style={styles.heroDecorCircle} />
+        <Ionicons
+          name="receipt"
+          size={120}
+          color="#fff"
+          style={styles.heroDecorWatermark}
+        />
         <Text style={styles.heroLabel}>{greeting()}</Text>
         <Text style={styles.heroAmount}>${stats.totalSpent.toFixed(2)}</Text>
         <View style={styles.heroMetaRow}>
@@ -263,11 +307,11 @@ export default function DashboardScreen() {
             {stats.receiptCount} expense{stats.receiptCount === 1 ? '' : 's'} this month
           </Text>
           {trendPct != null && (
-            <View style={[styles.trendPill, trendPct <= 0 ? styles.trendPillDown : styles.trendPillUp]}>
+            <View style={styles.trendPill}>
               <Text
                 style={[
                   styles.trendPillText,
-                  { color: trendPct <= 0 ? theme.colors.success : theme.colors.error },
+                  { color: trendPct <= 0 ? '#9FE0C8' : '#F0B4B6' },
                 ]}
               >
                 {trendPct > 0 ? '+' : ''}
@@ -279,7 +323,7 @@ export default function DashboardScreen() {
 
         <View style={styles.monthNavRow}>
           <TouchableOpacity onPress={() => setActiveMonth((m) => subMonths(m, 1))} hitSlop={10}>
-            <Ionicons name="chevron-back" size={16} color={theme.colors.textMuted} />
+            <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.6)" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => {
@@ -291,7 +335,7 @@ export default function DashboardScreen() {
             <Text style={styles.monthNavLabel}>{format(activeMonth, 'MMMM yyyy')}</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setActiveMonth((m) => subMonths(m, -1))} hitSlop={10}>
-            <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
           </TouchableOpacity>
         </View>
       </View>
@@ -299,10 +343,10 @@ export default function DashboardScreen() {
       {/* Quick actions */}
       <View style={styles.actionRow}>
         <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/(tabs)/scan')}>
-          <Text style={styles.actionBtnText}>+ ADD MANUALLY</Text>
+          <Text style={styles.actionBtnText}>+ Add manually</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/reports' as never)}>
-          <Text style={styles.actionBtnText}>REPORTS</Text>
+          <Text style={styles.actionBtnText}>Reports</Text>
         </TouchableOpacity>
       </View>
 
@@ -318,25 +362,35 @@ export default function DashboardScreen() {
           <View style={styles.budgetCard}>
             {budgetRows.map((b, i) => {
               const meta = statusMeta[b.status];
+              const catColor = theme.colors.category[b.category as keyof typeof theme.colors.category];
+              const ratio = b.limit > 0 ? Math.min(b.spent / b.limit, 1) : 0;
               return (
                 <View
                   key={b.category}
                   style={[styles.budgetRow, i === 0 && styles.budgetRowFirst]}
                 >
-                  <View
-                    style={[
-                      styles.budgetAccent,
-                      { backgroundColor: theme.colors.category[b.category as keyof typeof theme.colors.category] },
-                    ]}
-                  />
+                  <View style={[styles.budgetAccent, { backgroundColor: catColor }]} />
                   <View style={styles.budgetInfo}>
-                    <Text style={styles.budgetName}>{b.category}</Text>
+                    <View style={styles.budgetNameRow}>
+                      <Text style={styles.budgetName}>{b.category}</Text>
+                      <View style={[styles.statusPill, { backgroundColor: meta.faint }]}>
+                        <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
+                      </View>
+                    </View>
+                    <View style={styles.progressTrack}>
+                      <View
+                        style={[
+                          styles.progressFill,
+                          {
+                            width: `${ratio * 100}%`,
+                            backgroundColor: ratio > 0.9 ? theme.colors.error : catColor,
+                          },
+                        ]}
+                      />
+                    </View>
                     <Text style={styles.budgetAmounts}>
                       ${b.spent.toFixed(2)} of ${b.limit.toFixed(2)}
                     </Text>
-                  </View>
-                  <View style={[styles.statusPill, { backgroundColor: meta.faint }]}>
-                    <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
                   </View>
                 </View>
               );

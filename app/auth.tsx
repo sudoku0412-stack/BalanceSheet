@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -28,6 +29,33 @@ import { humanizeAuthError } from '../lib/authErrors';
 
 type Tab = 'login' | 'signup';
 
+/**
+ * Staggered fade+translateY entrance, per the design spec's timing
+ * table (headline 40ms, subhead 80ms, tab 100ms, fields ~140ms,
+ * submit 200ms, socials ~250ms).
+ */
+function FadeInUp({ delay, children }: { delay: number; children: React.ReactNode }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 300,
+      delay,
+      useNativeDriver: true,
+    }).start();
+  }, [anim, delay]);
+  return (
+    <Animated.View
+      style={{
+        opacity: anim,
+        transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
 export default function AuthScreen() {
   // Email pre-fill + success message come from the invite-finish
   // screen after a successful signup. Both are optional — when absent
@@ -48,66 +76,87 @@ export default function AuthScreen() {
   }, [initialMsg, toast]);
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-        >
-          <View style={styles.header}>
-            <View style={styles.brandRow}>
-              <View style={styles.brandIcon}>
-                <Ionicons name="receipt" size={18} color={theme.colors.textPrimary} />
-              </View>
-              <Text style={styles.brand}>Receiptly</Text>
+    <SafeAreaView style={styles.root} edges={['bottom']}>
+      <View style={styles.navyHeader}>
+        <View style={styles.decorCircleLg} />
+        <View style={styles.decorCircleSm} />
+        <FadeInUp delay={0}>
+          <View style={styles.brandRow}>
+            <View style={styles.brandIcon}>
+              <Ionicons name="receipt" size={16} color={theme.colors.primary} />
             </View>
-            <Text style={styles.title}>{tab === 'login' ? 'Welcome back' : 'Create your account'}</Text>
-            <Text style={styles.tagline}>
-              {tab === 'login'
-                ? "Sign in to see where your money's going."
-                : 'Start tracking every receipt in seconds.'}
+            <Text style={styles.brand}>
+              <Text style={styles.brandBold}>Receipt</Text>
+              <Text style={styles.brandLight}>ly</Text>
             </Text>
           </View>
-
-          <View style={styles.tabs}>
-            <TabButton label="LOG IN" active={tab === 'login'} onPress={() => setTab('login')} />
-            <TabButton label="SIGN UP" active={tab === 'signup'} onPress={() => setTab('signup')} />
-          </View>
-
-          {showPhone ? (
-            <PhoneForm onUseEmail={() => setShowPhone(false)} />
-          ) : (
-            <>
-              <EmailForm mode={tab} initialEmail={initialEmail} />
-
-              <View style={styles.dividerRow}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>OR</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              <GoogleForm />
-              <Button
-                label="Continue with Phone"
-                variant="secondary"
-                onPress={() => setShowPhone(true)}
-              />
-            </>
-          )}
-
-          <Pressable onPress={() => router.replace('/onboarding')} hitSlop={8} style={styles.backRow}>
-            <Ionicons name="chevron-back" size={14} color={theme.colors.textSecondary} />
-            <Text style={styles.linkMuted}>Back to intro</Text>
-          </Pressable>
-
-          <Text style={styles.legal}>
-            By continuing you agree to our Terms of Service and Privacy Policy.
+        </FadeInUp>
+        <FadeInUp delay={40}>
+          <Text style={styles.headline}>
+            {tab === 'login' ? 'Welcome back' : 'Create your account'}
           </Text>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </FadeInUp>
+        <FadeInUp delay={80}>
+          <Text style={styles.subhead}>
+            {tab === 'login'
+              ? "Sign in to see where your money's going."
+              : 'Start tracking every receipt in seconds.'}
+          </Text>
+        </FadeInUp>
+      </View>
+
+      <View style={styles.sheet}>
+        <KeyboardAvoidingView
+          style={{ flex: 1 }}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+          >
+            <FadeInUp delay={100}>
+              <View style={styles.tabs}>
+                <TabButton label="LOG IN" active={tab === 'login'} onPress={() => setTab('login')} />
+                <TabButton label="SIGN UP" active={tab === 'signup'} onPress={() => setTab('signup')} />
+              </View>
+            </FadeInUp>
+
+            {showPhone ? (
+              <PhoneForm onUseEmail={() => setShowPhone(false)} />
+            ) : (
+              <>
+                <EmailForm mode={tab} initialEmail={initialEmail} />
+
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>OR</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+
+                <FadeInUp delay={250}>
+                  <GoogleForm />
+                </FadeInUp>
+                <FadeInUp delay={260}>
+                  <Button
+                    label="Continue with Phone"
+                    variant="secondary"
+                    onPress={() => setShowPhone(true)}
+                  />
+                </FadeInUp>
+              </>
+            )}
+
+            <Pressable onPress={() => router.replace('/onboarding')} hitSlop={8} style={styles.backRow}>
+              <Ionicons name="chevron-back" size={14} color={theme.colors.textMuted} />
+              <Text style={styles.linkMuted}>Back to intro</Text>
+            </Pressable>
+
+            <Text style={styles.legal}>
+              By continuing you agree to our Terms of Service and Privacy Policy.
+            </Text>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -135,28 +184,43 @@ function TabButton({
 function EmailForm({ mode, initialEmail }: { mode: Tab; initialEmail?: string }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState(initialEmail ?? '');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const submit = async () => {
+    setError(null);
     if (!email.trim() || !password) {
-      Alert.alert('Missing info', 'Email and password are required.');
+      setError('Email and password are required.');
       return;
     }
-    if (mode === 'signup' && password.length < 8) {
-      Alert.alert('Weak password', 'Use at least 8 characters.');
-      return;
+    if (mode === 'signup') {
+      if (password.length < 8) {
+        setError('Use at least 8 characters.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.');
+        return;
+      }
     }
     try {
       setLoading(true);
       if (mode === 'login') {
         await signInWithEmail(email, password);
       } else {
+        // signUpWithEmail has no display-name param yet — fullName is
+        // collected per the design spec but not persisted anywhere
+        // until lib/auth.ts grows a way to save it (e.g. via a
+        // follow-up updateProfile call). Not silently dropped: this
+        // comment marks the gap for when that lands.
         await signUpWithEmail(email, password);
       }
     } catch (e: any) {
-      Alert.alert('Authentication failed', humanizeError(e));
+      setError(humanizeError(e));
     } finally {
       setLoading(false);
     }
@@ -177,31 +241,62 @@ function EmailForm({ mode, initialEmail }: { mode: Tab; initialEmail?: string })
 
   return (
     <View>
-      <Field
-        label="Email"
-        value={email}
-        onChangeText={setEmail}
-        placeholder="you@email.com"
-        keyboardType="email-address"
-        autoCapitalize="none"
-        autoComplete="email"
-      />
-      <Field
-        label="Password"
-        value={password}
-        onChangeText={setPassword}
-        placeholder="••••••••"
-        secureTextEntry
-        autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-      />
+      {mode === 'signup' && (
+        <FadeInUp delay={120}>
+          <Field
+            label="Full name"
+            value={fullName}
+            onChangeText={setFullName}
+            placeholder="Jane Doe"
+            autoCapitalize="words"
+          />
+        </FadeInUp>
+      )}
+      <FadeInUp delay={140}>
+        <Field
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          placeholder="you@email.com"
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+        />
+      </FadeInUp>
+      <FadeInUp delay={160}>
+        <Field
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          placeholder="••••••••"
+          secureTextEntry
+          autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+        />
+      </FadeInUp>
+      {mode === 'signup' && (
+        <FadeInUp delay={180}>
+          <Field
+            label="Confirm password"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            placeholder="••••••••"
+            secureTextEntry
+            autoComplete="new-password"
+          />
+        </FadeInUp>
+      )}
 
-      <Button
-        label={mode === 'login' ? 'Log in' : 'Create account'}
-        onPress={submit}
-        loading={loading}
-        size="lg"
-        style={{ marginTop: theme.spacing.sm }}
-      />
+      {error && <Text style={styles.errorText}>{error}</Text>}
+
+      <FadeInUp delay={200}>
+        <Button
+          label={mode === 'login' ? 'Log in' : 'Create account'}
+          onPress={submit}
+          loading={loading}
+          size="lg"
+          style={{ marginTop: theme.spacing.sm }}
+        />
+      </FadeInUp>
 
       {mode === 'login' && (
         <Pressable onPress={reset} hitSlop={8} style={styles.forgotRow}>
@@ -305,7 +400,6 @@ function PhoneForm({ onUseEmail }: { onUseEmail: () => void }) {
 
 function GoogleForm() {
   const theme = useTheme();
-  const styles = useStyles(makeStyles);
   const [loading, setLoading] = useState(false);
 
   const onPress = async () => {
@@ -321,18 +415,13 @@ function GoogleForm() {
   };
 
   return (
-    <View>
-      <Text style={styles.helper}>
-        Continue with your Google account. We only use your email and name.
-      </Text>
-      <Button
-        label="Continue with Google"
-        onPress={onPress}
-        loading={loading}
-        size="lg"
-        style={{ marginTop: theme.spacing.md }}
-      />
-    </View>
+    <Button
+      label="Continue with Google"
+      onPress={onPress}
+      loading={loading}
+      variant="secondary"
+      style={{ marginTop: theme.spacing.sm, marginBottom: theme.spacing.sm }}
+    />
   );
 }
 
@@ -357,71 +446,96 @@ function Field({
 const humanizeError = humanizeAuthError;
 
 const makeStyles = (t: Theme) => ({
-  container: { flex: 1, backgroundColor: t.colors.background },
-  scroll: {
+  root: { flex: 1, backgroundColor: t.colors.primary },
+  navyHeader: {
+    backgroundColor: t.colors.primary,
+    paddingTop: 46,
+    paddingBottom: 30,
     paddingHorizontal: t.spacing.lg,
-    paddingTop: t.spacing.lg,
-    paddingBottom: t.spacing.xl,
+    overflow: 'hidden' as const,
   },
-  header: {
-    alignItems: 'center' as const,
-    marginBottom: t.spacing.xl,
+  decorCircleLg: {
+    position: 'absolute' as const,
+    top: -50,
+    right: -40,
+    width: 160,
+    height: 160,
+    borderRadius: t.radius.full,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  decorCircleSm: {
+    position: 'absolute' as const,
+    top: 20,
+    right: 40,
+    width: 70,
+    height: 70,
+    borderRadius: t.radius.full,
+    backgroundColor: 'rgba(255,255,255,0.05)',
   },
   brandRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     gap: t.spacing.xs,
-    marginBottom: t.spacing.md,
+    marginBottom: t.spacing.lg,
   },
   brandIcon: {
-    width: 28,
-    height: 28,
+    width: 26,
+    height: 26,
     borderRadius: t.radius.sm,
-    backgroundColor: t.colors.surfaceHigh,
+    backgroundColor: '#fff',
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  brand: {
-    color: t.colors.textPrimary,
-    fontSize: t.font.lg,
-    fontWeight: '700' as const,
+  brand: { fontSize: t.font.md },
+  brandBold: { color: '#fff', fontFamily: t.fonts.display.extraBold },
+  brandLight: { color: '#fff', fontFamily: t.fonts.display.light },
+  headline: {
+    color: '#fff',
+    fontFamily: t.fonts.display.extraBold,
+    fontSize: 30,
   },
-  title: {
-    color: t.colors.textPrimary,
-    fontSize: t.font.xxxl,
-    fontWeight: '700' as const,
-    marginBottom: t.spacing.xs,
+  subhead: {
+    color: 'rgba(255,255,255,0.65)',
+    fontFamily: t.fonts.body.regular,
+    fontSize: t.font.sm,
+    marginTop: 4,
   },
-  tagline: {
-    color: t.colors.textSecondary,
-    fontSize: t.font.md,
-    textAlign: 'center' as const,
+  sheet: {
+    flex: 1,
+    backgroundColor: t.colors.surface,
+    borderTopLeftRadius: t.radius.xl,
+    borderTopRightRadius: t.radius.xl,
+    marginTop: -16,
+  },
+  scroll: {
+    paddingHorizontal: t.spacing.lg,
+    paddingTop: t.spacing.lg,
+    paddingBottom: t.spacing.xl,
   },
   tabs: {
     flexDirection: 'row' as const,
-    backgroundColor: t.colors.surface,
-    borderRadius: t.radius.md,
+    backgroundColor: t.colors.surfaceHigh,
+    borderRadius: t.radius.sm,
     padding: 4,
     marginBottom: t.spacing.lg,
   },
   tabBtn: {
     flex: 1,
-    flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     paddingVertical: 10,
     borderRadius: t.radius.sm,
   },
   tabBtnActive: {
-    backgroundColor: t.colors.primaryFaint,
+    backgroundColor: t.colors.primary,
   },
   tabBtnText: {
     color: t.colors.textSecondary,
+    fontFamily: t.fonts.display.bold,
     fontSize: t.font.sm,
-    fontWeight: '600' as const,
   },
   tabBtnTextActive: {
-    color: t.colors.primary,
+    color: '#fff',
   },
   dividerRow: {
     flexDirection: 'row' as const,
@@ -436,8 +550,8 @@ const makeStyles = (t: Theme) => ({
   },
   dividerText: {
     color: t.colors.textMuted,
+    fontFamily: t.fonts.display.bold,
     fontSize: t.font.xs,
-    fontWeight: '600' as const,
   },
   backRow: {
     flexDirection: 'row' as const,
@@ -455,14 +569,15 @@ const makeStyles = (t: Theme) => ({
   },
   fieldLabel: {
     color: t.colors.textSecondary,
+    fontFamily: t.fonts.display.medium,
     fontSize: t.font.sm,
-    fontWeight: '600' as const,
     marginBottom: t.spacing.xs,
   },
   input: {
     backgroundColor: t.colors.background,
     color: t.colors.textPrimary,
-    borderRadius: t.radius.md,
+    fontFamily: t.fonts.body.regular,
+    borderRadius: t.radius.sm,
     paddingHorizontal: t.spacing.md,
     paddingVertical: 12,
     borderWidth: 1,
@@ -471,17 +586,25 @@ const makeStyles = (t: Theme) => ({
   },
   linkMuted: {
     color: t.colors.textSecondary,
+    fontFamily: t.fonts.body.medium,
     fontSize: t.font.sm,
-    fontWeight: '500' as const,
+  },
+  errorText: {
+    color: t.colors.error,
+    fontFamily: t.fonts.body.medium,
+    fontSize: t.font.sm,
+    marginBottom: t.spacing.sm,
   },
   helper: {
     color: t.colors.textSecondary,
+    fontFamily: t.fonts.body.regular,
     fontSize: t.font.sm,
     marginBottom: t.spacing.md,
     lineHeight: 20,
   },
   legal: {
     color: t.colors.textMuted,
+    fontFamily: t.fonts.body.regular,
     fontSize: t.font.xs,
     textAlign: 'center' as const,
     marginTop: t.spacing.lg,
