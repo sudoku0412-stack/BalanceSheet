@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,13 +12,14 @@ import {
   Platform,
   Modal,
   Pressable,
+  Animated,
+  Easing,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -48,6 +49,11 @@ import { ItemEditModal } from '../../components/receipt/ItemEditModal';
 import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
 
 type ScanState = 'idle' | 'processing' | 'review';
+
+// Full-bleed camera-screen background. This is a literal hex per the
+// design export (not a theme token) — the capture UI is always
+// near-black regardless of the app's light/dark theme.
+const CAMERA_BG = '#0B0B0C';
 
 /**
  * Pick the receipt-level category that best represents this set of
@@ -96,103 +102,99 @@ export default function ScanScreen() {
       justifyContent: 'center',
       alignItems: 'center',
     },
-
-    // ─── Idle (camera capture) ──────────────────────────────────────
+    // Idle (camera) — full-bleed near-black per the design export; a
+    // literal hex rather than a theme token since camera UI is always
+    // dark regardless of the app's light/dark theme setting.
     cameraScreen: {
       flex: 1,
-      backgroundColor: t.colors.background,
+      backgroundColor: CAMERA_BG,
     },
-    viewfinder: {
+    closeBtn: {
+      position: 'absolute',
+      top: t.spacing.lg,
+      right: t.spacing.lg,
+      zIndex: 2,
+      width: 40,
+      height: 40,
+      borderRadius: t.radius.full,
+      backgroundColor: 'rgba(255,255,255,0.16)',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    frameWrap: {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      padding: t.spacing.xl,
-    },
-    viewfinderWatermark: {
-      position: 'absolute',
-      opacity: t.isDark ? 0.14 : 0.08,
+      paddingHorizontal: t.spacing.xl,
     },
     frameGuide: {
-      width: '78%',
-      aspectRatio: 0.72,
+      width: '100%',
+      maxWidth: 280,
+      aspectRatio: 0.7,
       borderWidth: 2,
       borderStyle: 'dashed',
       borderColor: 'rgba(255,255,255,0.55)',
-      borderRadius: t.radius.xl,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: t.spacing.lg,
+      borderRadius: t.radius.lg,
     },
-    frameGuideText: {
-      color: 'rgba(255,255,255,0.8)',
+    frameCaption: {
+      color: 'rgba(255,255,255,0.75)',
       fontSize: t.font.sm,
-      fontWeight: '600',
+      fontFamily: t.fonts.body.regular,
       textAlign: 'center',
+      marginTop: t.spacing.md,
     },
-    cameraControls: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
+    shutterRow: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: t.spacing.xl,
-      paddingBottom: t.spacing.xxl,
-      paddingTop: t.spacing.lg,
+      paddingBottom: t.spacing.xl,
     },
-    cameraSideBtn: {
+    sideAction: {
       width: 48,
       height: 48,
-      borderRadius: 24,
+      borderRadius: t.radius.full,
       backgroundColor: 'rgba(255,255,255,0.14)',
       alignItems: 'center',
       justifyContent: 'center',
     },
     shutterRing: {
-      width: 80,
-      height: 80,
-      borderRadius: 40,
-      borderWidth: 3,
-      borderColor: 'rgba(255,255,255,0.5)',
+      width: 88,
+      height: 88,
+      borderRadius: t.radius.full,
+      borderWidth: 2,
+      borderColor: 'rgba(255,255,255,0.4)',
       alignItems: 'center',
       justifyContent: 'center',
     },
-    shutterFill: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
+    shutterButton: {
+      width: 72,
+      height: 72,
+      borderRadius: t.radius.full,
       backgroundColor: '#fff',
     },
-
-    // ─── Processing ─────────────────────────────────────────────────
-    processingImage: {
-      width: '100%',
-      height: 260,
-      opacity: 0.35,
+    // Processing (capturing)
+    spinnerRing: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      borderWidth: 3,
+      borderColor: 'rgba(255,255,255,0.25)',
+      borderTopColor: '#fff',
     },
     processingOverlay: {
-      position: 'absolute',
       alignItems: 'center',
-      gap: 12,
-      backgroundColor: t.colors.surface,
-      paddingVertical: t.spacing.lg,
-      paddingHorizontal: t.spacing.xl,
-      borderRadius: t.radius.xl,
-      borderWidth: 1,
-      borderColor: t.colors.border,
+      gap: t.spacing.md,
     },
     processingText: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.xl,
-      fontWeight: '700',
-    },
-    processingSubText: {
-      color: t.colors.textSecondary,
+      color: 'rgba(255,255,255,0.75)',
       fontSize: t.font.sm,
+      fontWeight: '800',
+      fontFamily: t.fonts.display.bold,
+      textTransform: 'uppercase',
+      letterSpacing: 1,
     },
-
-    // ─── Review ─────────────────────────────────────────────────────
+    // Review
     reviewContent: {
       padding: t.spacing.md,
       gap: t.spacing.sm,
@@ -205,86 +207,171 @@ export default function ScanScreen() {
       marginBottom: t.spacing.sm,
     },
     reviewHeader: {
+      marginBottom: t.spacing.xs,
+    },
+    reviewHeaderTop: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: t.spacing.sm,
-      marginBottom: t.spacing.xs,
     },
-    backBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: t.colors.surfaceHigh,
+    headerIconBtn: {
+      width: 32,
+      height: 32,
       alignItems: 'center',
       justifyContent: 'center',
+      marginLeft: -6,
     },
     reviewTitle: {
       color: t.colors.textPrimary,
-      fontSize: t.font.lg,
+      fontSize: t.font.xl,
       fontWeight: '800',
+      fontFamily: t.fonts.display.bold,
+      letterSpacing: 0.5,
+    },
+    // "REVIEW RECEIPT" is rendered fully uppercase per the design
+    // export; "Add Expense" (manual-entry mode) stays title case, so
+    // this is applied conditionally rather than baked into reviewTitle.
+    reviewTitleUppercase: {
       textTransform: 'uppercase',
-      letterSpacing: 1.2,
     },
-    statusRow: {
-      marginBottom: t.spacing.xs,
+    reviewEyebrow: {
+      color: t.colors.success,
+      fontSize: t.font.xs,
+      fontWeight: '800',
+      fontFamily: t.fonts.display.bold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+      marginTop: 6,
     },
-    statusBadge: {
+    aiChipPending: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
       alignSelf: 'flex-start',
       paddingHorizontal: 10,
-      paddingVertical: 6,
+      paddingVertical: 5,
       borderRadius: t.radius.full,
-      borderWidth: 1,
-      maxWidth: '100%',
-    },
-    statusBadgePending: {
       backgroundColor: t.colors.primaryFaint,
-      borderColor: 'transparent',
+      marginTop: 8,
     },
-    statusBadgeSuccess: {
-      backgroundColor: `${t.colors.success}22`,
-      borderColor: t.colors.success,
+    aiChipApplied: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: t.radius.full,
+      backgroundColor: t.colors.primaryFaint,
+      borderWidth: 1,
+      borderColor: t.colors.primary,
+      marginTop: 8,
     },
-    statusBadgeWarning: {
-      backgroundColor: `${t.colors.warning}22`,
-      borderColor: `${t.colors.warning}55`,
-    },
-    statusBadgeNeutral: {
-      backgroundColor: t.colors.surface,
-      borderColor: t.colors.border,
-    },
-    statusText: {
+    aiChipText: {
+      color: t.colors.primary,
       fontSize: t.font.xs,
       fontWeight: '700',
-      textTransform: 'uppercase',
-      letterSpacing: 0.6,
+    },
+    aiChipError: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: t.radius.full,
+      backgroundColor: 'rgba(245, 158, 11, 0.08)',
+      borderWidth: 1,
+      borderColor: 'rgba(245, 158, 11, 0.4)',
+      marginTop: 8,
+      maxWidth: '100%',
+    },
+    aiChipErrorText: {
+      color: t.colors.warning,
+      fontSize: t.font.xs,
+      fontWeight: '600',
       flexShrink: 1,
+    },
+    aiRetryBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      alignSelf: 'flex-start',
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: t.radius.full,
+      backgroundColor: t.colors.surface,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      marginTop: 8,
+    },
+    itemCategoriesRow: {
+      marginTop: t.spacing.sm,
+      paddingTop: t.spacing.sm,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: t.colors.border,
+    },
+    itemCategoriesLabel: {
+      color: t.colors.textMuted,
+      fontSize: t.font.xs,
+      marginBottom: 6,
+    },
+    itemCategoriesChips: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
     },
     fieldCard: {
       gap: t.spacing.sm,
+      // Cards are sm/lg radius per the design export — not the large
+      // rounded corners the shared Card component's default (t.radius.lg)
+      // currently renders at, so it's overridden to the spec's literal
+      // 4px here until theme.ts's radius scale is corrected.
+      borderRadius: t.radius.lg,
     },
     fieldLabel: {
       color: t.colors.textSecondary,
       fontSize: t.font.xs,
-      fontWeight: '600',
+      fontWeight: '800',
+      fontFamily: t.fonts.display.bold,
       textTransform: 'uppercase',
       letterSpacing: 0.8,
     },
     input: {
       color: t.colors.textPrimary,
       fontSize: t.font.md,
-      backgroundColor: t.colors.surface,
-      borderRadius: t.radius.md,
+      fontFamily: t.fonts.body.regular,
+      backgroundColor: t.colors.surfaceHigh,
+      borderRadius: t.radius.sm,
       paddingHorizontal: 12,
       paddingVertical: 10,
       borderWidth: 1,
       borderColor: t.colors.border,
     },
+    amountInput: {
+      fontFamily: t.fonts.mono.medium,
+      fontWeight: '500',
+    },
     inputMultiline: {
       minHeight: 72,
       paddingTop: 10,
+    },
+    categorySelector: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    categoryGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: t.spacing.xs,
+    },
+    categoryOption: {
+      borderRadius: t.radius.full,
+      borderWidth: 1,
+      borderColor: 'transparent',
+      padding: 2,
     },
     itemsHeader: {
       flexDirection: 'row',
@@ -300,14 +387,34 @@ export default function ScanScreen() {
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: 8,
-      paddingVertical: 10,
-      paddingHorizontal: 4,
-      borderRadius: t.radius.md,
+      paddingVertical: 8,
       borderBottomWidth: 1,
       borderBottomColor: t.colors.border,
     },
     lineItemRowPressed: {
       backgroundColor: t.colors.surfaceHigh,
+    },
+    itemModalRoot: {
+      flex: 1,
+      backgroundColor: t.colors.background,
+    },
+    itemModalHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: t.spacing.lg,
+      paddingVertical: t.spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: t.colors.border,
+    },
+    itemModalTitle: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.lg,
+      fontWeight: '700',
+    },
+    itemModalContent: {
+      padding: t.spacing.md,
+      gap: t.spacing.sm,
     },
     lineItemName: {
       color: t.colors.textSecondary,
@@ -352,13 +459,22 @@ export default function ScanScreen() {
       fontSize: t.font.sm,
       fontWeight: '700',
     },
-    saveBtn: {
-      marginTop: t.spacing.md,
+    actionsColumn: {
+      gap: t.spacing.sm,
+      marginTop: t.spacing.sm,
+    },
+    saveButton: {
+      width: '100%',
+      height: 52,
+      borderRadius: t.radius.lg,
+    },
+    saveButtonText: {
+      fontWeight: '800',
+      fontFamily: t.fonts.display.bold,
     },
     discardLink: {
       alignItems: 'center',
-      justifyContent: 'center',
-      paddingVertical: t.spacing.sm,
+      paddingVertical: 10,
     },
     discardLinkText: {
       color: t.colors.textSecondary,
@@ -370,6 +486,36 @@ export default function ScanScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedReceipt | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Manual-entry receipts never set an image (see startManualEntry
+  // below), while every scanned receipt sets one before entering
+  // 'review' — even on OCR failure. So this is a reliable way to tell
+  // "Review Receipt" (scanned) apart from "Add Expense" (manual) for
+  // the header treatment without adding a redundant piece of state.
+  const isManualEntry = imageUri === null;
+
+  // 36px "reading receipt" ring: a single white top segment rotating
+  // 360° every 0.8s, linear — matches the Capturing-state spec exactly
+  // (a plain ActivityIndicator can't produce that exact look).
+  const spinAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (scanState !== 'processing') return;
+    spinAnim.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 800,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      }),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [scanState, spinAnim]);
+  const spinDeg = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   // Editable fields in review state
   const [storeName, setStoreName] = useState('');
@@ -651,6 +797,12 @@ export default function ScanScreen() {
     setRawText('');
   };
 
+  // Top-right close (X) on the camera screen and the back-chevron
+  // ("Retake") / close (X) in the review header. All three just want
+  // to discard whatever's in progress and land back on the idle
+  // camera screen — resetState already does exactly that safely.
+  const closeScan = () => resetState();
+
   // Apply a Gemini-validated receipt into the form state. Used from
   // both the live API path and the cache-hit path.
   /**
@@ -916,50 +1068,48 @@ export default function ScanScreen() {
     setEditingItem({ id: uuidv4(), name: '', amount: 0 });
   };
 
-  // ─── Idle state (camera capture) ───────────────────────────────────────────
-  // The app doesn't render a live in-app camera feed — capture is delegated
-  // to the OS camera via expo-image-picker's launchCameraAsync (see
-  // pickFromCamera), which owns its own full-screen native UI. This screen
-  // is the in-app "ready to shoot" surface shown before that native camera
-  // opens, styled to read as a minimal camera viewfinder: a dashed framing
-  // guide plus a big shutter button that launches the real camera.
+  // ─── Idle state (Scan / camera) ─────────────────────────────────────────────
+  // Full-bleed near-black camera screen: close (X) top-right, a dashed
+  // guide frame with caption centered, and a 72px shutter at the
+  // bottom. Gallery-import and manual-entry aren't part of the design
+  // export's camera screen, but both are existing features that must
+  // keep working, so they ride along as small icon affordances either
+  // side of the shutter rather than the old two-card grid.
   if (scanState === 'idle') {
     return (
       <View style={styles.cameraScreen}>
-        <LinearGradient
-          colors={[theme.colors.background, theme.colors.surface]}
-          style={styles.viewfinder}
+        <TouchableOpacity
+          style={styles.closeBtn}
+          onPress={closeScan}
+          activeOpacity={0.7}
         >
-          <Ionicons
-            name="camera-outline"
-            size={220}
-            color={theme.colors.textPrimary}
-            style={styles.viewfinderWatermark}
-          />
-          <View style={styles.frameGuide}>
-            <Text style={styles.frameGuideText}>Align receipt within frame</Text>
-          </View>
-        </LinearGradient>
+          <Ionicons name="close" size={22} color="#fff" />
+        </TouchableOpacity>
 
-        <View style={styles.cameraControls}>
+        <View style={styles.frameWrap}>
+          <View style={styles.frameGuide} />
+          <Text style={styles.frameCaption}>Align receipt within frame</Text>
+        </View>
+
+        <View style={styles.shutterRow}>
           <TouchableOpacity
-            style={styles.cameraSideBtn}
+            style={styles.sideAction}
             onPress={pickFromGallery}
-            activeOpacity={0.75}
+            activeOpacity={0.7}
           >
             <Ionicons name="images-outline" size={22} color="#fff" />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={pickFromCamera} activeOpacity={0.85}>
+          <TouchableOpacity onPress={pickFromCamera} activeOpacity={0.8}>
             <View style={styles.shutterRing}>
-              <View style={styles.shutterFill} />
+              <View style={styles.shutterButton} />
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.cameraSideBtn}
+            style={styles.sideAction}
             onPress={startManualEntry}
-            activeOpacity={0.75}
+            activeOpacity={0.7}
           >
             <Ionicons name="create-outline" size={22} color="#fff" />
           </TouchableOpacity>
@@ -968,17 +1118,15 @@ export default function ScanScreen() {
     );
   }
 
-  // ─── Processing state ───────────────────────────────────────────────────────
+  // ─── Processing state (Capturing) ───────────────────────────────────────────
   if (scanState === 'processing') {
     return (
-      <View style={[styles.screen, styles.centered]}>
-        {imageUri && (
-          <Image source={{ uri: imageUri }} style={styles.processingImage} />
-        )}
+      <View style={[styles.cameraScreen, styles.centered]}>
         <View style={styles.processingOverlay}>
-          <ActivityIndicator size="large" color={theme.colors.primary} />
-          <Text style={styles.processingText}>Reading receipt...</Text>
-          <Text style={styles.processingSubText}>ML Kit is extracting text on-device</Text>
+          <Animated.View
+            style={[styles.spinnerRing, { transform: [{ rotate: spinDeg }] }]}
+          />
+          <Text style={styles.processingText}>Reading receipt…</Text>
         </View>
       </View>
     );
@@ -991,43 +1139,60 @@ export default function ScanScreen() {
       contentContainerStyle={styles.reviewContent}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.reviewHeader}>
-        <Pressable onPress={resetState} style={styles.backBtn} hitSlop={8}>
-          <Ionicons name="chevron-back" size={20} color={theme.colors.textPrimary} />
-        </Pressable>
-        <Text style={styles.reviewTitle}>Review Receipt</Text>
-      </View>
+      {imageUri && (
+        <Image source={{ uri: imageUri }} style={styles.receiptThumb} resizeMode="cover" />
+      )}
 
-      {/* Extraction status — wording adapts to the real parsing state
-          (pending / succeeded / failed / not-yet-run) rather than a
-          single static label. */}
-      <View style={styles.statusRow}>
+      <View style={styles.reviewHeader}>
+        <View style={styles.reviewHeaderTop}>
+          <TouchableOpacity
+            style={styles.headerIconBtn}
+            onPress={closeScan}
+            activeOpacity={0.7}
+          >
+            <Ionicons
+              name={isManualEntry ? 'close' : 'chevron-back'}
+              size={22}
+              color={theme.colors.textPrimary}
+            />
+          </TouchableOpacity>
+          <Text
+            style={[
+              styles.reviewTitle,
+              !isManualEntry && styles.reviewTitleUppercase,
+            ]}
+          >
+            {isManualEntry ? 'Add Expense' : 'Review Receipt'}
+          </Text>
+        </View>
+        {!isManualEntry && (
+          <Text style={styles.reviewEyebrow}>
+            Extracted — check before saving
+          </Text>
+        )}
         {aiPending && (
-          <View style={[styles.statusBadge, styles.statusBadgePending]}>
+          <View style={styles.aiChipPending}>
             <ActivityIndicator size="small" color={theme.colors.primary} />
-            <Text style={[styles.statusText, { color: theme.colors.primary }]}>
-              Extracting with AI…
-            </Text>
+            <Text style={styles.aiChipText}>Improving with AI…</Text>
           </View>
         )}
         {!aiPending && aiApplied && (
-          <View style={[styles.statusBadge, styles.statusBadgeSuccess]}>
-            <Ionicons name="checkmark-circle" size={14} color={theme.colors.success} />
-            <Text style={[styles.statusText, { color: theme.colors.success }]}>
-              Extracted — check before saving
-            </Text>
+          <View style={styles.aiChipApplied}>
+            <Ionicons name="sparkles" size={14} color={theme.colors.primary} />
+            <Text style={styles.aiChipText}>AI improved this receipt</Text>
           </View>
         )}
         {!aiPending && aiError != null && (
           <TouchableOpacity
             onPress={() => runAiParse(rawText)}
-            style={[styles.statusBadge, styles.statusBadgeWarning]}
+            style={styles.aiChipError}
           >
-            <Ionicons name="alert-circle-outline" size={14} color={theme.colors.warning} />
-            <Text
-              style={[styles.statusText, { color: theme.colors.warning }]}
-              numberOfLines={2}
-            >
+            <Ionicons
+              name="information-circle-outline"
+              size={14}
+              color={theme.colors.warning}
+            />
+            <Text style={styles.aiChipErrorText} numberOfLines={2}>
               {aiErrorMessage(aiError)}
             </Text>
           </TouchableOpacity>
@@ -1035,23 +1200,17 @@ export default function ScanScreen() {
         {!aiPending && !aiApplied && aiError == null && rawText && (
           <TouchableOpacity
             onPress={() => runAiParse(rawText)}
-            style={[styles.statusBadge, styles.statusBadgeNeutral]}
+            style={styles.aiRetryBtn}
           >
             <Ionicons name="sparkles-outline" size={14} color={theme.colors.primary} />
-            <Text style={[styles.statusText, { color: theme.colors.primary }]}>
-              Re-parse with AI
-            </Text>
+            <Text style={styles.aiChipText}>Re-parse with AI</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {imageUri && (
-        <Image source={{ uri: imageUri }} style={styles.receiptThumb} resizeMode="cover" />
-      )}
-
-      {/* Merchant */}
+      {/* Store name */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Merchant</Text>
+        <Text style={styles.fieldLabel}>Store / Merchant</Text>
         <TextInput
           style={styles.input}
           value={storeName}
@@ -1059,32 +1218,6 @@ export default function ScanScreen() {
           placeholder="e.g. Whole Foods Market"
           placeholderTextColor={theme.colors.textMuted}
           autoCorrect={false}
-        />
-      </Card>
-
-      {/* Amount */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Amount ($)</Text>
-        <TextInput
-          style={styles.input}
-          value={amount}
-          onChangeText={setAmount}
-          placeholder="0.00"
-          placeholderTextColor={theme.colors.textMuted}
-          keyboardType="decimal-pad"
-        />
-      </Card>
-
-      {/* Date */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
-        <TextInput
-          style={styles.input}
-          value={date}
-          onChangeText={setDate}
-          placeholder="2026-05-08"
-          placeholderTextColor={theme.colors.textMuted}
-          keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
         />
       </Card>
 
@@ -1114,13 +1247,52 @@ export default function ScanScreen() {
         />
       </Card>
 
-      {/* Category — pill chips. Reuses CategoryTagsPicker (built on top
-          of TagChip) rather than a bespoke single-select row so the
-          existing multi-tag category support keeps working; selected
-          chips render filled with their category accent color. */}
+      {/* Total */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Category</Text>
+        <Text style={styles.fieldLabel}>Total Amount ($)</Text>
+        <TextInput
+          style={[styles.input, styles.amountInput]}
+          value={amount}
+          onChangeText={setAmount}
+          placeholder="0.00"
+          placeholderTextColor={theme.colors.textMuted}
+          keyboardType="decimal-pad"
+        />
+      </Card>
+
+      {/* Date */}
+      <Card style={styles.fieldCard}>
+        <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
+        <TextInput
+          style={styles.input}
+          value={date}
+          onChangeText={setDate}
+          placeholder="2026-05-08"
+          placeholderTextColor={theme.colors.textMuted}
+          keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+        />
+      </Card>
+
+      {/* Categories — multi-select chips. Includes the standard 10
+          categories plus any custom tags Gemini suggests or the user adds. */}
+      <Card style={styles.fieldCard}>
+        <Text style={styles.fieldLabel}>Categories</Text>
         <CategoryTagsPicker tags={categoryTags} onChange={setCategoryTags} />
+      </Card>
+
+      {/* Notes */}
+      <Card style={styles.fieldCard}>
+        <Text style={styles.fieldLabel}>Notes (optional)</Text>
+        <TextInput
+          style={[styles.input, styles.inputMultiline]}
+          value={notes}
+          onChangeText={setNotes}
+          placeholder="Add any notes..."
+          placeholderTextColor={theme.colors.textMuted}
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
+        />
       </Card>
 
       {/* Line items — always rendered so manual-entry receipts have a
@@ -1193,21 +1365,6 @@ export default function ScanScreen() {
         </TouchableOpacity>
       </Card>
 
-      {/* Notes */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Notes (optional)</Text>
-        <TextInput
-          style={[styles.input, styles.inputMultiline]}
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Add a note"
-          placeholderTextColor={theme.colors.textMuted}
-          multiline
-          numberOfLines={3}
-          textAlignVertical="top"
-        />
-      </Card>
-
       <ItemEditModal
         item={editingItem}
         extraTags={categoryTags}
@@ -1226,16 +1383,26 @@ export default function ScanScreen() {
         onDelete={deleteItem}
       />
 
-      <Button
-        label="SAVE EXPENSE"
-        onPress={handleSave}
-        loading={saving}
-        size="lg"
-        style={styles.saveBtn}
-      />
-      <Pressable onPress={resetState} style={styles.discardLink} hitSlop={8}>
-        <Text style={styles.discardLinkText}>Discard receipt</Text>
-      </Pressable>
+      <View style={styles.actionsColumn}>
+        {/* Full-width 52px navy "Save Expense" primary button per the
+            design export. Discard isn't part of the exported mockup
+            but is existing, required functionality, so it stays as a
+            lower-emphasis text link underneath rather than disappearing. */}
+        <Button
+          label="Save Expense"
+          onPress={handleSave}
+          loading={saving}
+          style={styles.saveButton}
+          textStyle={styles.saveButtonText}
+        />
+        <TouchableOpacity
+          style={styles.discardLink}
+          onPress={resetState}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.discardLinkText}>Discard</Text>
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }

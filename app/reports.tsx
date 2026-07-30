@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
@@ -9,7 +10,6 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
 import {
   endOfMonth,
   format,
@@ -20,10 +20,11 @@ import {
 import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
+import Svg, { Circle, G } from 'react-native-svg';
 // expo-sharing was added in this branch. The existing preview APK
 // doesn't have the native side linked, so a top-level import could
 // crash the screen on open. Load it lazily inside the export handler
-// instead — only paid for when the user actually taps an export button.
+// instead — only paid for when the user actually taps an export action.
 import { Theme, useStyles, useTheme } from '../constants/theme';
 import { DatePickerModal } from '../components/ui/DatePickerModal';
 import { ErrorBoundary } from '../components/ui/ErrorBoundary';
@@ -82,17 +83,19 @@ function rangeForPreset(preset: Exclude<PresetKey, 'custom'>): {
 }
 
 /**
- * Human-readable label for a date range.
+ * Build a human-readable filename for the exported receipt report.
  *
  * Patterns:
- *   • Whole calendar month: "July 2026"
- *   • Custom range in one year: "May 1 - Jun 15, 2026"
- *   • Cross-year range: "Dec 20, 2025 - Jan 5, 2026"
+ *   • Whole calendar month: "BalanceSheet Expense Report - May 2026"
+ *   • Custom range in one year: "BalanceSheet Expense Report - May 1 - Jun 15, 2026"
+ *   • Cross-year range: "BalanceSheet Expense Report - Dec 20, 2025 - Jan 5, 2026"
  *
- * Shared by the header subtitle (short period label, e.g. "July
- * 2026") and the export filename builder below.
+ * Spaces and hyphens are fine on iOS/Android filesystems and look
+ * clean in the share-sheet preview where the filename is the visible
+ * label (Gmail subject, Drive title, etc.). The .pdf / .csv extension
+ * is appended by the caller.
  */
-function periodLabel(start: Date, end: Date): string {
+function buildExportFilename(start: Date, end: Date, ext: 'pdf' | 'csv'): string {
   const isWholeMonth =
     isSameMonth(start, end) &&
     start.getTime() === startOfMonth(start).getTime() &&
@@ -100,32 +103,15 @@ function periodLabel(start: Date, end: Date): string {
     // hour/minute drift in the range bounds doesn't break detection.
     end.getDate() === endOfMonth(end).getDate();
 
-  if (isWholeMonth) return format(start, 'MMMM yyyy');
-  if (isSameYear(start, end)) {
-    return `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+  let label: string;
+  if (isWholeMonth) {
+    label = format(start, 'MMMM yyyy');
+  } else if (isSameYear(start, end)) {
+    label = `${format(start, 'MMM d')} - ${format(end, 'MMM d, yyyy')}`;
+  } else {
+    label = `${format(start, 'MMM d, yyyy')} - ${format(end, 'MMM d, yyyy')}`;
   }
-  return `${format(start, 'MMM d, yyyy')} - ${format(end, 'MMM d, yyyy')}`;
-}
-
-/**
- * Build a human-readable filename for the exported receipt report,
- * e.g. "BalanceSheet Expense Report - May 2026.pdf". Spaces and
- * hyphens are fine on iOS/Android filesystems and look clean in the
- * share-sheet preview where the filename is the visible label (Gmail
- * subject, Drive title, etc.). The .pdf / .csv extension is appended
- * by the caller.
- */
-function buildExportFilename(start: Date, end: Date, ext: 'pdf' | 'csv'): string {
-  return `BalanceSheet Expense Report - ${periodLabel(start, end)}.${ext}`;
-}
-
-/** Theme-driven color for a category — standard categories use their
- *  assigned accent, anything custom/tagged falls back to primary. */
-function categoryColor(theme: Theme, category: string): string {
-  const standard = (ALL_CATEGORIES as readonly string[]).includes(category);
-  return standard
-    ? theme.colors.category[category as Category]
-    : theme.colors.primary;
+  return `BalanceSheet Expense Report - ${label}.${ext}`;
 }
 
 export default function ReportsScreenWrapped() {
@@ -220,62 +206,11 @@ function ReportsScreen() {
   const recurring: RecurringMatch[] = findRecurring(receipts, 3);
   const [exporting, setExporting] = useState(false);
 
-  // Explicit CSV/PDF choice from the two export buttons. PDF still
-  // falls back to CSV on older builds that pre-date the expo-print
-  // native dep — the OTA ships JS only, so we can't assume the
-  // native module is loaded until the user installs a fresh APK.
-  const exportReport = useCallback(async (kind: 'pdf' | 'csv') => {
-    if (exporting) return;
-    if (receipts.length === 0) {
-      Alert.alert(
-        'Nothing to export',
-        'Scan a few receipts before generating a report.',
-      );
-      return;
-    }
-    setExporting(true);
-    try {
-      const startLabel = format(start, 'PP');
-      const endLabel = format(end, 'PP');
-
-      let path: string | null = null;
-      let mimeType = 'application/pdf';
-      let uti = 'com.adobe.pdf';
-      const dialogTitle = 'Export expense report';
-
-      if (kind === 'pdf') {
-        if (isPdfExportAvailable()) {
-          const filename = buildExportFilename(start, end, 'pdf');
-          path = await generateReceiptsPdf({
-            receipts: rangeReceipts,
-            startLabel,
-            endLabel,
-            filename,
-          });
-        } else {
-          Alert.alert(
-            'PDF unavailable',
-            "PDF export needs a newer build — exporting CSV instead.",
-          );
-        }
-      }
-
-      if (!path) {
-        // CSV export (either requested directly, or PDF wasn't
-        // available on this build).
-        const csv = receiptsToCsv(rangeReceipts);
-        const filename = buildExportFilename(start, end, 'csv');
-        path = `${FileSystem.documentDirectory}${filename}`;
-        await FileSystem.writeAsStringAsync(path, csv, {
-          encoding: FileSystem.EncodingType.UTF8,
-        });
-        mimeType = 'text/csv';
-        uti = 'public.comma-separated-values-text';
-      }
-
-      // Lazy-require expo-sharing — the native side wasn't in the
-      // original APK before this branch added it, so a top-level
-      // import would crash the screen on older builds.
+  // Lazy-require expo-sharing — the native side wasn't in the
+  // original APK before this branch added it, so a top-level
+  // import would crash the screen on older builds.
+  const shareFile = useCallback(
+    async (path: string, mimeType: string, uti: string, dialogTitle: string) => {
       let Sharing: typeof import('expo-sharing') | null = null;
       try {
         // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
@@ -287,43 +222,118 @@ function ReportsScreen() {
         ? await Sharing.isAvailableAsync().catch(() => false)
         : false;
       if (Sharing && canShare) {
-        await Sharing.shareAsync(path, {
-          mimeType,
-          dialogTitle,
-          UTI: uti,
-        });
+        await Sharing.shareAsync(path, { mimeType, dialogTitle, UTI: uti });
       } else {
         Alert.alert(
           'Saved',
           `Sharing isn't available in this build, but the file was written to ${path}. Rebuild the app to enable in-app share.`,
         );
       }
+    },
+    [],
+  );
+
+  const exportCsv = useCallback(async () => {
+    if (exporting) return;
+    if (receipts.length === 0) {
+      Alert.alert(
+        'Nothing to export',
+        'Scan a few receipts before generating a report.',
+      );
+      return;
+    }
+    setExporting(true);
+    try {
+      const csv = receiptsToCsv(rangeReceipts);
+      const filename = buildExportFilename(start, end, 'csv');
+      const path = `${FileSystem.documentDirectory}${filename}`;
+      await FileSystem.writeAsStringAsync(path, csv, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+      await shareFile(
+        path,
+        'text/csv',
+        'public.comma-separated-values-text',
+        'Export expense report',
+      );
     } catch (e) {
       Alert.alert('Export failed', (e as Error)?.message ?? 'Try again.');
     } finally {
       setExporting(false);
     }
-  }, [rangeReceipts, exporting, start, end, receipts.length]);
+  }, [rangeReceipts, exporting, start, end, receipts.length, shareFile]);
+
+  const exportPdf = useCallback(async () => {
+    if (exporting) return;
+    if (receipts.length === 0) {
+      Alert.alert(
+        'Nothing to export',
+        'Scan a few receipts before generating a report.',
+      );
+      return;
+    }
+    // expo-print may not be linked in older/preview APKs — the OTA
+    // ships JS only, so we can't assume the native module is loaded
+    // until the user installs a fresh build.
+    if (!isPdfExportAvailable()) {
+      Alert.alert(
+        'PDF unavailable',
+        'PDF export needs a newer build of the app. Use Export CSV for now, or rebuild to enable PDF.',
+      );
+      return;
+    }
+    setExporting(true);
+    try {
+      const startLabel = format(start, 'PP');
+      const endLabel = format(end, 'PP');
+      const filename = buildExportFilename(start, end, 'pdf');
+      const path = await generateReceiptsPdf({
+        receipts: rangeReceipts,
+        startLabel,
+        endLabel,
+        filename,
+      });
+      if (path) {
+        await shareFile(path, 'application/pdf', 'com.adobe.pdf', 'Export expense report');
+      }
+    } catch (e) {
+      Alert.alert('Export failed', (e as Error)?.message ?? 'Try again.');
+    } finally {
+      setExporting(false);
+    }
+  }, [rangeReceipts, exporting, start, end, receipts.length, shareFile]);
+
+  // Header quick-export icon: prefer PDF when available, else CSV.
+  const quickExport = useCallback(() => {
+    if (isPdfExportAvailable()) {
+      return exportPdf();
+    }
+    return exportCsv();
+  }, [exportPdf, exportCsv]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <ModalHeader title="Reports" />
-
-      {/* Large page title + muted "current period" subtitle, e.g.
-          "July 2026" — always visible, independent of loading state. */}
-      <View style={styles.pageHeader}>
-        <Text style={styles.pageTitle}>Reports</Text>
-        <Text style={styles.pageSubtitle}>{periodLabel(start, end)}</Text>
-      </View>
+      <ModalHeader
+        title="Reports"
+        rightActions={[
+          {
+            icon: 'share-outline',
+            onPress: quickExport,
+            disabled: receipts.length === 0,
+            loading: exporting,
+            accessibilityLabel: 'Export receipts',
+          },
+        ]}
+      />
 
       {loading ? (
         <View style={styles.content}>
           {/* Match the eventual layout: range chips strip + hero
               card + trend chart placeholder + sections. */}
-          <Skeleton width={'100%' as `${number}%`} height={34} borderRadius={999} />
-          <Skeleton width={'100%' as `${number}%`} height={160} borderRadius={16} />
-          <Skeleton width={'100%' as `${number}%`} height={170} borderRadius={16} />
-          <Skeleton width={'100%' as `${number}%`} height={150} borderRadius={16} />
+          <Skeleton width={'100%' as `${number}%`} height={34} borderRadius={theme.radius.full} />
+          <Skeleton width={'100%' as `${number}%`} height={160} borderRadius={theme.radius.lg} />
+          <Skeleton width={'100%' as `${number}%`} height={170} borderRadius={theme.radius.lg} />
+          <Skeleton width={'100%' as `${number}%`} height={150} borderRadius={theme.radius.lg} />
         </View>
       ) : (
         <ScrollView
@@ -429,29 +439,8 @@ function ReportsScreen() {
             {format(start, 'MMM d, yyyy')} — {format(end, 'MMM d, yyyy')}
           </Text>
 
-          {/* Hero — donut of category mix + period total + delta */}
-          <HeroCard delta={periodDelta} />
-
-          {/* Export triggers — same CSV/PDF logic as before, now two
-              explicit buttons instead of one auto-picking share icon. */}
-          <View style={styles.exportRow}>
-            <Button
-              label="EXPORT CSV"
-              variant="secondary"
-              onPress={() => exportReport('csv')}
-              disabled={receipts.length === 0 || exporting}
-              loading={exporting}
-              style={styles.exportBtn}
-            />
-            <Button
-              label="EXPORT PDF"
-              variant="secondary"
-              onPress={() => exportReport('pdf')}
-              disabled={receipts.length === 0 || exporting}
-              loading={exporting}
-              style={styles.exportBtn}
-            />
-          </View>
+          {/* Hero — period total + delta vs preceding window */}
+          <SummaryCard delta={periodDelta} />
 
           {/* Trend chart — bars scale to the range, with the months
               that fall in [start, end] highlighted. Tap a bar to
@@ -474,22 +463,26 @@ function ReportsScreen() {
             />
           </Section>
 
-          {/* By category — dot + name + share of total + amount. Tap
-              to drill into the existing category-detail screen
-              scoped to the END month of the selected range. (The
-              drilldown still keys by month, not arbitrary range, so
-              this is the closest match.) */}
+          {/* Top categories — tap to drill into the existing
+              category-detail screen scoped to the END month of the
+              selected range. (The drilldown still keys by month, not
+              arbitrary range, so this is the closest match.) */}
           {summary && summary.categories.length > 0 && (
-            <Section title="By category">
+            <Section title="BY CATEGORY">
               {summary.categories.slice(0, 5).map((c) => {
-                const color = categoryColor(theme, c.category);
+                const standard = (ALL_CATEGORIES as readonly string[]).includes(
+                  c.category,
+                );
+                const color = standard
+                  ? theme.colors.category[c.category as Category]
+                  : theme.colors.primary;
                 const pct =
                   summary.total > 0 ? (c.total / summary.total) * 100 : 0;
                 return (
                   <Pressable
                     key={c.category}
                     style={({ pressed }) => [
-                      styles.categoryRow,
+                      styles.row,
                       pressed && styles.rowPressed,
                     ]}
                     onPress={() => {
@@ -512,10 +505,13 @@ function ReportsScreen() {
                   >
                     <View style={[styles.categoryDot, { backgroundColor: color }]} />
                     <Text style={styles.rowLabel}>{c.category}</Text>
-                    <Text style={styles.categoryPct}>{pct.toFixed(0)}%</Text>
-                    <Text style={[styles.rowAmount, { color }]}>
-                      ${c.total.toFixed(2)}
-                    </Text>
+                    <Text style={styles.rowPct}>{pct.toFixed(0)}%</Text>
+                    <Text style={styles.rowAmount}>${c.total.toFixed(2)}</Text>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={14}
+                      color={theme.colors.textMuted}
+                    />
                   </Pressable>
                 );
               })}
@@ -604,7 +600,9 @@ function ReportsScreen() {
                 const standard = (
                   ALL_CATEGORIES as readonly string[]
                 ).includes(t.category);
-                const color = categoryColor(theme, t.category);
+                const color = standard
+                  ? theme.colors.category[t.category as Category]
+                  : theme.colors.primary;
                 const icon = standard
                   ? CATEGORY_ICONS[t.category as Category]
                   : '🏷️';
@@ -621,7 +619,7 @@ function ReportsScreen() {
                             name={isUp ? 'arrow-up' : 'arrow-down'}
                             size={11}
                             color={
-                              isUp ? theme.colors.error : theme.colors.primary
+                              isUp ? theme.colors.error : theme.colors.success
                             }
                           />
                         ) : null}
@@ -632,7 +630,7 @@ function ReportsScreen() {
                               color: isUp
                                 ? theme.colors.error
                                 : isDown
-                                  ? theme.colors.primary
+                                  ? theme.colors.success
                                   : theme.colors.textMuted,
                             },
                           ]}
@@ -693,18 +691,35 @@ function ReportsScreen() {
               description="Scan a few receipts and your monthly summary, trend chart, top categories, recurring expenses, and standouts will all appear here."
             />
           )}
+
+          {/* Export — real CSV/PDF generation via lib/reports + lib/pdfExport,
+              shared through expo-sharing. Two equal-width outlined buttons
+              per the design spec (not the fake single "toast" export). */}
+          <View style={styles.exportRow}>
+            <Button
+              label="Export CSV"
+              variant="secondary"
+              onPress={exportCsv}
+              loading={exporting}
+              disabled={receipts.length === 0}
+              style={styles.exportButton}
+            />
+            <Button
+              label="Export PDF"
+              variant="secondary"
+              onPress={exportPdf}
+              loading={exporting}
+              disabled={receipts.length === 0}
+              style={styles.exportButton}
+            />
+          </View>
         </ScrollView>
       )}
     </SafeAreaView>
   );
 }
 
-/**
- * Hero card: a small category-mix donut on the left, period total +
- * receipt-count caption + period-over-period delta pill on the
- * right. Replaces the old plain "Total spent" summary card.
- */
-function HeroCard({ delta }: { delta: PeriodDelta | null }) {
+function SummaryCard({ delta }: { delta: PeriodDelta | null }) {
   const theme = useTheme();
   const styles = useReportsStyles();
   if (!delta) return null;
@@ -714,108 +729,111 @@ function HeroCard({ delta }: { delta: PeriodDelta | null }) {
   const deltaColor = isUp
     ? theme.colors.error
     : isDown
-      ? theme.colors.primary
+      ? theme.colors.success
       : theme.colors.textMuted;
   const arrow = isUp ? 'arrow-up' : isDown ? 'arrow-down' : 'remove';
-
-  // Donut mirrors the "By category" list below: top 5 categories get
-  // their own slice, anything beyond that rolls into a muted "other"
-  // slice so the ring still reflects 100% of the period's spend.
-  const topCats = current.categories.slice(0, 5);
-  const restTotal = current.categories
-    .slice(5)
-    .reduce((sum, c) => sum + c.total, 0);
-  const donutSegments = [
-    ...topCats.map((c) => ({
-      color: categoryColor(theme, c.category),
-      value: c.total,
-    })),
-    ...(restTotal > 0
-      ? [{ color: theme.colors.textMuted, value: restTotal }]
-      : []),
-  ];
-
+  const count = current.receiptCount;
   return (
-    <View style={styles.heroCard}>
-      <View style={styles.heroLeft}>
-        <CategoryDonut segments={donutSegments} />
-      </View>
-      <View style={styles.heroRight}>
-        <Text style={styles.heroAmount}>${current.total.toFixed(2)}</Text>
-        <Text style={styles.heroCaption}>
-          total across {current.receiptCount} expense
-          {current.receiptCount === 1 ? '' : 's'}
-        </Text>
-        <View style={[styles.deltaPill, { borderColor: deltaColor }]}>
-          <Ionicons name={arrow} size={14} color={deltaColor} />
-          <Text style={[styles.deltaText, { color: deltaColor }]}>
-            {d === 0 && deltaPct == null
-              ? 'No data last period'
-              : d === 0
-                ? 'Same as last period'
-                : `$${Math.abs(d).toFixed(2)}${
-                    deltaPct != null ? ` (${Math.abs(deltaPct * 100).toFixed(0)}%)` : ''
-                  } vs last period`}
+    <View style={styles.summaryCard}>
+      <View style={styles.summaryTopRow}>
+        <CategoryDonut
+          categories={current.categories}
+          total={current.total}
+          theme={theme}
+        />
+        <View style={styles.summaryTotalBox}>
+          <Text style={styles.summaryAmount}>${current.total.toFixed(2)}</Text>
+          <Text style={styles.summarySub}>
+            total across {count} expense{count === 1 ? '' : 's'}
           </Text>
         </View>
+      </View>
+      <View style={[styles.deltaPill, { borderColor: deltaColor }]}>
+        <Ionicons name={arrow} size={14} color={deltaColor} />
+        <Text style={[styles.deltaText, { color: deltaColor }]}>
+          {d === 0 && deltaPct == null
+            ? 'No data last period'
+            : d === 0
+              ? 'Same as last period'
+              : `$${Math.abs(d).toFixed(2)}${
+                  deltaPct != null ? ` (${Math.abs(deltaPct * 100).toFixed(0)}%)` : ''
+                } vs last period`}
+        </Text>
       </View>
     </View>
   );
 }
 
 /**
- * Small ring chart built from react-native-svg (already a project
- * dependency). Each segment is a full-circumference Circle rotated
- * into place with a strokeDasharray covering just its share — the
- * standard SVG "stacked ring" technique, no path math required.
+ * 64px conic-gradient-style donut: one <Circle> per category, drawn as
+ * a stroked arc via strokeDasharray/strokeDashoffset, sized to that
+ * category's share of the period's total spend. Segment colors come
+ * from t.colors.category — the same mapping used by the "BY CATEGORY"
+ * row dots below, per the design system's color-semantics rule (never
+ * use arbitrary chart colors for category data).
  */
 function CategoryDonut({
-  segments,
-  size = 84,
-  strokeWidth = 12,
+  categories,
+  total,
+  theme,
+  size = 64,
 }: {
-  segments: Array<{ color: string; value: number }>;
+  categories: Array<{ category: Category | string; total: number }>;
+  total: number;
+  theme: Theme;
   size?: number;
-  strokeWidth?: number;
 }) {
-  const theme = useTheme();
-  const radius = (size - strokeWidth) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const total = segments.reduce((sum, s) => sum + s.value, 0);
-  let cumulativePct = 0;
+  const strokeWidth = Math.round(size * 0.3);
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+  const center = size / 2;
+  const segments = categories.filter((c) => c.total > 0);
+
+  if (total <= 0 || segments.length === 0) {
+    return (
+      <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <Circle
+          cx={center}
+          cy={center}
+          r={r}
+          stroke={theme.colors.border}
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+      </Svg>
+    );
+  }
+
+  let offset = 0;
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <Circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        stroke={theme.colors.border}
-        strokeWidth={strokeWidth}
-        fill="none"
-      />
-      {total > 0 &&
-        segments.map((seg, idx) => {
-          if (seg.value <= 0) return null;
-          const pct = seg.value / total;
-          const dash = pct * circumference;
-          const rotation = -90 + cumulativePct * 360;
-          cumulativePct += pct;
+      <G rotation={-90} origin={`${center}, ${center}`}>
+        {segments.map((c) => {
+          const standard = (ALL_CATEGORIES as readonly string[]).includes(
+            c.category as string,
+          );
+          const color = standard
+            ? theme.colors.category[c.category as Category]
+            : theme.colors.primary;
+          const frac = c.total / total;
+          const dash = Math.max(0, frac * circumference);
+          const dashOffset = -offset;
+          offset += dash;
           return (
             <Circle
-              key={idx}
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              stroke={seg.color}
+              key={String(c.category)}
+              cx={center}
+              cy={center}
+              r={r}
+              stroke={color}
               strokeWidth={strokeWidth}
               strokeDasharray={`${dash} ${circumference - dash}`}
-              strokeLinecap="butt"
+              strokeDashoffset={dashOffset}
               fill="none"
-              rotation={rotation}
-              origin={`${size / 2}, ${size / 2}`}
             />
           );
         })}
+      </G>
     </Svg>
   );
 }
@@ -856,7 +874,10 @@ function TrendChart({
             <Text
               style={[
                 styles.trendBarAmount,
-                isActive && { color: theme.colors.primary, fontWeight: '700' },
+                isActive && {
+                  color: theme.colors.primary,
+                  fontFamily: theme.fonts.mono.medium,
+                },
               ]}
               numberOfLines={1}
             >
@@ -915,22 +936,30 @@ function useReportsStyles() {
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  pageHeader: {
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.md,
-    paddingBottom: theme.spacing.xs,
-    gap: 2,
+    paddingVertical: theme.spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
   },
-  pageTitle: {
+  iconBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
     color: theme.colors.textPrimary,
-    fontSize: theme.font.xxxl,
-    fontWeight: '800',
-    letterSpacing: -0.5,
+    fontSize: theme.font.lg,
+    fontWeight: '700',
   },
-  pageSubtitle: {
-    color: theme.colors.textMuted,
-    fontSize: theme.font.sm,
-    fontWeight: '500',
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   content: {
     padding: theme.spacing.md,
@@ -951,16 +980,16 @@ function useReportsStyles() {
     borderColor: theme.colors.border,
   },
   presetChipActive: {
-    backgroundColor: `${theme.colors.primary}22`,
-    borderColor: theme.colors.primary,
+    backgroundColor: `${theme.colors.accent}22`,
+    borderColor: theme.colors.accent,
   },
   presetChipText: {
     color: theme.colors.textSecondary,
     fontSize: theme.font.xs,
-    fontWeight: '700',
+    fontFamily: theme.fonts.body.medium,
   },
   presetChipTextActive: {
-    color: theme.colors.primary,
+    color: theme.colors.accent,
   },
   customRangeRow: {
     flexDirection: 'row',
@@ -983,7 +1012,7 @@ function useReportsStyles() {
   dateChipText: {
     color: theme.colors.textPrimary,
     fontSize: theme.font.sm,
-    fontWeight: '600',
+    fontFamily: theme.fonts.body.medium,
   },
   rangeDash: {
     color: theme.colors.textMuted,
@@ -992,43 +1021,43 @@ function useReportsStyles() {
   rangeLabel: {
     color: theme.colors.textMuted,
     fontSize: theme.font.xs,
+    fontFamily: theme.fonts.body.regular,
     textAlign: 'center',
     marginTop: -4,
   },
-  heroCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.lg,
+  summaryCard: {
     backgroundColor: theme.colors.surface,
     borderRadius: theme.radius.lg,
     padding: theme.spacing.lg,
+    alignItems: 'stretch',
+    gap: theme.spacing.sm,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
-  heroLeft: {
+  summaryTopRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: theme.spacing.md,
   },
-  heroRight: {
+  summaryTotalBox: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
-  heroAmount: {
+  summaryAmount: {
     color: theme.colors.textPrimary,
-    fontSize: 36,
-    fontWeight: '800',
-    letterSpacing: -1,
+    fontSize: 26,
+    fontFamily: theme.fonts.mono.medium,
   },
-  heroCaption: {
+  summarySub: {
     color: theme.colors.textMuted,
     fontSize: theme.font.sm,
+    fontFamily: theme.fonts.body.regular,
   },
   deltaPill: {
-    marginTop: theme.spacing.sm,
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    alignSelf: 'flex-start',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: theme.radius.full,
@@ -1036,32 +1065,21 @@ function useReportsStyles() {
   },
   deltaText: {
     fontSize: theme.font.xs,
-    fontWeight: '700',
-  },
-  exportRow: {
-    flexDirection: 'row',
-    gap: theme.spacing.sm,
-  },
-  exportBtn: {
-    flex: 1,
+    fontFamily: theme.fonts.body.medium,
   },
   section: {
     gap: theme.spacing.sm,
   },
   sectionTitle: {
-    color: theme.colors.textMuted,
-    fontSize: theme.font.xs,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    color: theme.colors.textPrimary,
+    fontSize: theme.font.md,
+    fontFamily: theme.fonts.display.bold,
   },
   sectionBody: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.md,
     padding: theme.spacing.sm,
     gap: theme.spacing.xs,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   row: {
     flexDirection: 'row',
@@ -1076,62 +1094,58 @@ function useReportsStyles() {
   rowIcon: {
     fontSize: 16,
   },
-  rowLabel: {
-    flex: 1,
-    color: theme.colors.textPrimary,
-    fontSize: theme.font.sm,
-    fontWeight: '500',
-  },
-  rowMuted: {
-    color: theme.colors.textMuted,
-    fontSize: theme.font.xs,
-  },
-  rowAmount: {
-    color: theme.colors.textPrimary,
-    fontSize: theme.font.sm,
-    fontWeight: '700',
-    minWidth: 72,
-    textAlign: 'right',
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 9,
-    paddingHorizontal: 4,
-  },
   categoryDot: {
     width: 10,
     height: 10,
     borderRadius: theme.radius.full,
   },
-  categoryPct: {
+  rowLabel: {
+    flex: 1,
+    color: theme.colors.textPrimary,
+    fontSize: theme.font.sm,
+    fontFamily: theme.fonts.body.regular,
+  },
+  rowPct: {
     color: theme.colors.textMuted,
     fontSize: theme.font.xs,
+    fontFamily: theme.fonts.body.regular,
     minWidth: 34,
+    textAlign: 'right',
+  },
+  rowMuted: {
+    color: theme.colors.textMuted,
+    fontSize: theme.font.xs,
+    fontFamily: theme.fonts.body.regular,
+  },
+  rowAmount: {
+    color: theme.colors.textPrimary,
+    fontSize: theme.font.sm,
+    fontFamily: theme.fonts.mono.medium,
+    minWidth: 72,
     textAlign: 'right',
   },
   standoutCard: {
     backgroundColor: theme.colors.surfaceHigh,
-    borderRadius: theme.radius.lg,
+    borderRadius: theme.radius.sm,
     padding: theme.spacing.sm,
     gap: 2,
   },
   standoutLabel: {
     color: theme.colors.textMuted,
     fontSize: theme.font.xs,
-    fontWeight: '600',
+    fontFamily: theme.fonts.body.medium,
     textTransform: 'uppercase',
     letterSpacing: 0.6,
   },
   standoutAmount: {
     color: theme.colors.textPrimary,
     fontSize: theme.font.lg,
-    fontWeight: '700',
+    fontFamily: theme.fonts.mono.medium,
   },
   standoutSub: {
     color: theme.colors.textSecondary,
     fontSize: theme.font.sm,
+    fontFamily: theme.fonts.body.regular,
   },
   trendChart: {
     flexDirection: 'row',
@@ -1161,12 +1175,13 @@ function useReportsStyles() {
     color: theme.colors.textSecondary,
     fontSize: theme.font.xs,
     marginTop: 4,
-    fontWeight: '600',
+    fontFamily: theme.fonts.body.medium,
   },
   trendBarAmount: {
     color: theme.colors.textMuted,
     fontSize: 10,
     marginTop: 1,
+    fontFamily: theme.fonts.mono.regular,
   },
   emptyState: {
     alignItems: 'center',
@@ -1176,12 +1191,13 @@ function useReportsStyles() {
   emptyTitle: {
     color: theme.colors.textPrimary,
     fontSize: theme.font.lg,
-    fontWeight: '700',
+    fontFamily: theme.fonts.display.bold,
     marginTop: theme.spacing.sm,
   },
   emptyText: {
     color: theme.colors.textMuted,
     fontSize: theme.font.sm,
+    fontFamily: theme.fonts.body.regular,
     textAlign: 'center',
     maxWidth: 280,
   },
@@ -1204,7 +1220,7 @@ function useReportsStyles() {
   },
   trendDeltaText: {
     fontSize: theme.font.xs,
-    fontWeight: '700',
+    fontFamily: theme.fonts.mono.medium,
   },
   sparkRow: {
     flexDirection: 'row',
@@ -1222,7 +1238,7 @@ function useReportsStyles() {
     width: '70%',
     height: 26,
     backgroundColor: theme.colors.border,
-    borderRadius: 2,
+    borderRadius: theme.radius.sm,
     overflow: 'hidden',
     justifyContent: 'flex-end',
   },
@@ -1234,16 +1250,28 @@ function useReportsStyles() {
     color: theme.colors.textMuted,
     fontSize: 9,
     marginTop: 2,
+    fontFamily: theme.fonts.body.regular,
   },
   recurringHint: {
     color: theme.colors.textMuted,
     fontSize: theme.font.xs,
+    fontFamily: theme.fonts.body.regular,
     paddingHorizontal: 4,
     paddingBottom: 4,
   },
   recurringLabelBox: {
     flex: 1,
     minWidth: 0,
+  },
+  exportRow: {
+    flexDirection: 'row',
+    gap: theme.spacing.sm,
+    marginTop: theme.spacing.sm,
+  },
+  exportButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: theme.radius.lg,
   },
   }));
 }

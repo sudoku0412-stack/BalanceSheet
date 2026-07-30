@@ -11,18 +11,21 @@ import {
   Platform,
   ActivityIndicator,
   Pressable,
+  Switch,
 } from 'react-native';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
-import { format, formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getReceiptById,
   updateReceipt,
   deleteReceipt,
   replaceLineItems,
+  getCurrentHouseholdId,
 } from '../../lib/database';
+import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
+import { useAuth } from '../../lib/AuthContext';
 import { refineUncategorizedItems } from '../../lib/itemClassifier';
 import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
 import { parseYmdLocal } from '../../lib/parser';
@@ -67,20 +70,6 @@ function safeAmount(n: number | null | undefined, digits = 2): string {
   return n.toFixed(digits);
 }
 
-/** Safe wrapper around date-fns formatDistanceToNow() for the hero meta
- *  line — same "legacy receipt may have a bad timestamp" guard as
- *  safeFormat above, just producing "3 days ago" instead of a date. */
-function safeRelative(input: unknown): string {
-  if (input == null || input === '') return '';
-  try {
-    const d = new Date(input as string);
-    if (isNaN(d.getTime())) return '';
-    return formatDistanceToNow(d, { addSuffix: true });
-  } catch {
-    return '';
-  }
-}
-
 function groupItemsByCategory(
   items: LineItem[],
   receiptCategory: Category,
@@ -103,6 +92,26 @@ function groupItemsByCategory(
     .sort((a, b) => b.subtotal - a.subtotal);
 }
 
+/** A split participant: "You" (always present, not removable) plus any
+ *  real household members pulled from lib/cloudSync.getHouseholdMembers.
+ *  There is no fictional "Partner / Alex / Priya" demo list here — if
+ *  the household has no other members (solo household, or cloud sync
+ *  not bootstrapped yet), the picker simply shows just "You". */
+type SplitParticipant = {
+  key: string;
+  label: string;
+  isYou: boolean;
+};
+
+function memberLabel(m: HouseholdMember): string {
+  return m.displayName?.trim() || m.email?.trim() || 'Member';
+}
+
+function initialFor(label: string): string {
+  const trimmed = label.trim();
+  return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
+}
+
 export default function EditReceiptScreenWrapped() {
   return (
     <ErrorBoundary>
@@ -113,6 +122,7 @@ export default function EditReceiptScreenWrapped() {
 
 function EditReceiptScreen() {
   const theme = useTheme();
+  const { user } = useAuth();
   const styles = useStyles((t) => ({
     screen: {
       flex: 1,
@@ -132,81 +142,137 @@ function EditReceiptScreen() {
       fontSize: t.font.lg,
       marginBottom: t.spacing.md,
     },
-    header: {
+    // ── Custom header (back chevron + "EXPENSE" label) ──
+    // Rendered by this screen itself (native header hidden via the
+    // <Stack.Screen options={{ headerShown: false }} /> below) so the
+    // exact spacing/typography from the design export can be matched
+    // without touching the shared app/_layout.tsx Stack config.
+    headerRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: t.spacing.sm,
-      paddingHorizontal: t.spacing.md,
-      paddingTop: t.spacing.sm,
-      paddingBottom: t.spacing.xs,
+      justifyContent: 'space-between',
+      marginBottom: t.spacing.sm,
     },
-    headerBack: {
-      padding: t.spacing.xs,
-      marginLeft: -t.spacing.xs,
-    },
-    headerTitle: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.sm,
-      fontWeight: '700',
-      textTransform: 'uppercase',
-      letterSpacing: 2,
-    },
-    imageBox: {
-      width: '100%',
-      height: 220,
-      borderRadius: t.radius.lg,
-      borderWidth: 1,
-      borderColor: t.colors.border,
-      backgroundColor: t.colors.surfaceHigh,
-      overflow: 'hidden',
+    headerBackBtn: {
+      width: 32,
+      height: 32,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: t.spacing.md,
+    },
+    headerLabel: {
+      fontFamily: t.fonts.display.extraBold,
+      color: t.colors.textPrimary,
+      fontSize: t.font.md,
+      letterSpacing: 1.2,
+      textTransform: 'uppercase',
+    },
+    headerSpacer: {
+      width: 32,
     },
     image: {
       width: '100%',
-      height: '100%',
+      height: 200,
+      borderRadius: t.radius.lg,
+      marginBottom: t.spacing.xs,
     },
-    imagePlaceholderText: {
-      color: t.colors.textMuted,
-      fontSize: t.font.sm,
+    imagePlaceholder: {
+      height: 120,
+      width: 120,
+      alignSelf: 'center',
+      borderRadius: t.radius.lg,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: t.spacing.sm,
+      backgroundColor: t.colors.surface,
+    },
+    merchantInput: {
+      fontFamily: t.fonts.display.bold,
+      color: t.colors.textPrimary,
+      fontSize: t.font.xl,
+      padding: 0,
+    },
+    amountRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
       marginTop: t.spacing.xs,
     },
-    merchantName: {
+    amountCurrency: {
+      fontFamily: t.fonts.mono.regular,
       color: t.colors.textPrimary,
       fontSize: t.font.xxl,
-      fontWeight: '800',
+      marginRight: 2,
+      fontWeight: '600',
     },
-    heroAmount: {
+    amountInput: {
+      fontFamily: t.fonts.mono.regular,
       color: t.colors.textPrimary,
       fontSize: t.font.xxxl,
-      fontWeight: '800',
+      fontWeight: '600',
+      padding: 0,
+      flex: 1,
+    },
+    captionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 4,
       marginTop: t.spacing.xs,
     },
-    heroMeta: {
+    captionText: {
       color: t.colors.textSecondary,
       fontSize: t.font.sm,
-      marginTop: t.spacing.xs,
     },
-    heroCategoryRow: {
+    captionDateInput: {
+      color: t.colors.textSecondary,
+      fontSize: t.font.sm,
+      padding: 0,
+      minWidth: 90,
+    },
+    meta: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      flexWrap: 'wrap',
+      gap: 4,
+      marginTop: 2,
+      marginBottom: t.spacing.xs,
+    },
+    metaText: {
+      color: t.colors.textMuted,
+      fontSize: t.font.xs,
+    },
+    // ── Category row: colored dot + primary category name ──
+    // No "Recurring" pill is rendered here — Receipt (types/index.ts)
+    // has no recurring field anywhere in this codebase, so it's omitted
+    // rather than faked. The full multi-tag picker below it is the
+    // pre-existing categorization feature, kept intact.
+    categoryRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
-      marginTop: t.spacing.sm,
-      marginBottom: t.spacing.md,
+      marginBottom: t.spacing.sm,
     },
-    heroCategoryDot: {
+    categoryDot: {
       width: 10,
       height: 10,
-      borderRadius: t.radius.full,
+      borderRadius: 999,
     },
-    heroCategoryLabel: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.sm,
-      fontWeight: '600',
+    categoryRowLabel: {
+      fontFamily: t.fonts.display.bold,
+      color: t.colors.textPrimary,
+      fontSize: t.font.md,
     },
     fieldCard: {
       gap: t.spacing.sm,
+      borderRadius: t.radius.lg,
+    },
+    sectionLabel: {
+      fontFamily: t.fonts.display.extraBold,
+      color: t.colors.textSecondary,
+      fontSize: t.font.xs,
+      textTransform: 'uppercase',
+      letterSpacing: 0.8,
     },
     fieldLabel: {
       color: t.colors.textSecondary,
@@ -229,22 +295,9 @@ function EditReceiptScreen() {
       minHeight: 72,
       paddingTop: 10,
     },
-    categorySelector: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    categoryGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-      marginTop: t.spacing.xs,
-    },
-    categoryOption: {
-      borderRadius: t.radius.full,
-      borderWidth: 1,
-      borderColor: 'transparent',
-      padding: 2,
+    notesText: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.md,
     },
     lineItemRow: {
       flexDirection: 'row',
@@ -260,6 +313,7 @@ function EditReceiptScreen() {
       marginRight: 8,
     },
     lineItemAmount: {
+      fontFamily: t.fonts.mono.regular,
       color: t.colors.textPrimary,
       fontSize: t.font.sm,
       fontWeight: '600',
@@ -276,6 +330,7 @@ function EditReceiptScreen() {
       borderBottomColor: t.colors.borderLight,
     },
     categoryGroupTotal: {
+      fontFamily: t.fonts.mono.regular,
       color: t.colors.textPrimary,
       fontSize: t.font.sm,
       fontWeight: '700',
@@ -302,6 +357,7 @@ function EditReceiptScreen() {
       fontSize: t.font.sm,
     },
     totalsValue: {
+      fontFamily: t.fonts.mono.regular,
       color: t.colors.textPrimary,
       fontSize: t.font.sm,
       fontWeight: '600',
@@ -312,6 +368,7 @@ function EditReceiptScreen() {
       fontWeight: '700',
     },
     totalsValueGrand: {
+      fontFamily: t.fonts.mono.regular,
       color: t.colors.primary,
       fontSize: t.font.lg,
       fontWeight: '800',
@@ -343,7 +400,7 @@ function EditReceiptScreen() {
     modalText: {
       color: t.colors.textPrimary,
       fontSize: t.font.sm,
-      fontFamily: 'monospace',
+      fontFamily: t.fonts.mono.regular,
       lineHeight: 18,
     },
     rawTextLink: {
@@ -371,14 +428,21 @@ function EditReceiptScreen() {
     saveBtn: {
       marginTop: t.spacing.sm,
     },
-    deleteBtn: {
+    // ── Delete button: full-width outlined error/oxblood, per spec ──
+    deleteBtnOutlined: {
       marginTop: t.spacing.xs,
-      backgroundColor: 'transparent',
       borderWidth: 1,
       borderColor: t.colors.error,
+      borderRadius: t.radius.lg,
+      paddingVertical: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: 'transparent',
     },
-    deleteBtnText: {
+    deleteBtnOutlinedText: {
       color: t.colors.error,
+      fontWeight: '700',
+      fontSize: t.font.md,
     },
     lineItemRowSelected: {
       backgroundColor: `${t.colors.primary}1A`,
@@ -411,7 +475,7 @@ function EditReceiptScreen() {
       backgroundColor: t.colors.primary,
       paddingHorizontal: t.spacing.md,
       paddingVertical: 10,
-      borderRadius: t.radius.full,
+      borderRadius: t.radius.lg,
     },
     bulkBarPrimaryText: {
       color: '#fff',
@@ -428,8 +492,8 @@ function EditReceiptScreen() {
       paddingHorizontal: t.spacing.lg,
       paddingTop: t.spacing.lg,
       paddingBottom: t.spacing.xxl,
-      borderTopLeftRadius: t.radius.xl,
-      borderTopRightRadius: t.radius.xl,
+      borderTopLeftRadius: t.radius.lg,
+      borderTopRightRadius: t.radius.lg,
     },
     bulkPickerTitle: {
       color: t.colors.textPrimary,
@@ -481,6 +545,125 @@ function EditReceiptScreen() {
       fontWeight: '700',
       fontSize: t.font.sm,
     },
+    // ── Split section ──
+    splitToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    splitToggleLabel: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.md,
+      fontWeight: '600',
+    },
+    splitBody: {
+      marginTop: t.spacing.md,
+      gap: t.spacing.md,
+    },
+    avatarRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    avatarWrap: {
+      alignItems: 'center',
+      gap: 4,
+    },
+    avatarCircle: {
+      width: 40,
+      height: 40,
+      borderRadius: 999,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: t.colors.surfaceHigh,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    avatarInitial: {
+      color: t.colors.textPrimary,
+      fontWeight: '700',
+      fontSize: t.font.sm,
+    },
+    avatarLabel: {
+      color: t.colors.textSecondary,
+      fontSize: t.font.xs,
+      maxWidth: 56,
+    },
+    segmented: {
+      flexDirection: 'row',
+      borderRadius: t.radius.lg,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      overflow: 'hidden',
+    },
+    segmentedTab: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    segmentedTabText: {
+      fontSize: t.font.sm,
+      fontWeight: '600',
+      color: t.colors.textSecondary,
+    },
+    participantRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 6,
+    },
+    participantName: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.sm,
+      flex: 1,
+    },
+    participantValueReadOnly: {
+      fontFamily: t.fonts.mono.regular,
+      color: t.colors.textSecondary,
+      fontSize: t.font.sm,
+    },
+    participantInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+    },
+    participantInput: {
+      fontFamily: t.fonts.mono.regular,
+      color: t.colors.textPrimary,
+      fontSize: t.font.sm,
+      backgroundColor: t.colors.surfaceHigh,
+      borderRadius: t.radius.sm,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      width: 60,
+      textAlign: 'right',
+    },
+    participantComputed: {
+      fontFamily: t.fonts.mono.regular,
+      color: t.colors.textMuted,
+      fontSize: t.font.xs,
+      minWidth: 56,
+      textAlign: 'right',
+    },
+    splitWarning: {
+      color: t.colors.error,
+      fontSize: t.font.xs,
+    },
+    splitSummary: {
+      color: t.colors.success,
+      fontWeight: '700',
+      fontSize: t.font.sm,
+      marginTop: t.spacing.xs,
+    },
+    splitGap: {
+      color: t.colors.textMuted,
+      fontSize: t.font.xs,
+      fontStyle: 'italic',
+      marginTop: t.spacing.xs,
+    },
   }));
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -518,6 +701,24 @@ function EditReceiptScreen() {
   // any hook is conditionally called.
   const [bulkCustomTag, setBulkCustomTag] = useState('');
   const selectionMode = selectedIds.size > 0;
+
+  // ── Split-this-expense state (local-only) ──
+  // There is no `split` field on Receipt (types/index.ts) and no
+  // split/shared-expense backend anywhere in this codebase (grepped
+  // for "split" — only String.prototype.split() call sites turned
+  // up). The math below is real and runs against real household
+  // members, but it is NOT persisted anywhere: it resets if the user
+  // leaves this screen and comes back. Persisting it would require
+  // adding a `split` field to the Receipt type (types/index.ts) and a
+  // write path in lib/database.ts / lib/cloudSync.ts — both out of
+  // scope for a pass restricted to this one file. Flagging the gap
+  // rather than inventing storage for it.
+  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[] | null>(null);
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitMethod, setSplitMethod] = useState<'equal' | 'percent' | 'amount'>('equal');
+  const [selectedOtherUids, setSelectedOtherUids] = useState<Set<string>>(new Set());
+  const [splitPercents, setSplitPercents] = useState<Record<string, string>>({});
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!id) return;
@@ -574,6 +775,29 @@ function EditReceiptScreen() {
       mounted = false;
     };
   }, [id]);
+
+  // Real household members (lib/cloudSync.getHouseholdMembers), mirroring
+  // the FamilyPanel fetch pattern in app/settings.tsx. Used as the split
+  // participant list — no fictional demo names.
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      if (!user?.uid) {
+        if (mounted) setHouseholdMembers([]);
+        return;
+      }
+      const hid = getCurrentHouseholdId();
+      if (!hid) {
+        if (mounted) setHouseholdMembers([]);
+        return;
+      }
+      const list = await getHouseholdMembers({ householdId: hid, currentUid: user.uid });
+      if (mounted) setHouseholdMembers(list ?? []);
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [user?.uid]);
 
   const handleSave = async () => {
     if (!receipt) return;
@@ -642,6 +866,9 @@ function EditReceiptScreen() {
   };
 
   const handleDelete = () => {
+    // Keep the existing confirm-before-delete Alert — the design
+    // handoff prototype deletes immediately + shows a toast, but this
+    // codebase already has a safety check here and it stays intact.
     Alert.alert('Delete Receipt', 'This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
       {
@@ -657,29 +884,20 @@ function EditReceiptScreen() {
     ]);
   };
 
-  // This screen owns its own header (small-caps title + back chevron,
-  // per the new visual spec) instead of the native one configured in
-  // app/_layout.tsx, so headerShown:false needs to apply across every
-  // return path below — not just the loaded one — or the native "Edit
-  // Receipt" header would flash briefly during loading/not-found.
-  const hiddenHeader = <Stack.Screen options={{ headerShown: false }} />;
-
   if (loading) {
     return (
-      <SafeAreaView style={[styles.screen, styles.centered]} edges={['top']}>
-        {hiddenHeader}
+      <View style={[styles.screen, styles.centered]}>
         <ActivityIndicator size="large" color={theme.colors.primary} />
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!receipt) {
     return (
-      <SafeAreaView style={[styles.screen, styles.centered]} edges={['top']}>
-        {hiddenHeader}
+      <View style={[styles.screen, styles.centered]}>
         <Text style={styles.notFoundText}>Receipt not found</Text>
         <Button label="Go back" onPress={() => router.back()} variant="ghost" />
-      </SafeAreaView>
+      </View>
     );
   }
 
@@ -714,46 +932,58 @@ function EditReceiptScreen() {
     applyBulkCategory(trimmed);
   };
 
-  // Relative timestamps for the hero meta line. No payment-method /
-  // card-last4 metadata exists anywhere in the Receipt type or
-  // lib/cloudSync — see grep before this change — so the meta line
-  // is just the relative added/edited dates, guarded the same way
-  // safeFormat guards legacy bad timestamps.
-  const addedRelative = safeRelative(receipt.createdAt);
-  const editedRelative =
-    receipt.updatedAt && receipt.updatedAt !== receipt.createdAt
-      ? safeRelative(receipt.updatedAt)
-      : '';
-  const heroMetaText = [
-    addedRelative && `Added ${addedRelative}`,
-    editedRelative && `Edited ${editedRelative}`,
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  // ── Split math (local state only — see comment on the hooks above) ──
+  const totalAmountVal = parseFloat(amount.replace(',', '.')) || 0;
+  const otherMembers = (householdMembers ?? []).filter((m) => !m.isYou);
+  const selectedOthers = otherMembers.filter((m) => selectedOtherUids.has(m.uid));
+  const participantCount = 1 + selectedOthers.length; // "You" + selected others
 
-  // Same "derive primary from tags" logic as handleSave, so the hero
-  // category dot/label reflects live edits to the Categories chip list
-  // instead of only the value loaded from disk.
-  const heroCategory: Category =
-    (categoryTags.find((t) =>
-      (ALL_CATEGORIES as readonly string[]).includes(t),
-    ) as Category | undefined) ?? category;
+  let yourShare = 0;
+  let owedToYou = 0;
+  let splitWarning: string | null = null;
+
+  if (splitMethod === 'equal') {
+    yourShare = participantCount > 0 ? totalAmountVal / participantCount : totalAmountVal;
+    owedToYou = totalAmountVal - yourShare;
+  } else if (splitMethod === 'percent') {
+    const yourPct = parseFloat(splitPercents.you || '0') || 0;
+    const othersPct = selectedOthers.reduce(
+      (s, m) => s + (parseFloat(splitPercents[m.uid] || '0') || 0),
+      0,
+    );
+    const sumPct = yourPct + othersPct;
+    yourShare = (yourPct / 100) * totalAmountVal;
+    owedToYou = (othersPct / 100) * totalAmountVal;
+    if (Math.abs(sumPct - 100) > 0.01) {
+      splitWarning = `Percentages add up to ${sumPct.toFixed(0)}%, not 100%.`;
+    }
+  } else {
+    const yourAmt = parseFloat(splitAmounts.you || '0') || 0;
+    const othersAmt = selectedOthers.reduce(
+      (s, m) => s + (parseFloat(splitAmounts[m.uid] || '0') || 0),
+      0,
+    );
+    const sumAmt = yourAmt + othersAmt;
+    yourShare = yourAmt;
+    owedToYou = othersAmt;
+    if (Math.abs(sumAmt - totalAmountVal) > 0.01) {
+      splitWarning = `Amounts add up to $${sumAmt.toFixed(2)}, not $${totalAmountVal.toFixed(2)}.`;
+    }
+  }
+
+  const toggleOtherParticipant = (uid: string) => {
+    tapLight();
+    const next = new Set(selectedOtherUids);
+    if (next.has(uid)) next.delete(uid);
+    else next.add(uid);
+    setSelectedOtherUids(next);
+  };
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
-    {hiddenHeader}
-    {/* Custom header — small-caps title + back chevron per the new
-        visual spec, replacing the native stack header. */}
-    <View style={styles.header}>
-      <TouchableOpacity
-        onPress={() => router.back()}
-        style={styles.headerBack}
-        hitSlop={10}
-      >
-        <Ionicons name="chevron-back" size={24} color={theme.colors.textPrimary} />
-      </TouchableOpacity>
-      <Text style={styles.headerTitle}>Expense</Text>
-    </View>
+    <View style={styles.screen}>
+      {/* Native header hidden in favor of the custom back-chevron +
+          "EXPENSE" label row below, matching the design export. */}
+      <Stack.Screen options={{ headerShown: false }} />
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[
@@ -762,102 +992,299 @@ function EditReceiptScreen() {
       ]}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Receipt image — bordered rounded box per the new hero style.
-          Hides the <Image> itself (falling back to the placeholder
-          box) if the file is missing — older receipts may have stale
-          cache:// paths from before we started copying to
-          documentDirectory on save. */}
-      <View style={styles.imageBox}>
-        {receipt.imageUri && !imageMissing ? (
-          <Image
-            source={{ uri: receipt.imageUri }}
-            style={styles.image}
-            resizeMode="cover"
-            onError={() => setImageMissing(true)}
-          />
-        ) : (
-          <>
-            <Ionicons name="receipt-outline" size={32} color={theme.colors.textMuted} />
-            <Text style={styles.imagePlaceholderText}>No receipt image</Text>
-          </>
-        )}
+      <View style={styles.headerRow}>
+        <Pressable
+          onPress={() => router.back()}
+          hitSlop={10}
+          style={styles.headerBackBtn}
+        >
+          <Ionicons name="chevron-back" size={26} color={theme.colors.textPrimary} />
+        </Pressable>
+        <Text style={styles.headerLabel}>EXPENSE</Text>
+        <View style={styles.headerSpacer} />
       </View>
 
-      {/* Hero — merchant name + amount, mirroring the editable Store/
-          Amount cards below so the big display numbers always match
-          what's currently typed, even before Save is tapped. */}
-      <Text style={styles.merchantName} numberOfLines={1}>
-        {storeName || 'Untitled receipt'}
-      </Text>
-      <Text style={styles.heroAmount}>
-        $
-        {(() => {
-          const parsed = parseFloat(amount.replace(',', '.'));
-          return safeAmount(Number.isFinite(parsed) ? parsed : receipt.totalAmount);
-        })()}
-      </Text>
-      {heroMetaText !== '' && <Text style={styles.heroMeta}>{heroMetaText}</Text>}
-
-      <View style={styles.heroCategoryRow}>
-        <View
-          style={[
-            styles.heroCategoryDot,
-            { backgroundColor: theme.colors.category[heroCategory] ?? theme.colors.textMuted },
-          ]}
+      {/* Receipt image — hides itself if the file is missing (older
+          receipts may have stale cache:// paths from before we
+          started copying to documentDirectory on save) and shows a
+          bordered placeholder tile with a centered receipt icon
+          instead, per the design export. */}
+      {receipt.imageUri && !imageMissing ? (
+        <Image
+          source={{ uri: receipt.imageUri }}
+          style={styles.image}
+          resizeMode="cover"
+          onError={() => setImageMissing(true)}
         />
-        <Text style={styles.heroCategoryLabel}>{heroCategory}</Text>
-      </View>
+      ) : (
+        <View style={styles.imagePlaceholder}>
+          <Ionicons name="receipt-outline" size={40} color={theme.colors.textMuted} />
+        </View>
+      )}
 
-      {/* Store name */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Store / Merchant</Text>
-        <TextInput
-          style={styles.input}
-          value={storeName}
-          onChangeText={setStoreName}
-          placeholder="Store name"
-          placeholderTextColor={theme.colors.textMuted}
-          autoCorrect={false}
-        />
-      </Card>
+      {/* Merchant name — styled as the 20px bold "display" heading from
+          the export, but kept as an editable field (existing feature). */}
+      <TextInput
+        style={styles.merchantInput}
+        value={storeName}
+        onChangeText={setStoreName}
+        placeholder="Store name"
+        placeholderTextColor={theme.colors.textMuted}
+        autoCorrect={false}
+      />
 
-      {/* Amount */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Total Amount ($)</Text>
+      {/* Amount — 32px, Roboto Mono per the Design Tokens section of
+          the handoff. Still an editable field. */}
+      <View style={styles.amountRow}>
+        <Text style={styles.amountCurrency}>$</Text>
         <TextInput
-          style={styles.input}
+          style={styles.amountInput}
           value={amount}
           onChangeText={setAmount}
           keyboardType="decimal-pad"
           placeholder="0.00"
           placeholderTextColor={theme.colors.textMuted}
         />
-      </Card>
+      </View>
 
-      {/* Date */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
+      {/* "{date} · {payment method}" caption. There is no payment-method
+          field on Receipt (types/index.ts), so only the date renders —
+          left out rather than fabricated. Date stays editable. */}
+      <View style={styles.captionRow}>
         <TextInput
-          style={styles.input}
+          style={styles.captionDateInput}
           value={date}
           onChangeText={setDate}
           placeholder="2026-05-08"
           placeholderTextColor={theme.colors.textMuted}
           keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
         />
+      </View>
+
+      {/* Added/edited timestamps — pre-existing info, tucked below the
+          transaction-date caption rather than removed. */}
+      <View style={styles.meta}>
+        {safeFormat(receipt.createdAt, 'MMM d, yyyy · h:mm a') !== '' && (
+          <Text style={styles.metaText}>
+            Added {safeFormat(receipt.createdAt, 'MMM d, yyyy · h:mm a')}
+          </Text>
+        )}
+        {receipt.updatedAt &&
+          receipt.updatedAt !== receipt.createdAt &&
+          safeFormat(receipt.updatedAt, 'MMM d, yyyy') !== '' && (
+            <Text style={styles.metaText}>
+              Edited {safeFormat(receipt.updatedAt, 'MMM d, yyyy')}
+            </Text>
+          )}
+      </View>
+
+      {/* Category row — colored dot + primary category name, per the
+          export. The full multi-tag picker (existing feature) stays
+          right below it for actually changing categories/tags. */}
+      <Card style={styles.fieldCard}>
+        <View style={styles.categoryRow}>
+          <View
+            style={[
+              styles.categoryDot,
+              { backgroundColor: theme.colors.category[category] },
+            ]}
+          />
+          <Text style={styles.categoryRowLabel}>{category}</Text>
+        </View>
+        <CategoryTagsPicker tags={categoryTags} onChange={setCategoryTags} />
       </Card>
 
-      {/* Categories — multi-select tags */}
+      {/* Split section (Splitwise-style). Toggle reveals participant
+          picker + Equal/%/$ method switch. See the hook-level comment
+          above for what's real (the math, the household member list)
+          vs. what's a known gap (no persistence field on Receipt). */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Categories</Text>
-        <CategoryTagsPicker tags={categoryTags} onChange={setCategoryTags} />
+        <Text style={styles.sectionLabel}>SPLIT</Text>
+        <View style={styles.splitToggleRow}>
+          <Text style={styles.splitToggleLabel}>Split this expense</Text>
+          <Switch
+            value={splitEnabled}
+            onValueChange={setSplitEnabled}
+            trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+            thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+          />
+        </View>
+
+        {splitEnabled && (
+          <View style={styles.splitBody}>
+            {/* Participant picker — "You" always included and not
+                removable; other avatars are real household members
+                (lib/cloudSync.getHouseholdMembers), not demo names. */}
+            <View style={styles.avatarRow}>
+              <View style={styles.avatarWrap}>
+                <View
+                  style={[
+                    styles.avatarCircle,
+                    { borderColor: theme.colors.accent, opacity: 1 },
+                  ]}
+                >
+                  <Text style={styles.avatarInitial}>Y</Text>
+                </View>
+                <Text style={styles.avatarLabel} numberOfLines={1}>You</Text>
+              </View>
+              {otherMembers.map((m) => {
+                const label = memberLabel(m);
+                const active = selectedOtherUids.has(m.uid);
+                return (
+                  <TouchableOpacity
+                    key={m.uid}
+                    style={styles.avatarWrap}
+                    onPress={() => toggleOtherParticipant(m.uid)}
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[
+                        styles.avatarCircle,
+                        {
+                          borderColor: active ? theme.colors.accent : 'transparent',
+                          opacity: active ? 1 : 0.35,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.avatarInitial}>{initialFor(label)}</Text>
+                    </View>
+                    <Text style={styles.avatarLabel} numberOfLines={1}>{label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              {/* No members yet: household may still be loading, or this
+                  is a solo household. Not fabricated — just "You". */}
+            </View>
+
+            {/* Method switch — 3-way segmented control */}
+            <View style={styles.segmented}>
+              {(['equal', 'percent', 'amount'] as const).map((m) => {
+                const active = splitMethod === m;
+                const label = m === 'equal' ? 'Equal' : m === 'percent' ? '%' : '$';
+                return (
+                  <Pressable
+                    key={m}
+                    style={[
+                      styles.segmentedTab,
+                      active && { backgroundColor: theme.colors.accent },
+                    ]}
+                    onPress={() => setSplitMethod(m)}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentedTabText,
+                        active && { color: '#fff' },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            {/* Per-participant rows */}
+            <View>
+              <View style={styles.participantRow}>
+                <Text style={styles.participantName}>You</Text>
+                {splitMethod === 'equal' && (
+                  <Text style={styles.participantValueReadOnly}>
+                    ${yourShare.toFixed(2)}
+                  </Text>
+                )}
+                {splitMethod === 'percent' && (
+                  <View style={styles.participantInputRow}>
+                    <TextInput
+                      style={styles.participantInput}
+                      value={splitPercents.you ?? ''}
+                      onChangeText={(v) =>
+                        setSplitPercents((prev) => ({ ...prev, you: v }))
+                      }
+                      keyboardType="decimal-pad"
+                      placeholder="0"
+                      placeholderTextColor={theme.colors.textMuted}
+                    />
+                    <Text style={styles.participantComputed}>
+                      ${((parseFloat(splitPercents.you || '0') || 0) / 100 * totalAmountVal).toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+                {splitMethod === 'amount' && (
+                  <TextInput
+                    style={styles.participantInput}
+                    value={splitAmounts.you ?? ''}
+                    onChangeText={(v) =>
+                      setSplitAmounts((prev) => ({ ...prev, you: v }))
+                    }
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                    placeholderTextColor={theme.colors.textMuted}
+                  />
+                )}
+              </View>
+
+              {selectedOthers.map((m) => {
+                const label = memberLabel(m);
+                return (
+                  <View key={m.uid} style={styles.participantRow}>
+                    <Text style={styles.participantName} numberOfLines={1}>{label}</Text>
+                    {splitMethod === 'equal' && (
+                      <Text style={styles.participantValueReadOnly}>
+                        ${yourShare.toFixed(2)}
+                      </Text>
+                    )}
+                    {splitMethod === 'percent' && (
+                      <View style={styles.participantInputRow}>
+                        <TextInput
+                          style={styles.participantInput}
+                          value={splitPercents[m.uid] ?? ''}
+                          onChangeText={(v) =>
+                            setSplitPercents((prev) => ({ ...prev, [m.uid]: v }))
+                          }
+                          keyboardType="decimal-pad"
+                          placeholder="0"
+                          placeholderTextColor={theme.colors.textMuted}
+                        />
+                        <Text style={styles.participantComputed}>
+                          ${((parseFloat(splitPercents[m.uid] || '0') || 0) / 100 * totalAmountVal).toFixed(2)}
+                        </Text>
+                      </View>
+                    )}
+                    {splitMethod === 'amount' && (
+                      <TextInput
+                        style={styles.participantInput}
+                        value={splitAmounts[m.uid] ?? ''}
+                        onChangeText={(v) =>
+                          setSplitAmounts((prev) => ({ ...prev, [m.uid]: v }))
+                        }
+                        keyboardType="decimal-pad"
+                        placeholder="0.00"
+                        placeholderTextColor={theme.colors.textMuted}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+
+            {splitWarning && <Text style={styles.splitWarning}>{splitWarning}</Text>}
+
+            <Text style={styles.splitSummary}>
+              You paid ${totalAmountVal.toFixed(2)} · ${owedToYou.toFixed(2)} owed to you
+            </Text>
+
+            <Text style={styles.splitGap}>
+              Not saved yet — splits aren't persisted on this receipt.
+            </Text>
+          </View>
+        )}
       </Card>
 
       {/* Notes */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Notes</Text>
+        <Text style={styles.sectionLabel}>NOTES</Text>
         <TextInput
-          style={[styles.input, styles.inputMultiline]}
+          style={[styles.input, styles.inputMultiline, styles.notesText]}
           value={notes}
           onChangeText={setNotes}
           placeholder="No notes added."
@@ -1025,7 +1452,10 @@ function EditReceiptScreen() {
         </View>
       </Modal>
 
-      {/* Actions */}
+      {/* Actions. "Save Changes" isn't in the design export's bottom
+          section (which only shows Delete) but removing it would
+          regress the ability to persist any edits made above, so it
+          stays — placed above the spec'd outlined Delete button. */}
       <Button
         label="Save Changes"
         onPress={handleSave}
@@ -1034,18 +1464,9 @@ function EditReceiptScreen() {
         style={styles.saveBtn}
       />
 
-      {/* Red-outlined per the new spec (not solid danger fill) — override
-          Button's variant="danger" background/text via style/textStyle
-          rather than adding a new variant to components/ui/Button.tsx,
-          since this task only touches app/edit/[id].tsx. */}
-      <Button
-        label="DELETE EXPENSE"
-        onPress={handleDelete}
-        variant="danger"
-        size="lg"
-        style={styles.deleteBtn}
-        textStyle={styles.deleteBtnText}
-      />
+      <Pressable onPress={handleDelete} style={styles.deleteBtnOutlined}>
+        <Text style={styles.deleteBtnOutlinedText}>Delete expense</Text>
+      </Pressable>
 
       <ItemEditModal
         item={editingItem}
@@ -1164,7 +1585,6 @@ function EditReceiptScreen() {
         </Pressable>
       </Pressable>
     </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
-
