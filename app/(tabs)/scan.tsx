@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
@@ -852,16 +852,32 @@ export default function ScanScreen() {
     setScanState('review');
   };
 
-  // Lets other screens (e.g. the Home tab's "+ Add manually" quick
-  // action) deep-link straight into manual entry via
-  // router.push('/(tabs)/scan?mode=manual') instead of duplicating
-  // this screen's manual-entry logic.
-  useEffect(() => {
-    if (params.mode === 'manual' && scanState === 'idle') {
-      startManualEntry();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.mode]);
+  // Lets other screens (Home's "+ Add manually", Expenses' "+") deep-link
+  // straight into manual entry via router.push('/(tabs)/scan?mode=manual').
+  //
+  // This MUST be focus-based, not a mount/param-change effect: expo-router
+  // tabs stay mounted, so a mount-once effect only fires the very first
+  // time this tab is visited. Every subsequent "+ Add manually" tap while
+  // this screen already has some other state loaded (e.g. a scanned
+  // receipt left over from a prior camera capture, or a previous manual
+  // entry the user navigated away from without tapping Save/Close) would
+  // silently no-op, leaving the user staring at that stale screen with no
+  // "Add item" button (because it wasn't actually the manual-entry state).
+  // Re-running startManualEntry() on every focus while the param is
+  // present fixes that — it always resets to a fresh manual entry form.
+  useFocusEffect(
+    useCallback(() => {
+      // Skip if we're already sitting in a live manual-entry form — a
+      // plain tab-switch-away-and-back re-focuses this screen without
+      // the user asking for a fresh form, and resetting here would wipe
+      // whatever they'd already typed.
+      const alreadyInFreshManualEntry = isManualEntry && scanState === 'review';
+      if (params.mode === 'manual' && !alreadyInFreshManualEntry) {
+        startManualEntry();
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [params.mode, isManualEntry, scanState]),
+  );
 
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
