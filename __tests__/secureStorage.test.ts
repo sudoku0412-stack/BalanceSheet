@@ -13,14 +13,7 @@ jest.mock('expo-secure-store', () => {
 });
 
 import * as SecureStore from 'expo-secure-store';
-import {
-  getBiometricAsked,
-  getBiometricEnabled,
-  getOnboardingSeen,
-  setBiometricAsked,
-  setBiometricEnabled,
-  setOnboardingSeen,
-} from '../lib/secureStorage';
+import { getOnboardingSeen, setOnboardingSeen } from '../lib/secureStorage';
 
 const mockedStore = (SecureStore as unknown as { __store: Map<string, string> }).__store;
 
@@ -45,51 +38,9 @@ describe('onboarding flag', () => {
   });
 });
 
-describe('biometric enabled flag', () => {
-  it('defaults to false', async () => {
-    expect(await getBiometricEnabled()).toBe(false);
-  });
-
-  it('persists when enabled', async () => {
-    await setBiometricEnabled(true);
-    expect(await getBiometricEnabled()).toBe(true);
-  });
-
-  it('clears the entry when disabled (delete, not write 0)', async () => {
-    await setBiometricEnabled(true);
-    await setBiometricEnabled(false);
-    expect(SecureStore.deleteItemAsync).toHaveBeenCalledWith('bs.biometric.enabled');
-    expect(await getBiometricEnabled()).toBe(false);
-  });
-
-  it('uses the documented storage key', async () => {
-    await setBiometricEnabled(true);
-    expect(mockedStore.get('bs.biometric.enabled')).toBe('1');
-  });
-});
-
-describe('biometric asked flag', () => {
-  it('defaults to false (never asked)', async () => {
-    expect(await getBiometricAsked()).toBe(false);
-  });
-
-  it('flips to true once asked, regardless of user choice', async () => {
-    await setBiometricAsked();
-    expect(await getBiometricAsked()).toBe(true);
-  });
-
-  it('is independent from biometricEnabled — declined users stay asked=true, enabled=false', async () => {
-    await setBiometricAsked();
-    expect(await getBiometricAsked()).toBe(true);
-    expect(await getBiometricEnabled()).toBe(false);
-  });
-});
-
 describe('storage key namespace', () => {
   it('all keys share the bs. prefix to avoid collisions', async () => {
     await setOnboardingSeen();
-    await setBiometricEnabled(true);
-    await setBiometricAsked();
     for (const key of mockedStore.keys()) {
       expect(key.startsWith('bs.')).toBe(true);
     }

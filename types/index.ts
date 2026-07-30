@@ -48,6 +48,16 @@ export interface Receipt {
   photoUrl?: string;
   notes?: string;
   lineItems?: LineItem[];
+  /** Splitwise-style split state. Absent/enabled=false means the expense
+   *  isn't split. Participant ids are 'self' (the signed-in user, always
+   *  included) plus household member uids from cloudSync.getHouseholdMembers. */
+  split?: {
+    enabled: boolean;
+    method: 'equal' | 'percent' | 'amount';
+    participantIds: string[];
+    /** Per-participant % (method='percent') or $ amount (method='amount'). Keyed by participantId. */
+    values?: Record<string, number>;
+  };
   createdAt: string;
   updatedAt: string;
 }

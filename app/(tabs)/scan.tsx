@@ -2,22 +2,18 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   Image,
   TextInput,
   Alert,
   ActivityIndicator,
   TouchableOpacity,
-  Platform,
-  Modal,
-  Pressable,
   Animated,
   Easing,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
@@ -43,9 +39,7 @@ import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES } from '../../constants/categories';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
-import { CategoryTagsPicker } from '../../components/ui/CategoryTagsPicker';
-import { TagChip } from '../../components/ui/TagChip';
-import { ItemEditModal } from '../../components/receipt/ItemEditModal';
+import { useToast } from '../../components/ui/Toast';
 import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
 
 type ScanState = 'idle' | 'processing' | 'review';
@@ -92,7 +86,9 @@ function uniqueItemCategories(items: LineItem[]): string[] {
 
 export default function ScanScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ mode?: string }>();
   const theme = useTheme();
+  const toast = useToast();
   const styles = useStyles((t) => ({
     screen: {
       flex: 1,
@@ -221,12 +217,28 @@ export default function ScanScreen() {
       justifyContent: 'center',
       marginLeft: -6,
     },
+    // Back chevron + "Retake" label — Review Receipt's header nav,
+    // replacing the plain close (X) used on Add Expense.
+    retakeBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: -8,
+      paddingVertical: 4,
+      paddingRight: 6,
+    },
+    retakeText: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.md,
+      fontWeight: '600',
+      fontFamily: t.fonts.body.medium,
+    },
     reviewTitle: {
       color: t.colors.textPrimary,
       fontSize: t.font.xl,
       fontWeight: '800',
       fontFamily: t.fonts.display.bold,
       letterSpacing: 0.5,
+      marginTop: 4,
     },
     // "REVIEW RECEIPT" is rendered fully uppercase per the design
     // export; "Add Expense" (manual-entry mode) stays title case, so
@@ -305,22 +317,6 @@ export default function ScanScreen() {
       borderColor: t.colors.border,
       marginTop: 8,
     },
-    itemCategoriesRow: {
-      marginTop: t.spacing.sm,
-      paddingTop: t.spacing.sm,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: t.colors.border,
-    },
-    itemCategoriesLabel: {
-      color: t.colors.textMuted,
-      fontSize: t.font.xs,
-      marginBottom: 6,
-    },
-    itemCategoriesChips: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 6,
-    },
     fieldCard: {
       gap: t.spacing.sm,
       // Cards are sm/lg radius per the design export — not the large
@@ -356,108 +352,29 @@ export default function ScanScreen() {
       minHeight: 72,
       paddingTop: 10,
     },
-    categorySelector: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    categoryGrid: {
+    // Category — single row of tappable colored chips, one per
+    // standard Category enum value, colored via t.colors.category[cat]
+    // per the design export. Active = filled + white text, inactive =
+    // outlined in that category's color.
+    categoryChipsRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: 8,
       marginTop: t.spacing.xs,
     },
-    categoryOption: {
-      borderRadius: t.radius.full,
-      borderWidth: 1,
-      borderColor: 'transparent',
-      padding: 2,
-    },
-    itemsHeader: {
+    categoryChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    itemsHint: {
-      color: t.colors.textMuted,
-      fontSize: t.font.xs,
-    },
-    lineItemRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: 8,
-      paddingVertical: 8,
-      borderBottomWidth: 1,
-      borderBottomColor: t.colors.border,
-    },
-    lineItemRowPressed: {
-      backgroundColor: t.colors.surfaceHigh,
-    },
-    itemModalRoot: {
-      flex: 1,
-      backgroundColor: t.colors.background,
-    },
-    itemModalHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: t.spacing.lg,
-      paddingVertical: t.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: t.colors.border,
-    },
-    itemModalTitle: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.lg,
-      fontWeight: '700',
-    },
-    itemModalContent: {
-      padding: t.spacing.md,
-      gap: t.spacing.sm,
-    },
-    lineItemName: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.sm,
-      flex: 1,
-      marginRight: 4,
-    },
-    lineItemAmount: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.sm,
-      fontWeight: '600',
-      minWidth: 56,
-      textAlign: 'right',
-    },
-    moreItemsBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
       gap: 4,
-      marginTop: 8,
-      paddingVertical: 8,
-    },
-    moreItemsText: {
-      color: t.colors.primary,
-      fontSize: t.font.sm,
-      fontWeight: '600',
-    },
-    addItemBtn: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      marginTop: 10,
-      paddingVertical: 10,
-      borderWidth: 1,
-      borderColor: t.colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
       borderRadius: t.radius.full,
-      borderStyle: 'dashed',
+      borderWidth: 1.5,
     },
-    addItemBtnText: {
-      color: t.colors.primary,
+    categoryChipText: {
       fontSize: t.font.sm,
       fontWeight: '700',
+      fontFamily: t.fonts.body.medium,
     },
     actionsColumn: {
       gap: t.spacing.sm,
@@ -526,8 +443,11 @@ export default function ScanScreen() {
   const [category, setCategory] = useState<Category>('Other');
   const [categoryTags, setCategoryTags] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
-  const [showAllItems, setShowAllItems] = useState(false);
-  const [editingItem, setEditingItem] = useState<LineItem | null>(null);
+  // Parsed/AI-extracted line items are kept in state and passed through
+  // to saveReceipt (see handleSave) even though this screen no longer
+  // shows a line-items list or per-item edit UI — Reports' category
+  // breakdown and lib/database.ts's saveCorrection learning both depend
+  // on this data still being attached to the saved receipt.
   const [items, setItems] = useState<LineItem[]>([]);
   // Snapshot of the items returned by the parser pipeline (regex or
   // AI). Used at save-time to detect whether the user manually
@@ -632,6 +552,17 @@ export default function ScanScreen() {
     setScanState('review');
   };
 
+  // Lets other screens (e.g. the Home tab's "+ Add manually" quick
+  // action) deep-link straight into manual entry via
+  // router.push('/(tabs)/scan?mode=manual') instead of duplicating
+  // this screen's manual-entry logic.
+  useEffect(() => {
+    if (params.mode === 'manual' && scanState === 'idle') {
+      startManualEntry();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.mode]);
+
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
@@ -650,12 +581,12 @@ export default function ScanScreen() {
 
   const handleSave = async () => {
     if (!storeName.trim()) {
-      Alert.alert('Missing field', 'Please enter a store name.');
+      toast.show({ message: 'Please enter a merchant name.', kind: 'error' });
       return;
     }
     const amountVal = parseFloat(amount.replace(',', '.'));
     if (isNaN(amountVal) || amountVal < 0) {
-      Alert.alert('Invalid amount', 'Please enter a valid amount.');
+      toast.show({ message: 'Please enter a valid amount.', kind: 'error' });
       return;
     }
 
@@ -758,19 +689,24 @@ export default function ScanScreen() {
       }
 
       notifySuccess();
-      Alert.alert('Saved!', 'Receipt has been saved successfully.', [
-        {
-          text: 'View Dashboard',
-          onPress: () => {
-            resetState();
-            router.push('/(tabs)');
-          },
-        },
-        { text: 'Scan Another', onPress: resetState },
-      ]);
+      toast.show({
+        message: `Saved to ${primaryCategory}`,
+        kind: 'success',
+      });
+      resetState();
+      // Return to wherever the user came from (the Home "+ Add
+      // manually" quick action or the Expenses "+" button both push
+      // this screen, so the router stack has a prior entry to pop
+      // back to). Fall back to the dashboard if this screen was the
+      // initial route (e.g. deep link).
+      if (router.canGoBack()) {
+        router.back();
+      } else {
+        router.push('/(tabs)');
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      Alert.alert('Error', `Failed to save receipt: ${msg}`);
+      toast.show({ message: `Failed to save: ${msg}`, kind: 'error' });
     } finally {
       setSaving(false);
     }
@@ -789,19 +725,29 @@ export default function ScanScreen() {
     setCategoryTags([]);
     setNotes('');
     setItems([]);
-    setShowAllItems(false);
-    setEditingItem(null);
     setAiPending(false);
     setAiApplied(false);
     setAiError(null);
     setRawText('');
   };
 
-  // Top-right close (X) on the camera screen and the back-chevron
-  // ("Retake") / close (X) in the review header. All three just want
-  // to discard whatever's in progress and land back on the idle
-  // camera screen — resetState already does exactly that safely.
+  // Back chevron ("Retake") in the Review Receipt header: discard the
+  // capture and return to the camera (idle) screen, staying on this tab.
   const closeScan = () => resetState();
+
+  // Top-right close (X) on the camera (idle) screen and on the Add
+  // Expense header: exit back to wherever the user came from. Both are
+  // pushed onto the stack from Home's "+ Add manually" quick action or
+  // the Expenses "+" button, so router.back() pops back to that screen;
+  // fall back to the dashboard if this was the initial route.
+  const exitScan = () => {
+    resetState();
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.push('/(tabs)');
+    }
+  };
 
   // Apply a Gemini-validated receipt into the form state. Used from
   // both the live API path and the cache-hit path.
@@ -1039,35 +985,6 @@ export default function ScanScreen() {
     }
   };
 
-  const saveEditedItem = (updated: LineItem) => {
-    setItems((prev) => {
-      // Edit-existing if the id is already in the list; otherwise this
-      // is a brand-new item (from `addNewItem` below) being saved for
-      // the first time — append it.
-      const exists = prev.some((it) => it.id === updated.id);
-      return exists
-        ? prev.map((it) => (it.id === updated.id ? updated : it))
-        : [...prev, updated];
-    });
-    setEditingItem(null);
-  };
-
-  const deleteItem = (id: string) => {
-    setItems((prev) => prev.filter((it) => it.id !== id));
-    setEditingItem(null);
-  };
-
-  /**
-   * Open ItemEditModal with a fresh, empty line item. The user fills
-   * it in and saves; saveEditedItem detects the new id and appends.
-   * If the user cancels (modal closes with no save), nothing is added.
-   * Used for manual-entry receipts (which start with an empty items
-   * array) and for adding items to AI-parsed receipts that missed one.
-   */
-  const addNewItem = () => {
-    setEditingItem({ id: uuidv4(), name: '', amount: 0 });
-  };
-
   // ─── Idle state (Scan / camera) ─────────────────────────────────────────────
   // Full-bleed near-black camera screen: close (X) top-right, a dashed
   // guide frame with caption centered, and a 72px shutter at the
@@ -1080,7 +997,7 @@ export default function ScanScreen() {
       <View style={styles.cameraScreen}>
         <TouchableOpacity
           style={styles.closeBtn}
-          onPress={closeScan}
+          onPress={exitScan}
           activeOpacity={0.7}
         >
           <Ionicons name="close" size={22} color="#fff" />
@@ -1145,26 +1062,37 @@ export default function ScanScreen() {
 
       <View style={styles.reviewHeader}>
         <View style={styles.reviewHeaderTop}>
-          <TouchableOpacity
-            style={styles.headerIconBtn}
-            onPress={closeScan}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isManualEntry ? 'close' : 'chevron-back'}
-              size={22}
-              color={theme.colors.textPrimary}
-            />
-          </TouchableOpacity>
-          <Text
-            style={[
-              styles.reviewTitle,
-              !isManualEntry && styles.reviewTitleUppercase,
-            ]}
-          >
-            {isManualEntry ? 'Add Expense' : 'Review Receipt'}
-          </Text>
+          {isManualEntry ? (
+            <TouchableOpacity
+              style={styles.headerIconBtn}
+              onPress={exitScan}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="close" size={22} color={theme.colors.textPrimary} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.retakeBtn}
+              onPress={closeScan}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name="chevron-back"
+                size={22}
+                color={theme.colors.textPrimary}
+              />
+              <Text style={styles.retakeText}>Retake</Text>
+            </TouchableOpacity>
+          )}
         </View>
+        <Text
+          style={[
+            styles.reviewTitle,
+            !isManualEntry && styles.reviewTitleUppercase,
+          ]}
+        >
+          {isManualEntry ? 'Add Expense' : 'Review Receipt'}
+        </Text>
         {!isManualEntry && (
           <Text style={styles.reviewEyebrow}>
             Extracted — check before saving
@@ -1208,9 +1136,13 @@ export default function ScanScreen() {
         )}
       </View>
 
-      {/* Store name */}
+      {/* Merchant — 1 of the exactly-4 editable fields per the design
+          export (Merchant, Amount, Category, Notes). Date/Subtotal/Tax
+          are still tracked internally (from OCR/AI parse, used for the
+          subtotal-mismatch guardrail and saved on the receipt) but are
+          no longer user-editable fields on this screen. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Store / Merchant</Text>
+        <Text style={styles.fieldLabel}>Merchant</Text>
         <TextInput
           style={styles.input}
           value={storeName}
@@ -1221,35 +1153,9 @@ export default function ScanScreen() {
         />
       </Card>
 
-      {/* Subtotal */}
+      {/* Amount — Roboto Mono per the design export's numeric-field spec. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Subtotal ($) — optional</Text>
-        <TextInput
-          style={styles.input}
-          value={subtotal}
-          onChangeText={setSubtotal}
-          placeholder="Subtotal before tax"
-          placeholderTextColor={theme.colors.textMuted}
-          keyboardType="decimal-pad"
-        />
-      </Card>
-
-      {/* Tax */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Tax ($) — optional</Text>
-        <TextInput
-          style={styles.input}
-          value={tax}
-          onChangeText={setTax}
-          placeholder="Tax amount"
-          placeholderTextColor={theme.colors.textMuted}
-          keyboardType="decimal-pad"
-        />
-      </Card>
-
-      {/* Total */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Total Amount ($)</Text>
+        <Text style={styles.fieldLabel}>Amount</Text>
         <TextInput
           style={[styles.input, styles.amountInput]}
           value={amount}
@@ -1260,24 +1166,51 @@ export default function ScanScreen() {
         />
       </Card>
 
-      {/* Date */}
+      {/* Category — single row of tappable colored chips, one per
+          standard Category value. Selecting a chip both sets the
+          receipt's primary category and promotes it to the front of
+          categoryTags (used by Reports' category breakdown) while
+          preserving any other AI-suggested tags already present. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Date (YYYY-MM-DD)</Text>
-        <TextInput
-          style={styles.input}
-          value={date}
-          onChangeText={setDate}
-          placeholder="2026-05-08"
-          placeholderTextColor={theme.colors.textMuted}
-          keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
-        />
-      </Card>
-
-      {/* Categories — multi-select chips. Includes the standard 10
-          categories plus any custom tags Gemini suggests or the user adds. */}
-      <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Categories</Text>
-        <CategoryTagsPicker tags={categoryTags} onChange={setCategoryTags} />
+        <Text style={styles.fieldLabel}>Category</Text>
+        <View style={styles.categoryChipsRow}>
+          {ALL_CATEGORIES.map((cat) => {
+            const active = category === cat;
+            const color = theme.colors.category[cat];
+            return (
+              <TouchableOpacity
+                key={cat}
+                onPress={() => {
+                  setCategory(cat);
+                  setCategoryTags((prev) => [
+                    cat,
+                    ...prev.filter((t) => t.toLowerCase() !== cat.toLowerCase()),
+                  ]);
+                }}
+                activeOpacity={0.7}
+                style={[
+                  styles.categoryChip,
+                  {
+                    backgroundColor: active ? color : 'transparent',
+                    borderColor: color,
+                  },
+                ]}
+              >
+                {active && (
+                  <Ionicons name="checkmark" size={14} color="#fff" />
+                )}
+                <Text
+                  style={[
+                    styles.categoryChipText,
+                    { color: active ? '#fff' : color },
+                  ]}
+                >
+                  {cat}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </Card>
 
       {/* Notes */}
@@ -1294,94 +1227,6 @@ export default function ScanScreen() {
           textAlignVertical="top"
         />
       </Card>
-
-      {/* Line items — always rendered so manual-entry receipts have a
-          way to add them. Tap a row to edit / delete; tap 'Add item'
-          to append a new one. */}
-      <Card style={styles.fieldCard}>
-        <View style={styles.itemsHeader}>
-          <Text style={styles.fieldLabel}>
-            {items.length > 0
-              ? `Line Items (${items.length})`
-              : 'Line Items'}
-          </Text>
-          {items.length > 0 ? (
-            <Text style={styles.itemsHint}>Tap to edit</Text>
-          ) : null}
-        </View>
-        {items.length === 0 ? (
-          <Text style={styles.itemsHint}>
-            No items yet. Tap "Add item" to log each purchase, or leave
-            empty if you only want the total.
-          </Text>
-        ) : (
-          (showAllItems ? items : items.slice(0, 12)).map((item) => (
-            <Pressable
-              key={item.id}
-              onPress={() => setEditingItem(item)}
-              style={({ pressed }) => [
-                styles.lineItemRow,
-                pressed && styles.lineItemRowPressed,
-              ]}
-            >
-              <Text style={styles.lineItemName} numberOfLines={1}>
-                {item.name}
-              </Text>
-              {item.category && <TagChip tag={item.category} size="sm" />}
-              <Text style={styles.lineItemAmount}>
-                ${item.amount.toFixed(2)}
-              </Text>
-            </Pressable>
-          ))
-        )}
-        {items.length > 12 && (
-          <TouchableOpacity
-            onPress={() => setShowAllItems((v) => !v)}
-            style={styles.moreItemsBtn}
-          >
-            <Text style={styles.moreItemsText}>
-              {showAllItems
-                ? 'Show fewer'
-                : `Show ${items.length - 12} more items`}
-            </Text>
-            <Ionicons
-              name={showAllItems ? 'chevron-up' : 'chevron-down'}
-              size={16}
-              color={theme.colors.primary}
-            />
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity
-          onPress={addNewItem}
-          style={styles.addItemBtn}
-          activeOpacity={0.7}
-        >
-          <Ionicons
-            name="add-circle-outline"
-            size={20}
-            color={theme.colors.primary}
-          />
-          <Text style={styles.addItemBtnText}>Add item</Text>
-        </TouchableOpacity>
-      </Card>
-
-      <ItemEditModal
-        item={editingItem}
-        extraTags={categoryTags}
-        onAddCustomTag={(tag) => {
-          // Mirror the edit-receipt screen: a tag added from the per-
-          // item picker propagates to the receipt-level tags so all
-          // items on this receipt see it.
-          setCategoryTags((prev) =>
-            prev.some((t) => t.toLowerCase() === tag.toLowerCase())
-              ? prev
-              : [...prev, tag],
-          );
-        }}
-        onClose={() => setEditingItem(null)}
-        onSave={saveEditedItem}
-        onDelete={deleteItem}
-      />
 
       <View style={styles.actionsColumn}>
         {/* Full-width 52px navy "Save Expense" primary button per the

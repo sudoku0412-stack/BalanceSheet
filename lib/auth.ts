@@ -32,14 +32,11 @@ export async function signInWithEmail(email: string, password: string): Promise<
 
 export async function signUpWithEmail(email: string, password: string): Promise<AuthUser> {
   const cred = await auth().createUserWithEmailAndPassword(email.trim(), password);
-  // Best-effort send the verification email. We swallow errors here so a
-  // transient send failure doesn't block account creation — the verify-email
-  // screen has a Resend button for manual retry.
-  try {
-    await cred.user.sendEmailVerification();
-  } catch {
-    // ignore
-  }
+  return cred.user;
+}
+
+export async function signInAsGuest(): Promise<AuthUser> {
+  const cred = await auth().signInAnonymously();
   return cred.user;
 }
 
@@ -87,33 +84,11 @@ export async function signInWithGoogle(): Promise<AuthUser> {
   return cred.user;
 }
 
-export async function sendVerificationEmail(): Promise<void> {
-  const u = auth().currentUser;
-  if (!u) throw new Error('Not signed in.');
-  await u.sendEmailVerification();
-}
-
 export async function reloadCurrentUser(): Promise<AuthUser | null> {
   const u = auth().currentUser;
   if (!u) return null;
   await u.reload();
   return auth().currentUser;
-}
-
-export type AuthProvider = 'password' | 'phone' | 'google.com' | 'other';
-
-export function getPrimaryProvider(user: AuthUser | null): AuthProvider {
-  if (!user) return 'other';
-  for (const p of user.providerData) {
-    if (p.providerId === 'password') return 'password';
-    if (p.providerId === 'phone') return 'phone';
-    if (p.providerId === 'google.com') return 'google.com';
-  }
-  return 'other';
-}
-
-export function requiresProfileForProvider(provider: AuthProvider): boolean {
-  return provider === 'password' || provider === 'phone';
 }
 
 export async function deleteCurrentAccount(): Promise<void> {

@@ -1,8 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
-  SectionList,
   ScrollView,
   TextInput,
   TouchableOpacity,
@@ -11,16 +10,14 @@ import {
 import { useFocusEffect, useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { isToday, isYesterday, format } from 'date-fns';
-import { getAllReceipts, deleteReceipt, searchReceipts } from '../../lib/database';
+import { getAllReceipts, searchReceipts } from '../../lib/database';
 import { Receipt, Category } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
-import { ALL_CATEGORIES, CATEGORY_ICONS } from '../../constants/categories';
-import { ReceiptCard } from '../../components/receipt/ReceiptCard';
+import { ALL_CATEGORIES } from '../../constants/categories';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ReceiptListSkeleton } from '../../components/ui/Skeleton';
-import { useToast } from '../../components/ui/Toast';
-import { notifySuccess, tapMedium } from '../../lib/haptics';
 import { receiptMatchesCategory } from '../../lib/receiptFilter';
+import { findRecurring } from '../../lib/reports';
 
 const FILTER_ALL = 'All' as const;
 type Filter = typeof FILTER_ALL | Category;
@@ -105,9 +102,6 @@ export default function HistoryScreen() {
       gap: 8,
     },
     chip: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 4,
       paddingHorizontal: 12,
       paddingVertical: 6,
       borderRadius: t.radius.full,
@@ -119,54 +113,83 @@ export default function HistoryScreen() {
       backgroundColor: t.colors.primary,
       borderColor: t.colors.primary,
     },
-    chipIcon: {
-      fontSize: 12,
-    },
     chipLabel: {
       fontFamily: t.fonts.display.bold,
       fontSize: t.font.sm,
-      color: t.colors.textSecondary,
+      color: t.colors.textPrimary,
     },
     chipLabelActive: {
       color: '#FFFFFF',
-    },
-    summaryRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingHorizontal: t.spacing.md,
-      paddingBottom: t.spacing.sm,
-    },
-    summaryCount: {
-      color: t.colors.textMuted,
-      fontFamily: t.fonts.body.regular,
-      fontSize: t.font.sm,
-    },
-    summaryTotal: {
-      color: t.colors.primary,
-      fontFamily: t.fonts.mono.medium,
-      fontSize: t.font.sm,
     },
     listContent: {
       paddingHorizontal: t.spacing.md,
       paddingBottom: 32,
       flexGrow: 1,
     },
-    sectionHeader: {
-      paddingTop: t.spacing.sm,
-      paddingBottom: t.spacing.xs,
-      backgroundColor: t.colors.background,
-    },
     sectionHeaderText: {
       fontFamily: t.fonts.display.bold,
       fontSize: t.font.md,
       color: t.colors.textSecondary,
+      paddingTop: t.spacing.sm,
+      paddingBottom: t.spacing.xs,
+    },
+    card: {
+      backgroundColor: t.colors.surface,
+      borderRadius: t.radius.lg,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      overflow: 'hidden',
+      marginBottom: t.spacing.sm,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.sm,
+      padding: t.spacing.md,
+    },
+    rowDivider: {
+      borderBottomWidth: 1,
+      borderBottomColor: t.colors.border,
+    },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: t.radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    avatarText: {
+      fontFamily: t.fonts.display.bold,
+      fontSize: t.font.md,
+      color: '#FFFFFF',
+    },
+    rowInfo: {
+      flex: 1,
+      gap: 2,
+    },
+    rowStoreName: {
+      fontFamily: t.fonts.display.bold,
+      fontSize: t.font.md,
+      color: t.colors.textPrimary,
+    },
+    rowMeta: {
+      fontFamily: t.fonts.body.regular,
+      fontSize: t.font.xs,
+      color: t.colors.textMuted,
+    },
+    rowAmount: {
+      fontFamily: t.fonts.mono.medium,
+      fontSize: t.font.md,
+      color: t.colors.textPrimary,
+      flexShrink: 0,
+      paddingLeft: t.spacing.sm,
     },
   }));
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<Filter>(FILTER_ALL);
   const params = useLocalSearchParams<{ category?: string }>();
-  const toast = useToast();
 
   // This screen renders its own "Expenses" headline + add button per the
   // design spec, so the default per-tab native header ("History") is
@@ -227,33 +250,6 @@ export default function HistoryScreen() {
     }
   };
 
-  const handleDelete = (id: string) => {
-    const target = receipts.find((r) => r.id === id);
-    if (!target) return;
-    tapMedium();
-    // Optimistically remove from the list so the user sees instant
-    // feedback. Defer the actual DB delete by 5 seconds so they can
-    // tap Undo on the toast before it lands.
-    setReceipts((prev) => prev.filter((r) => r.id !== id));
-    const timer = setTimeout(() => {
-      deleteReceipt(id).catch(() => {
-        // If the eventual delete failed, refetch so the UI matches
-        // reality.
-        load();
-      });
-    }, 5000);
-    toast.show({
-      message: `Deleted ${target.storeName}`,
-      kind: 'success',
-      undoLabel: 'Undo',
-      onUndo: () => {
-        clearTimeout(timer);
-        load(); // restore from DB (it was never actually deleted)
-      },
-      durationMs: 5000,
-    });
-  };
-
   // A receipt matches the active filter when EITHER:
   //   - its primary `category` equals the filter, OR
   //   - any of its categoryTags equals the filter, OR
@@ -265,14 +261,25 @@ export default function HistoryScreen() {
       ? receipts
       : receipts.filter((r) => receiptMatchesCategory(r, activeFilter));
 
-  const totalFiltered = filtered.reduce((s, r) => s + r.totalAmount, 0);
   const isFiltering = query.trim().length > 0 || activeFilter !== FILTER_ALL;
   const sections = groupByDate(filtered);
+
+  // Real recurring-charge detection (lib/reports.findRecurring) run against
+  // the full receipt set, independent of the active search/filter — a
+  // merchant either is or isn't a detected recurring charge regardless of
+  // what's currently on screen. Only store-level matches map to a single
+  // merchant name, which is what a list row can show.
+  const recurringStores = useMemo(() => {
+    const matches = findRecurring(receipts);
+    return new Set(
+      matches.filter((m) => m.kind === 'store').map((m) => m.label),
+    );
+  }, [receipts]);
 
   return (
     <View style={styles.screen}>
       {/* Header: "Expenses" headline + circular add button (→ manual entry
-          via the Scan tab, which exposes "Enter manually (no receipt)"). */}
+          via the Scan tab, same target as Home's "+ Add manually"). */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Expenses</Text>
         <TouchableOpacity
@@ -304,9 +311,9 @@ export default function HistoryScreen() {
         )}
       </View>
 
-      {/* Category filter chips — single horizontal-scrolling row per the
-          design spec. Active = dark-navy fill/white text; inactive =
-          outlined. */}
+      {/* Category filter chips — single horizontal-scrolling row. Active =
+          dark-navy fill/white text; inactive = outlined. Tapping only
+          filters the list in place, never navigates. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -320,11 +327,6 @@ export default function HistoryScreen() {
               onPress={() => setActiveFilter(item)}
               style={[styles.chip, active && styles.chipActive]}
             >
-              {item !== FILTER_ALL && (
-                <Text style={styles.chipIcon}>
-                  {CATEGORY_ICONS[item as Category]}
-                </Text>
-              )}
               <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
                 {item}
               </Text>
@@ -333,37 +335,28 @@ export default function HistoryScreen() {
         })}
       </ScrollView>
 
-      {/* Summary row */}
-      {filtered.length > 0 && (
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryCount}>{filtered.length} receipt{filtered.length !== 1 ? 's' : ''}</Text>
-          <Text style={styles.summaryTotal}>${totalFiltered.toFixed(2)} total</Text>
-        </View>
-      )}
-
-      {/* Receipt list — grouped by date label ("Today", "Yesterday", "Jul
-          27", …). Shows skeleton placeholders during the first load so the
-          user sees the expected layout instead of the empty state flashing
-          for a fraction of a second. */}
+      {/* Expense list — grouped by date label ("Today", "Yesterday", "Jul
+          27", …), each group a bordered card of rows. Shows skeleton
+          placeholders during the first load. */}
       {initialLoading ? (
         <View style={styles.listContent}>
           <ReceiptListSkeleton count={5} />
         </View>
+      ) : sections.length === 0 ? (
+        <View style={styles.listContent}>
+          {isFiltering ? (
+            <EmptyState icon="search-outline" title="No expenses match." />
+          ) : (
+            <EmptyState
+              icon="receipt-outline"
+              title="No expenses yet"
+              description="Scan your first receipt with the camera tab and it'll show up here, grouped by category and date."
+            />
+          )}
+        </View>
       ) : (
-        <SectionList
-          sections={sections}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <ReceiptCard receipt={item} onDelete={handleDelete} />
-          )}
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionHeaderText}>{section.title}</Text>
-            </View>
-          )}
+        <ScrollView
           contentContainerStyle={styles.listContent}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          stickySectionHeadersEnabled={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -371,18 +364,54 @@ export default function HistoryScreen() {
               tintColor={theme.colors.primary}
             />
           }
-          ListEmptyComponent={
-            isFiltering ? (
-              <EmptyState icon="search-outline" title="No expenses match." />
-            ) : (
-              <EmptyState
-                icon="receipt-outline"
-                title="No expenses yet"
-                description="Scan your first receipt with the camera tab and it'll show up here, grouped by category and date."
-              />
-            )
-          }
-        />
+        >
+          {sections.map((section) => (
+            <View key={section.title}>
+              <Text style={styles.sectionHeaderText}>{section.title}</Text>
+              <View style={styles.card}>
+                {section.data.map((r, idx) => {
+                  const isRecurring = recurringStores.has(
+                    r.storeName.trim().toLowerCase(),
+                  );
+                  return (
+                    <TouchableOpacity
+                      key={r.id}
+                      activeOpacity={0.8}
+                      onPress={() => router.push(`/edit/${r.id}`)}
+                      style={[
+                        styles.row,
+                        idx < section.data.length - 1 && styles.rowDivider,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.avatar,
+                          { backgroundColor: theme.colors.category[r.category] },
+                        ]}
+                      >
+                        <Text style={styles.avatarText}>
+                          {r.storeName.charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.rowInfo}>
+                        <Text style={styles.rowStoreName} numberOfLines={1}>
+                          {r.storeName}
+                        </Text>
+                        <Text style={styles.rowMeta}>
+                          {r.category}
+                          {isRecurring ? ' · Recurring' : ''}
+                        </Text>
+                      </View>
+                      <Text style={styles.rowAmount}>
+                        ${r.totalAmount.toFixed(2)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          ))}
+        </ScrollView>
       )}
     </View>
   );

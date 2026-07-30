@@ -129,9 +129,6 @@ export async function initDatabase(): Promise<void> {
       uid         TEXT PRIMARY KEY,
       first_name  TEXT NOT NULL,
       last_name   TEXT NOT NULL,
-      gender      TEXT NOT NULL,
-      age         INTEGER NOT NULL,
-      photo_uri   TEXT,
       created_at  TEXT NOT NULL,
       updated_at  TEXT NOT NULL
     );
@@ -155,6 +152,10 @@ export async function initDatabase(): Promise<void> {
     // don't re-upload it on every shadow-write. Filled in by the
     // post-upload writeback in setReceiptPhotoUrl().
     `ALTER TABLE receipts             ADD COLUMN photo_url TEXT`,
+    // Splitwise-style split state (enabled flag, participant uids,
+    // method, per-participant percent/amount values), serialized as
+    // JSON. See Receipt['split'] in types/index.ts.
+    `ALTER TABLE receipts             ADD COLUMN split_json TEXT`,
   ]) {
     try {
       await db.execAsync(sql);
@@ -482,40 +483,28 @@ export interface ProfileRow {
   uid: string;
   first_name: string;
   last_name: string;
-  gender: string;
-  age: number;
-  photo_uri: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export async function getProfileRow(uid: string): Promise<ProfileRow | null> {
   return (
-    (await db.getFirstAsync<ProfileRow>(`SELECT * FROM profiles WHERE uid=?`, [uid])) ?? null
+    (await db.getFirstAsync<ProfileRow>(
+      `SELECT uid, first_name, last_name, created_at, updated_at FROM profiles WHERE uid=?`,
+      [uid],
+    )) ?? null
   );
 }
 
 export async function upsertProfileRow(row: ProfileRow): Promise<void> {
   await db.runAsync(
-    `INSERT INTO profiles (uid, first_name, last_name, gender, age, photo_uri, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO profiles (uid, first_name, last_name, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(uid) DO UPDATE SET
        first_name = excluded.first_name,
        last_name  = excluded.last_name,
-       gender     = excluded.gender,
-       age        = excluded.age,
-       photo_uri  = excluded.photo_uri,
        updated_at = excluded.updated_at`,
-    [
-      row.uid,
-      row.first_name,
-      row.last_name,
-      row.gender,
-      row.age,
-      row.photo_uri,
-      row.created_at,
-      row.updated_at,
-    ],
+    [row.uid, row.first_name, row.last_name, row.created_at, row.updated_at],
   );
 }
 
@@ -535,8 +524,8 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          split_json, created_at, updated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         receipt.id,
         receipt.storeName,
@@ -550,6 +539,7 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
         receipt.imageUri ?? null,
         receipt.photoUrl ?? null,
         receipt.notes ?? null,
+        serializeSplit(receipt.split),
         receipt.createdAt,
         receipt.updatedAt,
         uid,
@@ -579,7 +569,7 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
     await db.runAsync(
       `UPDATE receipts
        SET store_name=?, date=?, total_amount=?, subtotal_amount=?, tax_amount=?,
-           category=?, category_tags=?, notes=?, updated_at=?
+           category=?, category_tags=?, notes=?, split_json=?, updated_at=?
        WHERE id=? AND user_id=?`,
       [
         receipt.storeName,
@@ -590,6 +580,7 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
         receipt.category,
         serializeTags(receipt.categoryTags),
         receipt.notes ?? null,
+        serializeSplit(receipt.split),
         new Date().toISOString(),
         receipt.id,
         uid,
@@ -627,6 +618,20 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
 function serializeTags(tags: string[] | undefined): string | null {
   if (!tags || tags.length === 0) return null;
   return JSON.stringify(tags);
+}
+
+function serializeSplit(split: Receipt['split'] | undefined): string | null {
+  if (!split) return null;
+  return JSON.stringify(split);
+}
+
+function parseSplit(raw: string | null): Receipt['split'] | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as Receipt['split'];
+  } catch {
+    return undefined;
+  }
 }
 
 function parseTags(raw: string | null, fallbackCategory: string): string[] {
@@ -754,6 +759,7 @@ interface RawRow {
   image_uri: string | null;
   photo_url: string | null;
   notes: string | null;
+  split_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -772,6 +778,7 @@ function rowToReceipt(row: RawRow): Receipt {
     imageUri: row.image_uri ?? undefined,
     photoUrl: row.photo_url ?? undefined,
     notes: row.notes ?? undefined,
+    split: parseSplit(row.split_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

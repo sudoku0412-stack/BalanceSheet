@@ -10,21 +10,23 @@ export default function TabLayout() {
       backgroundColor: t.colors.surface,
       borderTopColor: t.colors.border,
       borderTopWidth: 1,
-      height: 64,
-      paddingBottom: 8,
+      height: 66,
+      paddingBottom: 14,
     },
     tabLabel: {
+      fontFamily: t.fonts.display.medium,
       fontSize: 11,
-      fontWeight: '600',
     },
     scanButton: {
-      width: 52,
-      height: 52,
-      borderRadius: 26,
+      width: 56,
+      height: 56,
+      borderRadius: t.radius.full,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 20,
-      backgroundColor: t.colors.background,
+      marginBottom: 26,
+      backgroundColor: t.colors.primary,
+      borderWidth: 4,
+      borderColor: t.colors.surface,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.4,
@@ -69,7 +71,7 @@ export default function TabLayout() {
           title: 'Scan',
           tabBarIcon: () => (
             <View style={styles.scanButton}>
-              <Ionicons name="camera" size={24} color={theme.colors.textPrimary} />
+              <Ionicons name="camera" size={24} color="#FFFFFF" />
             </View>
           ),
           tabBarLabel: () => null,

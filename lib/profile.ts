@@ -5,23 +5,15 @@ import {
   upsertProfileRow,
 } from './database';
 import {
-  Gender,
   ProfileDraft,
   ProfileValidationError,
   isProfileValidationClean,
   validateProfileDraft,
 } from './profileValidation';
 
-export type {
-  Gender,
-  ProfileDraft,
-  ProfileValidationError,
-} from './profileValidation';
+export type { ProfileDraft, ProfileValidationError } from './profileValidation';
 export {
-  GENDERS,
-  MAX_AGE,
   MAX_NAME_LEN,
-  MIN_AGE,
   isProfileValidationClean,
   validateProfileDraft,
 } from './profileValidation';
@@ -30,9 +22,6 @@ export type Profile = {
   uid: string;
   firstName: string;
   lastName: string;
-  gender: Gender;
-  age: number;
-  photoUri: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -42,9 +31,6 @@ export function rowToProfile(row: ProfileRow): Profile {
     uid: row.uid,
     firstName: row.first_name,
     lastName: row.last_name,
-    gender: row.gender as Gender,
-    age: row.age,
-    photoUri: row.photo_uri,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -69,9 +55,6 @@ export async function saveProfile(
     uid,
     first_name: draft.firstName.trim(),
     last_name: draft.lastName.trim(),
-    gender: draft.gender as Gender,
-    age: parseInt(draft.age.trim(), 10),
-    photo_uri: draft.photoUri,
     created_at: existing?.createdAt ?? now,
     updated_at: now,
   };

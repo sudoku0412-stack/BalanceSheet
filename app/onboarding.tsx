@@ -31,21 +31,21 @@ type Slide = {
 const SLIDES: Slide[] = [
   {
     key: 'capture',
-    icon: 'camera',
+    icon: 'camera-outline',
     title: "Snap a receipt, we'll do the rest",
     body: 'Point your camera at any receipt — amount, merchant and category are captured instantly.',
     accent: 'accent',
   },
   {
     key: 'organize',
-    icon: 'stats-chart',
+    icon: 'bar-chart-outline',
     title: 'See where it goes',
     body: 'Track spending by category and stay under budget without lifting a finger.',
     accent: 'success',
   },
   {
     key: 'done',
-    icon: 'checkmark-circle',
+    icon: 'checkmark-circle-outline',
     title: 'One tap, done',
     body: "No forms, no typing. Scan and you're already tracked.",
     accent: 'primary',
@@ -97,11 +97,9 @@ export default function OnboardingScreen() {
         ) : (
           <View />
         )}
-        {!isLast && (
-          <Pressable onPress={finish} hitSlop={12}>
-            <Text style={styles.skip}>SKIP</Text>
-          </Pressable>
-        )}
+        <Pressable onPress={finish} hitSlop={12}>
+          <Text style={styles.skip}>Skip</Text>
+        </Pressable>
       </View>
 
       <FlatList
@@ -127,9 +125,21 @@ export default function OnboardingScreen() {
 
       <View style={styles.cta}>
         {isLast ? (
-          <Button label="Get Started" size="lg" onPress={finish} />
+          <Button
+            label="Get Started"
+            size="lg"
+            onPress={finish}
+            style={styles.ctaButton}
+            textStyle={styles.ctaButtonText}
+          />
         ) : (
-          <Button label="Next" size="lg" onPress={() => goToSlide(index + 1)} />
+          <Button
+            label="Next"
+            size="lg"
+            onPress={() => goToSlide(index + 1)}
+            style={styles.ctaButton}
+            textStyle={styles.ctaButtonText}
+          />
         )}
       </View>
     </SafeAreaView>
@@ -239,9 +249,9 @@ const makeStyles = (t: Theme) => ({
     maxWidth: 280,
   },
   body: {
-    color: t.colors.textSecondary,
+    color: t.colors.textMuted,
     fontFamily: t.fonts.body.regular,
-    fontSize: t.font.md,
+    fontSize: 15,
     textAlign: 'center' as const,
     lineHeight: 22,
     maxWidth: 280,
@@ -266,5 +276,12 @@ const makeStyles = (t: Theme) => ({
   cta: {
     paddingHorizontal: t.spacing.xl,
     paddingBottom: t.spacing.lg,
+  },
+  ctaButton: {
+    height: 52,
+    justifyContent: 'center' as const,
+  },
+  ctaButtonText: {
+    fontSize: 14,
   },
 });

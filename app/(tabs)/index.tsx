@@ -1,23 +1,14 @@
-import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-} from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { format, subMonths } from 'date-fns';
-import { getReceiptsByMonth, deleteReceipt } from '../../lib/database';
-import { getCategoryBudgets } from '../../lib/secureStorage';
+import { format, isToday, isYesterday, subMonths } from 'date-fns';
+import { getReceiptsByMonth } from '../../lib/database';
+import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
+import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { Receipt, MonthlyStats } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
-import { ReceiptCard } from '../../components/receipt/ReceiptCard';
 import { EmptyState } from '../../components/ui/EmptyState';
-import { MonthYearPicker } from '../../components/ui/MonthYearPicker';
-import { useToast } from '../../components/ui/Toast';
-import { tapMedium } from '../../lib/haptics';
 import { computeStats } from '../../lib/dashboardStats';
 
 function greeting(): string {
@@ -25,6 +16,12 @@ function greeting(): string {
   if (h < 12) return 'Good morning';
   if (h < 18) return 'Good afternoon';
   return 'Good evening';
+}
+
+function dateLabel(date: Date): string {
+  if (isToday(date)) return 'Today';
+  if (isYesterday(date)) return 'Yesterday';
+  return format(date, 'MMM d');
 }
 
 type BudgetStatus = 'onTrack' | 'watch' | 'over';
@@ -43,12 +40,17 @@ export default function DashboardScreen() {
   const theme = useTheme();
   const styles = useStyles((t) => ({
     screen: { flex: 1, backgroundColor: t.colors.background },
-    content: { padding: t.spacing.md, gap: t.spacing.lg, paddingBottom: 32 },
+    content: {
+      paddingHorizontal: 20,
+      paddingTop: 58,
+      paddingBottom: 32,
+      gap: t.spacing.lg,
+    },
 
     heroCard: {
       borderRadius: t.radius.lg,
-      paddingHorizontal: 20,
-      paddingVertical: 22,
+      paddingHorizontal: 22,
+      paddingVertical: 20,
       backgroundColor: t.colors.primary,
       overflow: 'hidden',
       position: 'relative',
@@ -100,18 +102,6 @@ export default function DashboardScreen() {
     },
     trendPillText: { fontFamily: t.fonts.display.bold, fontSize: 10 },
 
-    monthNavRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: t.spacing.xs,
-      marginTop: t.spacing.sm,
-    },
-    monthNavLabel: {
-      color: 'rgba(255,255,255,0.6)',
-      fontFamily: t.fonts.body.medium,
-      fontSize: t.font.xs,
-    },
-
     actionRow: {
       flexDirection: 'row',
       gap: t.spacing.sm,
@@ -140,7 +130,7 @@ export default function DashboardScreen() {
       justifyContent: 'space-between',
     },
     sectionTitle: {
-      color: t.colors.textPrimary,
+      color: t.colors.textMuted,
       fontFamily: t.fonts.display.bold,
       fontSize: 12,
       letterSpacing: 1,
@@ -172,11 +162,12 @@ export default function DashboardScreen() {
     budgetInfo: { flex: 1 },
     budgetNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     budgetName: { color: t.colors.textPrimary, fontFamily: t.fonts.display.bold, fontSize: t.font.md },
+    budgetStatusText: { fontFamily: t.fonts.display.bold, fontSize: t.font.xs },
     budgetAmounts: {
       color: t.colors.textSecondary,
       fontFamily: t.fonts.mono.regular,
       fontSize: t.font.xs,
-      marginTop: 2,
+      marginTop: 6,
     },
     progressTrack: {
       height: 6,
@@ -189,15 +180,57 @@ export default function DashboardScreen() {
       height: 6,
       borderRadius: t.radius.full,
     },
-    statusPill: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: t.radius.full },
-    statusPillText: { fontFamily: t.fonts.display.bold, fontSize: t.font.xs },
 
     list: { gap: t.spacing.sm },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: t.colors.surface,
+      borderRadius: t.radius.lg,
+      padding: t.spacing.md,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      justifyContent: 'space-between',
+    },
+    rowLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.sm,
+      flex: 1,
+    },
+    avatar: {
+      width: 40,
+      height: 40,
+      borderRadius: t.radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    avatarText: {
+      fontFamily: t.fonts.display.bold,
+      fontSize: t.font.md,
+      color: '#fff',
+    },
+    rowInfo: { flex: 1, gap: 2 },
+    merchantName: {
+      fontFamily: t.fonts.display.bold,
+      fontSize: t.font.md,
+      color: t.colors.textPrimary,
+    },
+    rowMeta: {
+      fontFamily: t.fonts.body.regular,
+      fontSize: t.font.xs,
+      color: t.colors.textMuted,
+    },
+    rowAmount: {
+      fontFamily: t.fonts.mono.medium,
+      fontSize: t.font.md,
+      color: t.colors.textPrimary,
+      paddingLeft: t.spacing.sm,
+    },
   }));
 
-  const [activeMonth, setActiveMonth] = useState(new Date());
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const toast = useToast();
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [stats, setStats] = useState<MonthlyStats>({
     totalSpent: 0,
@@ -211,19 +244,20 @@ export default function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [data, prevData, budgetMap] = await Promise.all([
-      getReceiptsByMonth(activeMonth.getFullYear(), activeMonth.getMonth() + 1),
-      getReceiptsByMonth(
-        subMonths(activeMonth, 1).getFullYear(),
-        subMonths(activeMonth, 1).getMonth() + 1,
-      ),
+    const now = new Date();
+    const prevMonth = subMonths(now, 1);
+    const [data, prevData, budgetMap, currencyCode] = await Promise.all([
+      getReceiptsByMonth(now.getFullYear(), now.getMonth() + 1),
+      getReceiptsByMonth(prevMonth.getFullYear(), prevMonth.getMonth() + 1),
       getCategoryBudgets(),
+      getCurrency(),
     ]);
     setReceipts(data);
     setStats(computeStats(data));
     setLastMonthTotal(prevData.reduce((s, r) => s + r.totalAmount, 0));
     setBudgets(budgetMap);
-  }, [activeMonth]);
+    setCurrency((currencyCode as CurrencyCode | null) ?? 'USD');
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -235,28 +269,6 @@ export default function DashboardScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
-  };
-
-  const handleDelete = (id: string) => {
-    const target = receipts.find((r) => r.id === id);
-    if (!target) return;
-    tapMedium();
-    // Optimistically remove from the list; defer DB delete 5s so the
-    // user can tap Undo on the toast first.
-    setReceipts((prev) => prev.filter((r) => r.id !== id));
-    const timer = setTimeout(() => {
-      deleteReceipt(id).then(load).catch(() => load());
-    }, 5000);
-    toast.show({
-      message: `Deleted ${target.storeName}`,
-      kind: 'success',
-      undoLabel: 'Undo',
-      onUndo: () => {
-        clearTimeout(timer);
-        load();
-      },
-      durationMs: 5000,
-    });
   };
 
   const recentReceipts = receipts.slice(0, 4);
@@ -276,10 +288,10 @@ export default function DashboardScreen() {
       status: budgetStatus(c.total, budgets[c.category]),
     }));
 
-  const statusMeta: Record<BudgetStatus, { label: string; color: string; faint: string }> = {
-    onTrack: { label: 'ON TRACK', color: theme.colors.success, faint: theme.colors.successFaint },
-    watch: { label: 'WATCH', color: theme.colors.accent, faint: `${theme.colors.accent}22` },
-    over: { label: 'OVER', color: theme.colors.error, faint: theme.colors.errorFaint },
+  const statusMeta: Record<BudgetStatus, { label: string; color: string }> = {
+    onTrack: { label: 'On track', color: theme.colors.success },
+    watch: { label: 'Watch', color: theme.colors.accent },
+    over: { label: 'Over', color: theme.colors.error },
   };
 
   return (
@@ -294,14 +306,9 @@ export default function DashboardScreen() {
       {/* Hero total card */}
       <View style={styles.heroCard}>
         <View style={styles.heroDecorCircle} />
-        <Ionicons
-          name="receipt"
-          size={120}
-          color="#fff"
-          style={styles.heroDecorWatermark}
-        />
+        <Ionicons name="receipt" size={120} color="#fff" style={styles.heroDecorWatermark} />
         <Text style={styles.heroLabel}>{greeting()}</Text>
-        <Text style={styles.heroAmount}>${stats.totalSpent.toFixed(2)}</Text>
+        <Text style={styles.heroAmount}>{formatCurrency(stats.totalSpent, currency)}</Text>
         <View style={styles.heroMetaRow}>
           <Text style={styles.heroMetaText}>
             {stats.receiptCount} expense{stats.receiptCount === 1 ? '' : 's'} this month
@@ -320,29 +327,14 @@ export default function DashboardScreen() {
             </View>
           )}
         </View>
-
-        <View style={styles.monthNavRow}>
-          <TouchableOpacity onPress={() => setActiveMonth((m) => subMonths(m, 1))} hitSlop={10}>
-            <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.6)" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => {
-              tapMedium();
-              setPickerOpen(true);
-            }}
-            hitSlop={10}
-          >
-            <Text style={styles.monthNavLabel}>{format(activeMonth, 'MMMM yyyy')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setActiveMonth((m) => subMonths(m, -1))} hitSlop={10}>
-            <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.6)" />
-          </TouchableOpacity>
-        </View>
       </View>
 
       {/* Quick actions */}
       <View style={styles.actionRow}>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/(tabs)/scan')}>
+        <TouchableOpacity
+          style={styles.actionBtn}
+          onPress={() => router.push('/(tabs)/scan?mode=manual' as never)}
+        >
           <Text style={styles.actionBtnText}>+ Add manually</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/reports' as never)}>
@@ -365,17 +357,12 @@ export default function DashboardScreen() {
               const catColor = theme.colors.category[b.category as keyof typeof theme.colors.category];
               const ratio = b.limit > 0 ? Math.min(b.spent / b.limit, 1) : 0;
               return (
-                <View
-                  key={b.category}
-                  style={[styles.budgetRow, i === 0 && styles.budgetRowFirst]}
-                >
+                <View key={b.category} style={[styles.budgetRow, i === 0 && styles.budgetRowFirst]}>
                   <View style={[styles.budgetAccent, { backgroundColor: catColor }]} />
                   <View style={styles.budgetInfo}>
                     <View style={styles.budgetNameRow}>
                       <Text style={styles.budgetName}>{b.category}</Text>
-                      <View style={[styles.statusPill, { backgroundColor: meta.faint }]}>
-                        <Text style={[styles.statusPillText, { color: meta.color }]}>{meta.label}</Text>
-                      </View>
+                      <Text style={[styles.budgetStatusText, { color: meta.color }]}>{meta.label}</Text>
                     </View>
                     <View style={styles.progressTrack}>
                       <View
@@ -389,7 +376,7 @@ export default function DashboardScreen() {
                       />
                     </View>
                     <Text style={styles.budgetAmounts}>
-                      ${b.spent.toFixed(2)} of ${b.limit.toFixed(2)}
+                      {formatCurrency(b.spent, currency)} of {formatCurrency(b.limit, currency)}
                     </Text>
                   </View>
                 </View>
@@ -399,19 +386,42 @@ export default function DashboardScreen() {
         </View>
       )}
 
-      {/* Recent transactions */}
+      {/* Recent expenses */}
       {recentReceipts.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Recent</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/history')} hitSlop={8}>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/history' as never)} hitSlop={8}>
               <Text style={styles.sectionLink}>See all</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.list}>
-            {recentReceipts.map((r) => (
-              <ReceiptCard key={r.id} receipt={r} onDelete={handleDelete} />
-            ))}
+            {recentReceipts.map((r) => {
+              const color = theme.colors.category[r.category as keyof typeof theme.colors.category];
+              return (
+                <TouchableOpacity
+                  key={r.id}
+                  style={styles.row}
+                  activeOpacity={0.8}
+                  onPress={() => router.push(`/edit/${r.id}` as never)}
+                >
+                  <View style={styles.rowLeft}>
+                    <View style={[styles.avatar, { backgroundColor: color }]}>
+                      <Text style={styles.avatarText}>{r.storeName.charAt(0).toUpperCase()}</Text>
+                    </View>
+                    <View style={styles.rowInfo}>
+                      <Text style={styles.merchantName} numberOfLines={1}>
+                        {r.storeName}
+                      </Text>
+                      <Text style={styles.rowMeta}>
+                        {r.category} · {dateLabel(new Date(r.date))}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.rowAmount}>{formatCurrency(r.totalAmount, currency)}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       )}
@@ -425,13 +435,6 @@ export default function DashboardScreen() {
           onAction={() => router.push('/(tabs)/scan')}
         />
       )}
-
-      <MonthYearPicker
-        visible={pickerOpen}
-        selected={activeMonth}
-        onClose={() => setPickerOpen(false)}
-        onSelect={(d) => setActiveMonth(d)}
-      />
     </ScrollView>
   );
 }

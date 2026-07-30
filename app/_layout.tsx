@@ -70,75 +70,29 @@ function ThemedStatusBar() {
   return <StatusBar style={theme.isDark ? 'light' : 'dark'} />;
 }
 
-/**
- * Routes the user reaches voluntarily (modals, edit screens). When `target`
- * resolves to `(tabs)` and the user is on one of these, leave them alone —
- * the guard's job is to FORCE users to gate screens (auth, verify-email,
- * etc.), not to drag them back to /(tabs) every time they open a modal.
- *
- * Note: profile-setup lives here too because it's reused as an "edit
- * profile" destination from settings. When required at first sign-in,
- * pickTarget returns 'profile-setup' — so we still navigate there. When
- * voluntary, pickTarget returns '(tabs)' and we should leave them be.
- */
-const STICKY_VOLUNTARY = new Set([
-  'settings',
-  'edit',
-  'profile-setup',
-  'category-detail',
-  'reports',
-]);
-
-// Routes the guard must NEVER redirect away from, regardless of auth
-// state. The invite-finish screen is reached via an app-link tap and
-// runs its own create-account → sign-out → /auth flow; if the guard
-// fires before that finishes it would yank the user to /auth without
-// the email pre-fill or the success toast.
-const NEVER_REDIRECT_FROM = new Set(['invite-finish', 'invite']);
+// Routes the user reaches voluntarily (modals, edit screens). When
+// `target` resolves to `(tabs)` and the user is on one of these, leave
+// them alone — the guard's job is to force users to the auth gate, not
+// to drag them back to /(tabs) every time they open a modal.
+const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'reports']);
 
 function RootStack() {
   const theme = useTheme();
-  const {
-    initializing,
-    user,
-    emailVerified,
-    requiresProfile,
-    profileComplete,
-    onboardingSeen,
-    biometricEnabled,
-    biometricAsked,
-    biometricUnlocked,
-  } = useAuth();
+  const { initializing, user, onboardingSeen } = useAuth();
   const router = useRouter();
   const segments = useSegments();
 
   useEffect(() => {
     if (initializing) return;
     const current = (segments[0] ?? '') as string;
-    const target = pickTarget({
-      user,
-      onboardingSeen,
-      emailVerified,
-      requiresProfile,
-      profileComplete,
-      biometricEnabled,
-      biometricAsked,
-      biometricUnlocked,
-    });
+    const target = pickTarget({ user, onboardingSeen });
     if (target === current) return;
-    // Some screens own their own routing (e.g. invite-finish flows
-    // unauthenticated user → /auth itself after signup). The guard
-    // would otherwise see "no user → /auth" and yank the user off
-    // mid-flow.
-    if (NEVER_REDIRECT_FROM.has(current)) return;
     // User is on a voluntary screen (modal / edit) and the gate state
     // says they're cleared for the app — leave them on it. We also
     // bail when `current` is empty: useSegments() can return [] for
     // top-level modal routes in some expo-router versions, and we
     // don't want the guard to force a redirect off an unknown route
-    // just because we couldn't identify it. Real redirects (sign out,
-    // verify-email, etc.) flow through targets OTHER than '(tabs)',
-    // so this only relaxes the "drag back to tabs" behavior.
+    // just because we couldn't identify it.
     if (
       target === '(tabs)' &&
       (current === '' || STICKY_VOLUNTARY.has(current))
@@ -146,18 +100,7 @@ function RootStack() {
       return;
     }
     router.replace(targetToHref(target) as never);
-  }, [
-    initializing,
-    user,
-    emailVerified,
-    requiresProfile,
-    profileComplete,
-    onboardingSeen,
-    biometricEnabled,
-    biometricAsked,
-    biometricUnlocked,
-    segments,
-  ]);
+  }, [initializing, user, onboardingSeen, segments]);
 
   if (initializing) {
     return (
@@ -185,10 +128,6 @@ function RootStack() {
     >
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
-      <Stack.Screen name="verify-email" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="profile-setup" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="biometric-setup" options={{ headerShown: false, gestureEnabled: false }} />
-      <Stack.Screen name="lock" options={{ headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="settings"
@@ -203,17 +142,10 @@ function RootStack() {
         options={{
           title: 'Edit Receipt',
           // Regular stack screen (NOT modal). expo-router can't reliably
-          // navigate from a modal (category-detail, reports) into another
-          // modal — the new screen renders behind the active one. With
-          // edit as a plain stack screen, push() works from anywhere.
+          // navigate from a modal (reports) into another modal — the new
+          // screen renders behind the active one. With edit as a plain
+          // stack screen, push() works from anywhere.
           headerStyle: { backgroundColor: theme.colors.surface },
-        }}
-      />
-      <Stack.Screen
-        name="category-detail"
-        options={{
-          presentation: 'modal',
-          headerShown: false,
         }}
       />
       <Stack.Screen

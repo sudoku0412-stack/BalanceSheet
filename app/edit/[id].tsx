@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Alert,
   Image,
-  Modal,
   Platform,
   ActivityIndicator,
   Pressable,
@@ -21,30 +20,36 @@ import {
   getReceiptById,
   updateReceipt,
   deleteReceipt,
-  replaceLineItems,
+  getAllReceipts,
   getCurrentHouseholdId,
 } from '../../lib/database';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { useAuth } from '../../lib/AuthContext';
-import { refineUncategorizedItems } from '../../lib/itemClassifier';
-import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
+import { findRecurring } from '../../lib/reports';
 import { parseYmdLocal } from '../../lib/parser';
 import { notifySuccess, tapLight, tapMedium } from '../../lib/haptics';
-import { Receipt, Category, LineItem } from '../../types';
+import {
+  formatCurrency,
+  CURRENCY_SYMBOLS,
+  CURRENCIES,
+  CurrencyCode,
+} from '../../lib/currency';
+import { getCurrency } from '../../lib/secureStorage';
+import { Receipt, Category } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
-import { ALL_CATEGORIES, CATEGORY_ICONS } from '../../constants/categories';
+import { ALL_CATEGORIES } from '../../constants/categories';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { CategoryTagsPicker } from '../../components/ui/CategoryTagsPicker';
-import { TagChip } from '../../components/ui/TagChip';
 import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
-import { ItemEditModal } from '../../components/receipt/ItemEditModal';
 
-type CategoryGroup = {
-  category: Category | string;
-  items: LineItem[];
-  subtotal: number;
-};
+/** Validate the persisted currency code, defaulting to USD when unset
+ *  or unrecognized (matches lib/currency.ts's canonical-USD design). */
+function toCurrencyCode(raw: string | null): CurrencyCode {
+  return (CURRENCIES as readonly string[]).includes(raw ?? '')
+    ? (raw as CurrencyCode)
+    : 'USD';
+}
 
 /** Safe wrapper around date-fns format(). Legacy receipts may have
  *  missing/invalid createdAt/updatedAt fields; format() throws
@@ -69,39 +74,6 @@ function safeAmount(n: number | null | undefined, digits = 2): string {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '0.00';
   return n.toFixed(digits);
 }
-
-function groupItemsByCategory(
-  items: LineItem[],
-  receiptCategory: Category,
-): CategoryGroup[] {
-  const map = new Map<string, LineItem[]>();
-  for (const item of items) {
-    // Older items written before per-item categorization fall back to the
-    // receipt-level category so they still group sensibly.
-    const c = (item.category ?? receiptCategory) as string;
-    const list = map.get(c);
-    if (list) list.push(item);
-    else map.set(c, [item]);
-  }
-  return Array.from(map.entries())
-    .map(([category, list]) => ({
-      category,
-      items: list,
-      subtotal: list.reduce((s, i) => s + i.amount, 0),
-    }))
-    .sort((a, b) => b.subtotal - a.subtotal);
-}
-
-/** A split participant: "You" (always present, not removable) plus any
- *  real household members pulled from lib/cloudSync.getHouseholdMembers.
- *  There is no fictional "Partner / Alex / Priya" demo list here — if
- *  the household has no other members (solo household, or cloud sync
- *  not bootstrapped yet), the picker simply shows just "You". */
-type SplitParticipant = {
-  key: string;
-  label: string;
-  isYou: boolean;
-};
 
 function memberLabel(m: HouseholdMember): string {
   return m.displayName?.trim() || m.email?.trim() || 'Member';
@@ -242,11 +214,8 @@ function EditReceiptScreen() {
       color: t.colors.textMuted,
       fontSize: t.font.xs,
     },
-    // ── Category row: colored dot + primary category name ──
-    // No "Recurring" pill is rendered here — Receipt (types/index.ts)
-    // has no recurring field anywhere in this codebase, so it's omitted
-    // rather than faked. The full multi-tag picker below it is the
-    // pre-existing categorization feature, kept intact.
+    // ── Category row: colored dot + primary category name + optional
+    // "Recurring" pill (findRecurring-backed, see render code). ──
     categoryRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -262,6 +231,17 @@ function EditReceiptScreen() {
       fontFamily: t.fonts.display.bold,
       color: t.colors.textPrimary,
       fontSize: t.font.md,
+    },
+    recurringBadge: {
+      backgroundColor: t.colors.accent,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: t.radius.full,
+    },
+    recurringBadgeText: {
+      color: '#fff',
+      fontWeight: '700',
+      fontSize: t.font.xs,
     },
     fieldCard: {
       gap: t.spacing.sm,
@@ -299,132 +279,6 @@ function EditReceiptScreen() {
       color: t.colors.textPrimary,
       fontSize: t.font.md,
     },
-    lineItemRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingVertical: 5,
-      borderBottomWidth: 1,
-      borderBottomColor: t.colors.border,
-    },
-    lineItemName: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.sm,
-      flex: 1,
-      marginRight: 8,
-    },
-    lineItemAmount: {
-      fontFamily: t.fonts.mono.regular,
-      color: t.colors.textPrimary,
-      fontSize: t.font.sm,
-      fontWeight: '600',
-    },
-    categoryGroup: {
-      marginTop: t.spacing.sm,
-    },
-    categoryGroupHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingBottom: 6,
-      borderBottomWidth: 1,
-      borderBottomColor: t.colors.borderLight,
-    },
-    categoryGroupTotal: {
-      fontFamily: t.fonts.mono.regular,
-      color: t.colors.textPrimary,
-      fontSize: t.font.sm,
-      fontWeight: '700',
-    },
-    totalsBlock: {
-      marginTop: t.spacing.md,
-      paddingTop: t.spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: t.colors.borderLight,
-    },
-    totalsRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      paddingVertical: 4,
-    },
-    totalsRowGrand: {
-      marginTop: t.spacing.xs,
-      paddingTop: t.spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: t.colors.border,
-    },
-    totalsLabel: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.sm,
-    },
-    totalsValue: {
-      fontFamily: t.fonts.mono.regular,
-      color: t.colors.textPrimary,
-      fontSize: t.font.sm,
-      fontWeight: '600',
-    },
-    totalsLabelGrand: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.md,
-      fontWeight: '700',
-    },
-    totalsValueGrand: {
-      fontFamily: t.fonts.mono.regular,
-      color: t.colors.primary,
-      fontSize: t.font.lg,
-      fontWeight: '800',
-    },
-    modalRoot: {
-      flex: 1,
-      backgroundColor: t.colors.background,
-    },
-    modalHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: t.spacing.lg,
-      paddingVertical: t.spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: t.colors.border,
-    },
-    modalTitle: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.lg,
-      fontWeight: '700',
-    },
-    modalScroll: {
-      flex: 1,
-    },
-    modalContent: {
-      padding: t.spacing.lg,
-    },
-    modalText: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.sm,
-      fontFamily: t.fonts.mono.regular,
-      lineHeight: 18,
-    },
-    rawTextLink: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 6,
-      marginTop: t.spacing.sm,
-      paddingVertical: 8,
-    },
-    rawTextLinkText: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.xs,
-      fontWeight: '600',
-    },
-    itemsCardHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-    },
-    tapHint: {
-      color: t.colors.textMuted,
-      fontSize: t.font.xs,
-    },
     saveBtn: {
       marginTop: t.spacing.sm,
     },
@@ -443,107 +297,6 @@ function EditReceiptScreen() {
       color: t.colors.error,
       fontWeight: '700',
       fontSize: t.font.md,
-    },
-    lineItemRowSelected: {
-      backgroundColor: `${t.colors.primary}1A`,
-      borderRadius: t.radius.sm,
-    },
-    bulkBar: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: t.spacing.lg,
-      paddingTop: t.spacing.md,
-      paddingBottom: t.spacing.lg,
-      backgroundColor: t.colors.surface,
-      borderTopWidth: 1,
-      borderTopColor: t.colors.border,
-    },
-    bulkBarLabel: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.sm,
-      fontWeight: '600',
-    },
-    bulkBarPrimary: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      backgroundColor: t.colors.primary,
-      paddingHorizontal: t.spacing.md,
-      paddingVertical: 10,
-      borderRadius: t.radius.lg,
-    },
-    bulkBarPrimaryText: {
-      color: '#fff',
-      fontWeight: '700',
-      fontSize: t.font.sm,
-    },
-    bulkPickerBackdrop: {
-      flex: 1,
-      backgroundColor: 'rgba(0,0,0,0.5)',
-      justifyContent: 'flex-end',
-    },
-    bulkPickerSheet: {
-      backgroundColor: t.colors.surface,
-      paddingHorizontal: t.spacing.lg,
-      paddingTop: t.spacing.lg,
-      paddingBottom: t.spacing.xxl,
-      borderTopLeftRadius: t.radius.lg,
-      borderTopRightRadius: t.radius.lg,
-    },
-    bulkPickerTitle: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.lg,
-      fontWeight: '700',
-      marginBottom: t.spacing.md,
-    },
-    bulkPickerGrid: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 8,
-    },
-    bulkPickerOption: {
-      // TagChip handles its own padding; no wrapper styling needed
-    },
-    bulkPickerCustomLabel: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.xs,
-      fontWeight: '600',
-      textTransform: 'uppercase',
-      letterSpacing: 0.8,
-      marginTop: t.spacing.lg,
-      marginBottom: t.spacing.xs,
-    },
-    bulkPickerCustomRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    bulkPickerCustomInput: {
-      flex: 1,
-      color: t.colors.textPrimary,
-      fontSize: t.font.md,
-      backgroundColor: t.colors.surfaceHigh,
-      borderRadius: t.radius.sm,
-      paddingHorizontal: 12,
-      paddingVertical: 10,
-      borderWidth: 1,
-      borderColor: t.colors.border,
-    },
-    bulkPickerCustomBtn: {
-      backgroundColor: t.colors.primary,
-      paddingHorizontal: 16,
-      paddingVertical: 11,
-      borderRadius: t.radius.sm,
-    },
-    bulkPickerCustomBtnText: {
-      color: '#fff',
-      fontWeight: '700',
-      fontSize: t.font.sm,
     },
     // ── Split section ──
     splitToggleRow: {
@@ -658,12 +411,6 @@ function EditReceiptScreen() {
       fontSize: t.font.sm,
       marginTop: t.spacing.xs,
     },
-    splitGap: {
-      color: t.colors.textMuted,
-      fontSize: t.font.xs,
-      fontStyle: 'italic',
-      marginTop: t.spacing.xs,
-    },
   }));
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -671,7 +418,6 @@ function EditReceiptScreen() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [showRawText, setShowRawText] = useState(false);
 
   const [storeName, setStoreName] = useState('');
   const [date, setDate] = useState('');
@@ -679,44 +425,29 @@ function EditReceiptScreen() {
   const [category, setCategory] = useState<Category>('Other');
   const [categoryTags, setCategoryTags] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<LineItem[]>([]);
-  const [editingItem, setEditingItem] = useState<LineItem | null>(null);
-  // Multi-select mode for bulk recategorization. When set is empty
-  // we render the normal "tap to edit" UI; once at least one item is
-  // selected, taps toggle selection and a bottom action bar appears.
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showBulkCategoryPicker, setShowBulkCategoryPicker] = useState(false);
   // True once the <Image> reports it couldn't load — likely a stale
   // cache URI from a receipt scanned before persistReceiptImage was
-  // introduced. We hide the broken image area instead of rendering
-  // an empty blank space.
+  // introduced. We hide the broken image area entirely and fall back
+  // to the placeholder tile instead of reserving blank space.
   const [imageMissing, setImageMissing] = useState(false);
-  // Track the custom-tag input shown inside the bulk picker so users
-  // can add a brand new tag (e.g. "Garden Supplies") without leaving
-  // the sheet. Submitting applies the tag immediately AND adds it to
-  // the receipt-level categoryTags list via applyBulkCategory.
-  // CRITICAL: this useState MUST live with the other hooks at the top
-  // of the component, NOT after the early returns below. React will
-  // throw "Rendered more hooks than during the previous render" if
-  // any hook is conditionally called.
-  const [bulkCustomTag, setBulkCustomTag] = useState('');
-  const selectionMode = selectedIds.size > 0;
+  // User's selected display currency (lib/secureStorage.getCurrency).
+  // Defaults to USD until loaded / if unset.
+  const [currencyCode, setCurrencyCode] = useState<CurrencyCode>('USD');
+  // Whether findRecurring (lib/reports.ts) flags this receipt's store
+  // as part of a real recurring pattern — drives the "Recurring" pill.
+  const [isRecurring, setIsRecurring] = useState(false);
 
-  // ── Split-this-expense state (local-only) ──
-  // There is no `split` field on Receipt (types/index.ts) and no
-  // split/shared-expense backend anywhere in this codebase (grepped
-  // for "split" — only String.prototype.split() call sites turned
-  // up). The math below is real and runs against real household
-  // members, but it is NOT persisted anywhere: it resets if the user
-  // leaves this screen and comes back. Persisting it would require
-  // adding a `split` field to the Receipt type (types/index.ts) and a
-  // write path in lib/database.ts / lib/cloudSync.ts — both out of
-  // scope for a pass restricted to this one file. Flagging the gap
-  // rather than inventing storage for it.
+  // ── Split-this-expense state ──
+  // Mirrors Receipt.split (types/index.ts): { enabled, method,
+  // participantIds, values }. Initialized from receipt.split on load
+  // (see the load effect below) and written back into the Receipt on
+  // save (see handleSave) — this is now real, persisted state.
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[] | null>(null);
   const [splitEnabled, setSplitEnabled] = useState(false);
   const [splitMethod, setSplitMethod] = useState<'equal' | 'percent' | 'amount'>('equal');
   const [selectedOtherUids, setSelectedOtherUids] = useState<Set<string>>(new Set());
+  // Keyed by 'self' for the always-included "You" and by household
+  // member uid for everyone else — matches Receipt.split.values keys.
   const [splitPercents, setSplitPercents] = useState<Record<string, string>>({});
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
 
@@ -736,7 +467,28 @@ function EditReceiptScreen() {
       setCategory(r.category);
       setCategoryTags(r.categoryTags ?? [r.category]);
       setNotes(r.notes ?? '');
-      setItems(r.lineItems ?? []);
+
+      // Initialize split UI state from the persisted split field, if any.
+      if (r.split?.enabled) {
+        setSplitEnabled(true);
+        setSplitMethod(r.split.method);
+        const others = r.split.participantIds.filter((p) => p !== 'self');
+        setSelectedOtherUids(new Set(others));
+        if (r.split.method === 'percent') {
+          const pct: Record<string, string> = {};
+          for (const [k, v] of Object.entries(r.split.values ?? {})) {
+            pct[k] = String(v);
+          }
+          setSplitPercents(pct);
+        } else if (r.split.method === 'amount') {
+          const amt: Record<string, string> = {};
+          for (const [k, v] of Object.entries(r.split.values ?? {})) {
+            amt[k] = String(v);
+          }
+          setSplitAmounts(amt);
+        }
+      }
+
       setLoading(false);
 
       // Verify the receipt's image actually exists on disk. Older
@@ -756,25 +508,36 @@ function EditReceiptScreen() {
         setImageMissing(true);
       }
 
-      // Background refinement — run the async classifier on items still
-      // marked 'Other'. Updates land in the DB; refresh local state on
-      // success so the UI re-renders the new category badges.
-      if (r.lineItems?.length) {
-        try {
-          const refined = await refineUncategorizedItems(r.lineItems);
-          if (mounted) {
-            setReceipt({ ...r, lineItems: refined });
-            setItems(refined);
-          }
-        } catch {
-          // best-effort; ignore
-        }
+      // Real recurring detection (lib/reports.findRecurring) against
+      // every receipt in the household — flags the "Recurring" pill
+      // only when this receipt's store genuinely repeats across
+      // multiple months. Never fabricated.
+      try {
+        const all = await getAllReceipts();
+        const matches = findRecurring(all);
+        const storeKey = r.storeName.trim().toLowerCase() || 'unknown store';
+        const recurring = matches.some((m) => m.kind === 'store' && m.label === storeKey);
+        if (mounted) setIsRecurring(recurring);
+      } catch {
+        // best-effort; leave isRecurring false
       }
     })();
     return () => {
       mounted = false;
     };
   }, [id]);
+
+  // User's selected display currency (lib/secureStorage.getCurrency).
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const raw = await getCurrency();
+      if (mounted) setCurrencyCode(toCurrencyCode(raw));
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Real household members (lib/cloudSync.getHouseholdMembers), mirroring
   // the FamilyPanel fetch pattern in app/settings.tsx. Used as the split
@@ -811,28 +574,6 @@ function EditReceiptScreen() {
       return;
     }
 
-    // Verify line items still sum to the printed subtotal — the user
-    // may have edited / deleted items since the last save and the
-    // result might no longer reconcile. Give them a chance to fix it
-    // OR save anyway if they've already cross-verified.
-    const mismatch = checkItemsAgainstSubtotal(items, receipt.subtotalAmount);
-    if (!mismatch.ok) {
-      const confirmed = await new Promise<boolean>((resolve) => {
-        Alert.alert(
-          "Line items don't match the subtotal",
-          `${mismatch.hint}\n\nItems total: $${mismatch.sum.toFixed(
-            2,
-          )}\nReceipt subtotal: $${mismatch.subtotal.toFixed(2)}`,
-          [
-            { text: 'Review items', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Save anyway', onPress: () => resolve(true) },
-          ],
-          { cancelable: true, onDismiss: () => resolve(false) },
-        );
-      });
-      if (!confirmed) return;
-    }
-
     // Parse the user-typed YYYY-MM-DD as LOCAL time so the wall-clock
     // date the user sees survives the save → reload round-trip.
     const parsedDate: Date = parseYmdLocal(date) ?? new Date(receipt.date);
@@ -846,6 +587,27 @@ function EditReceiptScreen() {
         (categoryTags.find((t) =>
           (ALL_CATEGORIES as readonly string[]).includes(t),
         ) as Category | undefined) ?? category;
+
+      // Build the split payload from the current split UI state —
+      // this now actually persists (Receipt.split, types/index.ts).
+      const split: Receipt['split'] = splitEnabled
+        ? {
+            enabled: true,
+            method: splitMethod,
+            participantIds: ['self', ...Array.from(selectedOtherUids)],
+            values:
+              splitMethod === 'percent'
+                ? Object.fromEntries(
+                    Object.entries(splitPercents).map(([k, v]) => [k, parseFloat(v) || 0]),
+                  )
+                : splitMethod === 'amount'
+                  ? Object.fromEntries(
+                      Object.entries(splitAmounts).map(([k, v]) => [k, parseFloat(v) || 0]),
+                    )
+                  : undefined,
+          }
+        : { enabled: false, method: splitMethod, participantIds: ['self'] };
+
       await updateReceipt({
         ...receipt,
         storeName: storeName.trim(),
@@ -854,7 +616,7 @@ function EditReceiptScreen() {
         category: primary,
         categoryTags: categoryTags.length ? categoryTags : [primary],
         notes: notes.trim() || undefined,
-        lineItems: items,
+        split,
       });
       notifySuccess();
       router.back();
@@ -901,38 +663,9 @@ function EditReceiptScreen() {
     );
   }
 
-  const applyBulkCategory = (category: Category | string) => {
-    if (!receipt || selectedIds.size === 0) return;
-    tapLight();
-    const next = items.map((it) =>
-      selectedIds.has(it.id) ? { ...it, category } : it,
-    );
-    setItems(next);
-    // Keep the receipt-level Categories field in sync — if the user
-    // bulk-tags items as a category that isn't already in the chip
-    // list, add it. This makes the items section and the Categories
-    // section render the same set of tags.
-    if (!categoryTags.includes(category)) {
-      setCategoryTags([...categoryTags, category]);
-    }
-    setSelectedIds(new Set());
-    setShowBulkCategoryPicker(false);
-    replaceLineItems(receipt.id, next).catch(() => {
-      Alert.alert(
-        'Could not save',
-        'The category changes were not persisted. Try again.',
-      );
-    });
-  };
-
-  const submitBulkCustomTag = () => {
-    const trimmed = bulkCustomTag.trim().slice(0, 32);
-    if (!trimmed) return;
-    setBulkCustomTag('');
-    applyBulkCategory(trimmed);
-  };
-
-  // ── Split math (local state only — see comment on the hooks above) ──
+  // ── Split math ── values are entered in the receipt's own amount
+  // units; formatCurrency below just re-renders them in the user's
+  // selected display currency.
   const totalAmountVal = parseFloat(amount.replace(',', '.')) || 0;
   const otherMembers = (householdMembers ?? []).filter((m) => !m.isYou);
   const selectedOthers = otherMembers.filter((m) => selectedOtherUids.has(m.uid));
@@ -946,7 +679,7 @@ function EditReceiptScreen() {
     yourShare = participantCount > 0 ? totalAmountVal / participantCount : totalAmountVal;
     owedToYou = totalAmountVal - yourShare;
   } else if (splitMethod === 'percent') {
-    const yourPct = parseFloat(splitPercents.you || '0') || 0;
+    const yourPct = parseFloat(splitPercents.self || '0') || 0;
     const othersPct = selectedOthers.reduce(
       (s, m) => s + (parseFloat(splitPercents[m.uid] || '0') || 0),
       0,
@@ -958,7 +691,7 @@ function EditReceiptScreen() {
       splitWarning = `Percentages add up to ${sumPct.toFixed(0)}%, not 100%.`;
     }
   } else {
-    const yourAmt = parseFloat(splitAmounts.you || '0') || 0;
+    const yourAmt = parseFloat(splitAmounts.self || '0') || 0;
     const othersAmt = selectedOthers.reduce(
       (s, m) => s + (parseFloat(splitAmounts[m.uid] || '0') || 0),
       0,
@@ -967,7 +700,7 @@ function EditReceiptScreen() {
     yourShare = yourAmt;
     owedToYou = othersAmt;
     if (Math.abs(sumAmt - totalAmountVal) > 0.01) {
-      splitWarning = `Amounts add up to $${sumAmt.toFixed(2)}, not $${totalAmountVal.toFixed(2)}.`;
+      splitWarning = `Amounts add up to ${formatCurrency(sumAmt, currencyCode)}, not ${formatCurrency(totalAmountVal, currencyCode)}.`;
     }
   }
 
@@ -986,10 +719,7 @@ function EditReceiptScreen() {
       <Stack.Screen options={{ headerShown: false }} />
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={[
-        styles.content,
-        selectionMode && { paddingBottom: 100 },
-      ]}
+      contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.headerRow}>
@@ -1016,6 +746,12 @@ function EditReceiptScreen() {
           resizeMode="cover"
           onError={() => setImageMissing(true)}
         />
+      ) : receipt.photoUrl ? (
+        <Image
+          source={{ uri: receipt.photoUrl }}
+          style={styles.image}
+          resizeMode="cover"
+        />
       ) : (
         <View style={styles.imagePlaceholder}>
           <Ionicons name="receipt-outline" size={40} color={theme.colors.textMuted} />
@@ -1033,10 +769,12 @@ function EditReceiptScreen() {
         autoCorrect={false}
       />
 
-      {/* Amount — 32px, Roboto Mono per the Design Tokens section of
-          the handoff. Still an editable field. */}
+      {/* Amount — 32px Manrope ExtraBold container, Roboto Mono digits,
+          per the Design Tokens section of the handoff. Currency symbol
+          reflects the user's selected currency (lib/secureStorage
+          .getCurrency); still an editable field. */}
       <View style={styles.amountRow}>
-        <Text style={styles.amountCurrency}>$</Text>
+        <Text style={styles.amountCurrency}>{CURRENCY_SYMBOLS[currencyCode]}</Text>
         <TextInput
           style={styles.amountInput}
           value={amount}
@@ -1078,9 +816,12 @@ function EditReceiptScreen() {
           )}
       </View>
 
-      {/* Category row — colored dot + primary category name, per the
-          export. The full multi-tag picker (existing feature) stays
-          right below it for actually changing categories/tags. */}
+      {/* Category row — colored dot + primary category name + an
+          optional "Recurring" pill (only shown when findRecurring,
+          lib/reports.ts, genuinely flags this receipt's store as a
+          repeating pattern — not fabricated). The full multi-tag
+          picker (existing feature) stays right below it for actually
+          changing categories/tags. */}
       <Card style={styles.fieldCard}>
         <View style={styles.categoryRow}>
           <View
@@ -1090,14 +831,18 @@ function EditReceiptScreen() {
             ]}
           />
           <Text style={styles.categoryRowLabel}>{category}</Text>
+          {isRecurring && (
+            <View style={styles.recurringBadge}>
+              <Text style={styles.recurringBadgeText}>Recurring</Text>
+            </View>
+          )}
         </View>
         <CategoryTagsPicker tags={categoryTags} onChange={setCategoryTags} />
       </Card>
 
       {/* Split section (Splitwise-style). Toggle reveals participant
-          picker + Equal/%/$ method switch. See the hook-level comment
-          above for what's real (the math, the household member list)
-          vs. what's a known gap (no persistence field on Receipt). */}
+          picker + Equal/%/$ method switch. Persists on save via the
+          `split` field on Receipt (types/index.ts). */}
       <Card style={styles.fieldCard}>
         <Text style={styles.sectionLabel}>SPLIT</Text>
         <View style={styles.splitToggleRow}>
@@ -1189,32 +934,32 @@ function EditReceiptScreen() {
                 <Text style={styles.participantName}>You</Text>
                 {splitMethod === 'equal' && (
                   <Text style={styles.participantValueReadOnly}>
-                    ${yourShare.toFixed(2)}
+                    {formatCurrency(yourShare, currencyCode)}
                   </Text>
                 )}
                 {splitMethod === 'percent' && (
                   <View style={styles.participantInputRow}>
                     <TextInput
                       style={styles.participantInput}
-                      value={splitPercents.you ?? ''}
+                      value={splitPercents.self ?? ''}
                       onChangeText={(v) =>
-                        setSplitPercents((prev) => ({ ...prev, you: v }))
+                        setSplitPercents((prev) => ({ ...prev, self: v }))
                       }
                       keyboardType="decimal-pad"
                       placeholder="0"
                       placeholderTextColor={theme.colors.textMuted}
                     />
                     <Text style={styles.participantComputed}>
-                      ${((parseFloat(splitPercents.you || '0') || 0) / 100 * totalAmountVal).toFixed(2)}
+                      {formatCurrency((parseFloat(splitPercents.self || '0') || 0) / 100 * totalAmountVal, currencyCode)}
                     </Text>
                   </View>
                 )}
                 {splitMethod === 'amount' && (
                   <TextInput
                     style={styles.participantInput}
-                    value={splitAmounts.you ?? ''}
+                    value={splitAmounts.self ?? ''}
                     onChangeText={(v) =>
-                      setSplitAmounts((prev) => ({ ...prev, you: v }))
+                      setSplitAmounts((prev) => ({ ...prev, self: v }))
                     }
                     keyboardType="decimal-pad"
                     placeholder="0.00"
@@ -1230,7 +975,7 @@ function EditReceiptScreen() {
                     <Text style={styles.participantName} numberOfLines={1}>{label}</Text>
                     {splitMethod === 'equal' && (
                       <Text style={styles.participantValueReadOnly}>
-                        ${yourShare.toFixed(2)}
+                        {formatCurrency(yourShare, currencyCode)}
                       </Text>
                     )}
                     {splitMethod === 'percent' && (
@@ -1246,7 +991,7 @@ function EditReceiptScreen() {
                           placeholderTextColor={theme.colors.textMuted}
                         />
                         <Text style={styles.participantComputed}>
-                          ${((parseFloat(splitPercents[m.uid] || '0') || 0) / 100 * totalAmountVal).toFixed(2)}
+                          {formatCurrency((parseFloat(splitPercents[m.uid] || '0') || 0) / 100 * totalAmountVal, currencyCode)}
                         </Text>
                       </View>
                     )}
@@ -1270,11 +1015,8 @@ function EditReceiptScreen() {
             {splitWarning && <Text style={styles.splitWarning}>{splitWarning}</Text>}
 
             <Text style={styles.splitSummary}>
-              You paid ${totalAmountVal.toFixed(2)} · ${owedToYou.toFixed(2)} owed to you
-            </Text>
-
-            <Text style={styles.splitGap}>
-              Not saved yet — splits aren't persisted on this receipt.
+              You paid {formatCurrency(totalAmountVal, currencyCode)} ·{' '}
+              {formatCurrency(owedToYou, currencyCode)} owed to you
             </Text>
           </View>
         )}
@@ -1295,163 +1037,6 @@ function EditReceiptScreen() {
         />
       </Card>
 
-      {/* Line items grouped by category, with tax + total. Tap any
-          row to fix name/amount/category or delete it. Long-press
-          (or tap "Select") to enter multi-select mode, then tap rows
-          to toggle and use the bottom bar to bulk-recategorize. */}
-      {items.length > 0 && (
-        <Card style={styles.fieldCard}>
-          <View style={styles.itemsCardHeader}>
-            <Text style={styles.fieldLabel}>
-              {selectionMode
-                ? `${selectedIds.size} selected`
-                : `Items (${items.length})`}
-            </Text>
-            {selectionMode ? (
-              <TouchableOpacity onPress={() => setSelectedIds(new Set())} hitSlop={8}>
-                <Text style={[styles.tapHint, { color: theme.colors.primary }]}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                onPress={() => {
-                  if (items.length > 0) {
-                    setSelectedIds(new Set([items[0].id]));
-                  }
-                }}
-                hitSlop={8}
-              >
-                <Text style={[styles.tapHint, { color: theme.colors.primary }]}>
-                  Select
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-          {groupItemsByCategory(items, receipt.category).map((group) => (
-            <View key={group.category} style={styles.categoryGroup}>
-              <View style={styles.categoryGroupHeader}>
-                <TagChip tag={group.category} size="sm" />
-                <Text style={styles.categoryGroupTotal}>
-                  ${safeAmount(group.subtotal)}
-                </Text>
-              </View>
-              {group.items.map((item) => {
-                const isSelected = selectedIds.has(item.id);
-                return (
-                  <TouchableOpacity
-                    key={item.id}
-                    onPress={() => {
-                      if (selectionMode) {
-                        const next = new Set(selectedIds);
-                        if (next.has(item.id)) next.delete(item.id);
-                        else next.add(item.id);
-                        setSelectedIds(next);
-                      } else {
-                        setEditingItem(item);
-                      }
-                    }}
-                    onLongPress={() => {
-                      const next = new Set(selectedIds);
-                      next.add(item.id);
-                      setSelectedIds(next);
-                    }}
-                    style={[
-                      styles.lineItemRow,
-                      isSelected && styles.lineItemRowSelected,
-                    ]}
-                    activeOpacity={0.7}
-                  >
-                    {selectionMode && (
-                      <Ionicons
-                        name={isSelected ? 'checkbox' : 'square-outline'}
-                        size={20}
-                        color={
-                          isSelected
-                            ? theme.colors.primary
-                            : theme.colors.textMuted
-                        }
-                        style={{ marginRight: 10 }}
-                      />
-                    )}
-                    <Text style={styles.lineItemName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <Text style={styles.lineItemAmount}>
-                      ${safeAmount(item.amount)}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
-
-          <View style={styles.totalsBlock}>
-            {receipt.subtotalAmount != null && (
-              <View style={styles.totalsRow}>
-                <Text style={styles.totalsLabel}>Subtotal</Text>
-                <Text style={styles.totalsValue}>
-                  ${safeAmount(receipt.subtotalAmount)}
-                </Text>
-              </View>
-            )}
-            {receipt.taxAmount != null && (
-              <View style={styles.totalsRow}>
-                <Text style={styles.totalsLabel}>Tax</Text>
-                <Text style={styles.totalsValue}>
-                  ${safeAmount(receipt.taxAmount)}
-                </Text>
-              </View>
-            )}
-            <View style={[styles.totalsRow, styles.totalsRowGrand]}>
-              <Text style={styles.totalsLabelGrand}>Total</Text>
-              <Text style={styles.totalsValueGrand}>
-                ${safeAmount(receipt.totalAmount)}
-              </Text>
-            </View>
-          </View>
-        </Card>
-      )}
-
-      {/* Raw OCR text — useful for debugging "why didn't the parser
-          extract anything?". Opens a scrollable, share-friendly modal. */}
-      {receipt.rawText && (
-        <TouchableOpacity
-          onPress={() => setShowRawText(true)}
-          style={styles.rawTextLink}
-        >
-          <Ionicons
-            name="document-text-outline"
-            size={14}
-            color={theme.colors.textSecondary}
-          />
-          <Text style={styles.rawTextLinkText}>
-            Show raw OCR text ({receipt.rawText.length} chars)
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      <Modal
-        visible={showRawText}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowRawText(false)}
-      >
-        <View style={styles.modalRoot}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Raw OCR text</Text>
-            <Pressable onPress={() => setShowRawText(false)} hitSlop={10}>
-              <Ionicons name="close" size={26} color={theme.colors.textPrimary} />
-            </Pressable>
-          </View>
-          <ScrollView style={styles.modalScroll} contentContainerStyle={styles.modalContent}>
-            <Text selectable style={styles.modalText}>
-              {receipt.rawText ?? '(empty)'}
-            </Text>
-          </ScrollView>
-        </View>
-      </Modal>
-
       {/* Actions. "Save Changes" isn't in the design export's bottom
           section (which only shows Delete) but removing it would
           regress the ability to persist any edits made above, so it
@@ -1467,124 +1052,7 @@ function EditReceiptScreen() {
       <Pressable onPress={handleDelete} style={styles.deleteBtnOutlined}>
         <Text style={styles.deleteBtnOutlinedText}>Delete expense</Text>
       </Pressable>
-
-      <ItemEditModal
-        item={editingItem}
-        extraTags={categoryTags}
-        onAddCustomTag={(tag) => {
-          // Sync newly-coined item-level tags into the receipt's
-          // shared categoryTags list. This is what makes the new
-          // tag available to other items on the same receipt and
-          // keeps the per-receipt chip strip in agreement with the
-          // per-item picker.
-          setCategoryTags((prev) =>
-            prev.some((t) => t.toLowerCase() === tag.toLowerCase())
-              ? prev
-              : [...prev, tag],
-          );
-        }}
-        onClose={() => setEditingItem(null)}
-        onSave={(updated) => {
-          if (!receipt) return;
-          const next = items.map((it) => (it.id === updated.id ? updated : it));
-          setItems(next);
-          // Persist immediately so the dashboard, history, and category
-          // drilldown all reflect the new item category without forcing
-          // the user to also tap "Save Changes" on the receipt header.
-          replaceLineItems(receipt.id, next).catch(() => {
-            Alert.alert('Could not save', 'The item change was not persisted. Try again.');
-          });
-          setEditingItem(null);
-        }}
-        onDelete={(id) => {
-          if (!receipt) return;
-          const next = items.filter((it) => it.id !== id);
-          setItems(next);
-          replaceLineItems(receipt.id, next).catch(() => {
-            Alert.alert('Could not save', 'The item deletion was not persisted. Try again.');
-          });
-          setEditingItem(null);
-        }}
-      />
     </ScrollView>
-
-    {selectionMode && (
-      <View style={styles.bulkBar}>
-        <Text style={styles.bulkBarLabel}>
-          {selectedIds.size} item{selectedIds.size === 1 ? '' : 's'} selected
-        </Text>
-        <TouchableOpacity
-          onPress={() => setShowBulkCategoryPicker(true)}
-          style={styles.bulkBarPrimary}
-        >
-          <Ionicons name="pricetags-outline" size={16} color="#fff" />
-          <Text style={styles.bulkBarPrimaryText}>Set category</Text>
-        </TouchableOpacity>
-      </View>
-    )}
-
-    <Modal
-      visible={showBulkCategoryPicker}
-      animationType="slide"
-      transparent
-      onRequestClose={() => setShowBulkCategoryPicker(false)}
-    >
-      <Pressable
-        style={styles.bulkPickerBackdrop}
-        onPress={() => setShowBulkCategoryPicker(false)}
-      >
-        <Pressable style={styles.bulkPickerSheet} onPress={() => {}}>
-          <Text style={styles.bulkPickerTitle}>
-            Tag {selectedIds.size} item{selectedIds.size === 1 ? '' : 's'} as
-          </Text>
-          <View style={styles.bulkPickerGrid}>
-            {[
-              ...ALL_CATEGORIES,
-              // Surface receipt-level custom tags too so users can bulk-
-              // assign to a tag they've already added (e.g. "Gym",
-              // "Pet Food"). De-dupe against the standard set.
-              ...categoryTags.filter(
-                (t) => !(ALL_CATEGORIES as readonly string[]).includes(t),
-              ),
-            ].map((c) => (
-              <TouchableOpacity
-                key={c}
-                onPress={() => applyBulkCategory(c)}
-                style={styles.bulkPickerOption}
-              >
-                <TagChip tag={c} size="md" />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <Text style={styles.bulkPickerCustomLabel}>Or add a new tag</Text>
-          <View style={styles.bulkPickerCustomRow}>
-            <TextInput
-              value={bulkCustomTag}
-              onChangeText={setBulkCustomTag}
-              placeholder="Garden Supplies"
-              placeholderTextColor={theme.colors.textMuted}
-              autoCapitalize="words"
-              autoCorrect={false}
-              returnKeyType="done"
-              onSubmitEditing={submitBulkCustomTag}
-              maxLength={32}
-              style={styles.bulkPickerCustomInput}
-            />
-            <TouchableOpacity
-              onPress={submitBulkCustomTag}
-              disabled={!bulkCustomTag.trim()}
-              style={[
-                styles.bulkPickerCustomBtn,
-                !bulkCustomTag.trim() && { opacity: 0.4 },
-              ]}
-            >
-              <Text style={styles.bulkPickerCustomBtnText}>Apply</Text>
-            </TouchableOpacity>
-          </View>
-        </Pressable>
-      </Pressable>
-    </Modal>
     </View>
   );
 }

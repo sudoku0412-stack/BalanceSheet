@@ -2,8 +2,6 @@ import * as SecureStore from 'expo-secure-store';
 
 const Keys = {
   onboardingSeen: 'bs.onboarding.seen',
-  biometricEnabled: 'bs.biometric.enabled',
-  biometricAsked: 'bs.biometric.asked',
   anthropicApiKey: 'bs.anthropic.apiKey',
   geminiApiKey: 'bs.gemini.apiKey',
   aiClassifyEnabled: 'bs.aiClassify.enabled',
@@ -15,6 +13,7 @@ const Keys = {
   cloudMigrationDone: 'bs.cloud.migrationDone',
   categoryBudgets: 'bs.budgets.byCategory',
   budgetAlertsEnabled: 'bs.budgets.alertsEnabled',
+  currency: 'bs.currency',
 } as const;
 
 export async function getOnboardingSeen(): Promise<boolean> {
@@ -24,28 +23,6 @@ export async function getOnboardingSeen(): Promise<boolean> {
 
 export async function setOnboardingSeen(): Promise<void> {
   await SecureStore.setItemAsync(Keys.onboardingSeen, '1');
-}
-
-export async function getBiometricEnabled(): Promise<boolean> {
-  const v = await SecureStore.getItemAsync(Keys.biometricEnabled);
-  return v === '1';
-}
-
-export async function setBiometricEnabled(enabled: boolean): Promise<void> {
-  if (enabled) {
-    await SecureStore.setItemAsync(Keys.biometricEnabled, '1');
-  } else {
-    await SecureStore.deleteItemAsync(Keys.biometricEnabled);
-  }
-}
-
-export async function getBiometricAsked(): Promise<boolean> {
-  const v = await SecureStore.getItemAsync(Keys.biometricAsked);
-  return v === '1';
-}
-
-export async function setBiometricAsked(): Promise<void> {
-  await SecureStore.setItemAsync(Keys.biometricAsked, '1');
 }
 
 export async function getCloudMigrationDone(uid: string): Promise<boolean> {
@@ -117,6 +94,14 @@ export async function getBudgetAlertsEnabled(): Promise<boolean> {
 
 export async function setBudgetAlertsEnabled(enabled: boolean): Promise<void> {
   await SecureStore.setItemAsync(Keys.budgetAlertsEnabled, enabled ? '1' : '0');
+}
+
+export async function getCurrency(): Promise<string | null> {
+  return await SecureStore.getItemAsync(Keys.currency);
+}
+
+export async function setCurrency(code: string): Promise<void> {
+  await SecureStore.setItemAsync(Keys.currency, code);
 }
 
 export async function resetAllSecureStorage(): Promise<void> {
