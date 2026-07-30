@@ -11,11 +11,13 @@ import {
   ActivityIndicator,
   Pressable,
   Switch,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
+import { v4 as uuidv4 } from 'uuid';
 import {
   getReceiptById,
   updateReceipt,
@@ -35,7 +37,7 @@ import {
   CurrencyCode,
 } from '../../lib/currency';
 import { getCurrency } from '../../lib/secureStorage';
-import { Receipt, Category } from '../../types';
+import { Receipt, Category, LineItem } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES } from '../../constants/categories';
 import { Button } from '../../components/ui/Button';
@@ -411,6 +413,156 @@ function EditReceiptScreen() {
       fontSize: t.font.sm,
       marginTop: t.spacing.xs,
     },
+    // Invite hint shown in the receipt-level split picker when the
+    // household is solo (no other members yet) — same copy/style as
+    // app/(tabs)/scan.tsx's per-item split-picker hint, for visual
+    // consistency between the two screens.
+    inviteHintRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 10,
+      paddingVertical: 4,
+    },
+    inviteHintText: {
+      flex: 1,
+      color: t.colors.accent,
+      fontSize: t.font.xs,
+      fontFamily: t.fonts.body.regular,
+    },
+    // ── Line items (view/add/edit/remove) — mirrors app/(tabs)/scan.tsx's
+    // manual "Add Expense" items UI so an already-saved receipt gets the
+    // same per-item name/amount/category/split-with management. ──
+    itemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: t.colors.border,
+    },
+    itemRowTouchable: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1,
+      gap: 10,
+    },
+    itemCategoryDot: {
+      width: 10,
+      height: 10,
+      borderRadius: t.radius.full,
+    },
+    itemRowMain: {
+      flex: 1,
+      gap: 2,
+    },
+    itemName: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.md,
+      fontWeight: '600',
+    },
+    itemSplitLabel: {
+      color: t.colors.textMuted,
+      fontSize: t.font.xs,
+    },
+    itemAmount: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.md,
+      fontFamily: t.fonts.mono.regular,
+      fontWeight: '500',
+    },
+    itemRemoveBtn: {
+      paddingLeft: 4,
+    },
+    addItemRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingVertical: 10,
+    },
+    addItemText: {
+      color: t.colors.accent,
+      fontSize: t.font.sm,
+      fontWeight: '700',
+    },
+    // Category chips — same tappable colored-chip pattern as
+    // app/(tabs)/scan.tsx, used only inside the item add/edit modal
+    // (the receipt-level category field uses CategoryTagsPicker instead).
+    categoryChipsRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
+      marginTop: t.spacing.xs,
+    },
+    categoryChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 7,
+      borderRadius: t.radius.full,
+      borderWidth: 1.5,
+    },
+    categoryChipText: {
+      fontSize: t.font.sm,
+      fontWeight: '700',
+    },
+    // Item add/edit modal — centered card, same visual language as
+    // app/(tabs)/scan.tsx's item modal.
+    itemModalBackdrop: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.55)',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: t.spacing.md,
+    },
+    itemModalCard: {
+      width: '100%',
+      maxWidth: 400,
+      maxHeight: '85%',
+      backgroundColor: t.colors.surface,
+      borderRadius: t.radius.lg,
+      padding: t.spacing.md,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+    },
+    itemModalTitle: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.md,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginBottom: t.spacing.sm,
+    },
+    itemModalSpacer: {
+      marginTop: t.spacing.sm,
+    },
+    itemModalFooter: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: 8,
+      marginTop: t.spacing.md,
+    },
+    cancelBtn: {
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: t.radius.full,
+    },
+    cancelBtnText: {
+      color: t.colors.textSecondary,
+      fontSize: t.font.sm,
+      fontWeight: '700',
+    },
+    doneBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+      borderRadius: t.radius.full,
+      backgroundColor: t.colors.accent,
+    },
+    doneBtnText: {
+      color: '#fff',
+      fontSize: t.font.sm,
+      fontWeight: '700',
+    },
   }));
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
@@ -451,6 +603,19 @@ function EditReceiptScreen() {
   const [splitPercents, setSplitPercents] = useState<Record<string, string>>({});
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
 
+  // ── Line items (view/add/edit/remove) ──
+  // Mirrors app/(tabs)/scan.tsx's manual "Add Expense" items UI so a
+  // saved receipt gets the same per-item name/amount/category/split-with
+  // management. Initialized from receipt.lineItems on load (see the load
+  // effect below) and written back into the Receipt on save.
+  const [items, setItems] = useState<LineItem[]>([]);
+  const [itemModalVisible, setItemModalVisible] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [itemName, setItemName] = useState('');
+  const [itemAmount, setItemAmount] = useState('');
+  const [itemCategory, setItemCategory] = useState<Category>('Other');
+  const [itemSplit, setItemSplit] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (!id) return;
     let mounted = true;
@@ -467,6 +632,7 @@ function EditReceiptScreen() {
       setCategory(r.category);
       setCategoryTags(r.categoryTags ?? [r.category]);
       setNotes(r.notes ?? '');
+      setItems(r.lineItems ?? []);
 
       // Initialize split UI state from the persisted split field, if any.
       if (r.split?.enabled) {
@@ -624,6 +790,7 @@ function EditReceiptScreen() {
         categoryTags: categoryTags.length ? categoryTags : [primary],
         notes: notes.trim() || undefined,
         split,
+        lineItems: items,
       });
       notifySuccess();
       router.back();
@@ -726,7 +893,10 @@ function EditReceiptScreen() {
   // contradictory number.
   const fullParticipantIds = ['self', ...Array.from(selectedOtherUids)];
   const fullParticipantSet = new Set(fullParticipantIds);
-  const lineItemsForSplit = receipt.lineItems ?? [];
+  // Use the live, editable `items` state (not receipt.lineItems) so the
+  // split preview reflects in-progress item edits/adds/removes, not just
+  // what was last persisted.
+  const lineItemsForSplit = items;
   const usesPerItemSplit =
     splitEnabled &&
     lineItemsForSplit.some((li) => {
@@ -764,6 +934,92 @@ function EditReceiptScreen() {
     if (next.has(uid)) next.delete(uid);
     else next.add(uid);
     setSelectedOtherUids(next);
+  };
+
+  // ── Line-item add/edit/remove handlers ──
+  // 'self' + every other household member — the full set of ids a line
+  // item can be split across. Reuses this screen's existing
+  // householdMembers fetch rather than re-fetching.
+  const participantIds = ['self', ...otherMembers.map((m) => m.uid)];
+
+  const openAddItem = () => {
+    setEditingItemId(null);
+    setItemName('');
+    setItemAmount('');
+    setItemCategory('Other');
+    setItemSplit(new Set(participantIds));
+    setItemModalVisible(true);
+  };
+
+  const openEditItem = (item: LineItem) => {
+    setEditingItemId(item.id);
+    setItemName(item.name);
+    setItemAmount(item.amount ? String(item.amount) : '');
+    setItemCategory(((item.category as Category) || 'Other') as Category);
+    setItemSplit(
+      item.splitWith && item.splitWith.length
+        ? new Set(item.splitWith)
+        : new Set(participantIds),
+    );
+    setItemModalVisible(true);
+  };
+
+  const closeItemModal = () => setItemModalVisible(false);
+
+  const toggleItemSplit = (uid: string) => {
+    setItemSplit((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
+
+  const saveItemModal = () => {
+    const trimmedName = itemName.trim();
+    if (!trimmedName) {
+      Alert.alert('Missing name', 'Please enter an item name.');
+      return;
+    }
+    const amt = parseFloat(itemAmount.replace(',', '.'));
+    if (isNaN(amt) || amt < 0) {
+      Alert.alert('Invalid amount', 'Please enter a valid item amount.');
+      return;
+    }
+    // Solo household (no other members) — nothing to split, so this
+    // item's splitWith always stays undefined regardless of the (not
+    // rendered) picker state. Same "everyone selected → undefined"
+    // shorthand as app/(tabs)/scan.tsx.
+    const sharedByEveryone =
+      otherMembers.length === 0 || itemSplit.size >= participantIds.length;
+    const newItem: LineItem = {
+      id: editingItemId ?? uuidv4(),
+      name: trimmedName,
+      amount: amt,
+      category: itemCategory,
+      splitWith: sharedByEveryone ? undefined : Array.from(itemSplit),
+    };
+    setItems((prev) =>
+      editingItemId
+        ? prev.map((it) => (it.id === editingItemId ? newItem : it))
+        : [...prev, newItem],
+    );
+    setItemModalVisible(false);
+  };
+
+  const removeItem = (itemId: string) => {
+    setItems((prev) => prev.filter((it) => it.id !== itemId));
+  };
+
+  // "Split with N people" / "You only" summary shown on each item row.
+  const splitSummaryLabel = (item: LineItem): string => {
+    if (otherMembers.length === 0) return 'You only';
+    const resolvedCount =
+      item.splitWith && item.splitWith.length
+        ? item.splitWith.length
+        : participantIds.length;
+    if (resolvedCount <= 1) return 'You only';
+    return `Split with ${resolvedCount} people`;
   };
 
   return (
@@ -894,6 +1150,210 @@ function EditReceiptScreen() {
         <CategoryTagsPicker tags={categoryTags} onChange={setCategoryTags} />
       </Card>
 
+      {/* Items — view/add/edit/remove line items, same UX as Add Expense
+          (app/(tabs)/scan.tsx). Each item can carry its own splitWith,
+          which the Split section below factors into the per-person math
+          (see usesPerItemSplit / lineItemsForSplit above). */}
+      <Card style={styles.fieldCard}>
+        <Text style={styles.sectionLabel}>
+          ITEMS{items.length ? ` (${items.length})` : ''}
+        </Text>
+        {items.map((item) => (
+          <View key={item.id} style={styles.itemRow}>
+            <TouchableOpacity
+              style={styles.itemRowTouchable}
+              onPress={() => openEditItem(item)}
+              activeOpacity={0.7}
+            >
+              <View
+                style={[
+                  styles.itemCategoryDot,
+                  {
+                    backgroundColor:
+                      theme.colors.category[((item.category as Category) || 'Other') as Category],
+                  },
+                ]}
+              />
+              <View style={styles.itemRowMain}>
+                <Text style={styles.itemName} numberOfLines={1}>
+                  {item.name}
+                </Text>
+                <Text style={styles.itemSplitLabel}>{splitSummaryLabel(item)}</Text>
+              </View>
+              <Text style={styles.itemAmount}>
+                {formatCurrency(item.amount, currencyCode)}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => removeItem(item.id)}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.itemRemoveBtn}
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${item.name}`}
+            >
+              <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+        ))}
+        <TouchableOpacity style={styles.addItemRow} onPress={openAddItem} activeOpacity={0.7}>
+          <Ionicons name="add-circle-outline" size={18} color={theme.colors.accent} />
+          <Text style={styles.addItemText}>Add item</Text>
+        </TouchableOpacity>
+      </Card>
+
+      {/* Add/edit line-item modal */}
+      <Modal
+        visible={itemModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeItemModal}
+      >
+        <Pressable style={styles.itemModalBackdrop} onPress={closeItemModal}>
+          <Pressable style={styles.itemModalCard} onPress={() => {}}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.itemModalTitle}>
+                {editingItemId ? 'Edit Item' : 'Add Item'}
+              </Text>
+
+              <Text style={styles.fieldLabel}>Name</Text>
+              <TextInput
+                style={styles.input}
+                value={itemName}
+                onChangeText={setItemName}
+                placeholder="e.g. Milk"
+                placeholderTextColor={theme.colors.textMuted}
+                autoCorrect={false}
+              />
+
+              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>Amount</Text>
+              <TextInput
+                style={styles.input}
+                value={itemAmount}
+                onChangeText={setItemAmount}
+                placeholder="0.00"
+                placeholderTextColor={theme.colors.textMuted}
+                keyboardType="decimal-pad"
+              />
+
+              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>Category</Text>
+              <View style={styles.categoryChipsRow}>
+                {ALL_CATEGORIES.map((cat) => {
+                  const active = itemCategory === cat;
+                  const color = theme.colors.category[cat];
+                  return (
+                    <TouchableOpacity
+                      key={cat}
+                      onPress={() => setItemCategory(cat)}
+                      activeOpacity={0.7}
+                      style={[
+                        styles.categoryChip,
+                        {
+                          backgroundColor: active ? color : 'transparent',
+                          borderColor: color,
+                        },
+                      ]}
+                    >
+                      {active && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      <Text
+                        style={[
+                          styles.categoryChipText,
+                          { color: active ? '#fff' : color },
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {otherMembers.length === 0 && (
+                <TouchableOpacity
+                  style={styles.inviteHintRow}
+                  onPress={() => router.push('/settings')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="person-add-outline" size={14} color={theme.colors.accent} />
+                  <Text style={styles.inviteHintText}>
+                    Nobody to split with yet — invite someone in Settings → Household
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {otherMembers.length > 0 && (
+                <>
+                  <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>
+                    Split with
+                  </Text>
+                  <View style={[styles.avatarRow, { marginTop: 8 }]}>
+                    <TouchableOpacity
+                      style={styles.avatarWrap}
+                      onPress={() => toggleItemSplit('self')}
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        style={[
+                          styles.avatarCircle,
+                          {
+                            borderColor: itemSplit.has('self')
+                              ? theme.colors.accent
+                              : 'transparent',
+                            opacity: itemSplit.has('self') ? 1 : 0.35,
+                          },
+                        ]}
+                      >
+                        <Text style={styles.avatarInitial}>Y</Text>
+                      </View>
+                      <Text style={styles.avatarLabel} numberOfLines={1}>
+                        You
+                      </Text>
+                    </TouchableOpacity>
+                    {otherMembers.map((m) => {
+                      const label = memberLabel(m);
+                      const active = itemSplit.has(m.uid);
+                      return (
+                        <TouchableOpacity
+                          key={m.uid}
+                          style={styles.avatarWrap}
+                          onPress={() => toggleItemSplit(m.uid)}
+                          activeOpacity={0.7}
+                        >
+                          <View
+                            style={[
+                              styles.avatarCircle,
+                              {
+                                borderColor: active ? theme.colors.accent : 'transparent',
+                                opacity: active ? 1 : 0.35,
+                              },
+                            ]}
+                          >
+                            <Text style={styles.avatarInitial}>{initialFor(label)}</Text>
+                          </View>
+                          <Text style={styles.avatarLabel} numberOfLines={1}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </>
+              )}
+
+              <View style={styles.itemModalFooter}>
+                <TouchableOpacity onPress={closeItemModal} style={styles.cancelBtn}>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={saveItemModal} style={styles.doneBtn}>
+                  <Text style={styles.doneBtnText}>
+                    {editingItemId ? 'Save' : 'Add'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Split section (Splitwise-style). Toggle reveals participant
           picker + Equal/%/$ method switch. Persists on save via the
           `split` field on Receipt (types/index.ts). */}
@@ -954,6 +1414,19 @@ function EditReceiptScreen() {
               {/* No members yet: household may still be loading, or this
                   is a solo household. Not fabricated — just "You". */}
             </View>
+
+            {otherMembers.length === 0 && (
+              <TouchableOpacity
+                style={styles.inviteHintRow}
+                onPress={() => router.push('/settings')}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="person-add-outline" size={14} color={theme.colors.accent} />
+                <Text style={styles.inviteHintText}>
+                  Nobody to split with yet — invite someone in Settings → Household
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {/* Method switch — 3-way segmented control */}
             <View style={styles.segmented}>

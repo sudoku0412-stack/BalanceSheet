@@ -466,6 +466,19 @@ export default function ScanScreen() {
       fontWeight: '700',
       fontFamily: t.fonts.body.medium,
     },
+    inviteHintRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: 10,
+      paddingVertical: 4,
+    },
+    inviteHintText: {
+      flex: 1,
+      color: t.colors.accent,
+      fontSize: t.font.xs,
+      fontFamily: t.fonts.body.regular,
+    },
     // Item add/edit modal — centered card, same visual language as
     // components/ui/DatePickerModal.tsx.
     itemModalBackdrop: {
@@ -1632,6 +1645,19 @@ export default function ScanScreen() {
                   );
                 })}
               </View>
+
+              {otherMembers.length === 0 && (
+                <TouchableOpacity
+                  style={styles.inviteHintRow}
+                  onPress={() => router.push('/settings')}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="person-add-outline" size={14} color={theme.colors.accent} />
+                  <Text style={styles.inviteHintText}>
+                    Nobody to split with yet — invite someone in Settings → Household
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               {otherMembers.length > 0 && (
                 <>

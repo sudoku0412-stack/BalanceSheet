@@ -290,7 +290,7 @@ export default function HistoryScreen() {
         <Text style={styles.headerTitle}>Expenses</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={() => router.push('/(tabs)/scan')}
+          onPress={() => router.push('/(tabs)/scan?mode=manual')}
           accessibilityRole="button"
           accessibilityLabel="Add expense"
         >
