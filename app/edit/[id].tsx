@@ -831,7 +831,9 @@ function EditReceiptScreen() {
   if (loading) {
     return (
       <View style={[styles.screen, styles.centered]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+        {/* NOT theme.colors.primary — dark navy on the dark-mode
+            background is invisible; accent has real contrast in both themes. */}
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }

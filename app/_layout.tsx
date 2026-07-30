@@ -112,7 +112,9 @@ function RootStack() {
           justifyContent: 'center',
         }}
       >
-        <ActivityIndicator color={theme.colors.primary} size="large" />
+        {/* NOT theme.colors.primary — dark navy on the near-black dark-mode
+            background is invisible; accent has real contrast in both themes. */}
+        <ActivityIndicator color={theme.colors.accent} size="large" />
       </View>
     );
   }

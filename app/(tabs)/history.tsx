@@ -76,6 +76,10 @@ export default function HistoryScreen() {
       backgroundColor: t.colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
+      // Dark-navy fill blends into the dark-mode page; a light-toned
+      // border in dark mode keeps the circle readable as a button.
+      borderWidth: t.isDark ? 1 : 0,
+      borderColor: t.isDark ? t.colors.borderLight : 'transparent',
     },
     searchContainer: {
       flexDirection: 'row',
@@ -116,7 +120,9 @@ export default function HistoryScreen() {
     },
     chipActive: {
       backgroundColor: t.colors.primary,
-      borderColor: t.colors.primary,
+      // In dark mode, override the border so the chip's shape stays
+      // visible against the dark-mode page instead of blending in.
+      borderColor: t.isDark ? t.colors.borderLight : t.colors.primary,
     },
     chipLabel: {
       fontFamily: t.fonts.display.bold,
@@ -368,7 +374,7 @@ export default function HistoryScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={theme.colors.primary}
+              tintColor={theme.colors.accent}
             />
           }
         >

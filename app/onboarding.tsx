@@ -272,6 +272,10 @@ const makeStyles = (t: Theme) => ({
   dotActive: {
     width: 6,
     backgroundColor: t.colors.primary,
+    // Dark-navy fill blends into the dark-mode page; a light-toned
+    // border in dark mode keeps the active dot visible as its own shape.
+    borderWidth: t.isDark ? 1 : 0,
+    borderColor: t.isDark ? t.colors.borderLight : 'transparent',
   },
   cta: {
     paddingHorizontal: t.spacing.xl,

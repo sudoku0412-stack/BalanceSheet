@@ -38,6 +38,15 @@ export function Button({
     },
     primary: {
       backgroundColor: t.colors.primary,
+      // t.colors.primary is dark navy in BOTH themes. Against a light
+      // page it reads as a proper filled button, but against dark
+      // mode's near-black page/surface colors the fill blends into the
+      // background — only the white label floats, with no visible
+      // button shape around it. Add a subtle light-toned border in dark
+      // mode so the shape reads as a distinct surface; leave light mode
+      // untouched (borderless, as designed).
+      borderWidth: t.isDark ? 1 : 0,
+      borderColor: t.isDark ? t.colors.borderLight : 'transparent',
     },
     secondary: {
       backgroundColor: t.colors.surface,

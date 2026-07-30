@@ -88,6 +88,10 @@ function useSettingsStyles() {
       backgroundColor: theme.colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
+      // Dark-navy fill blends into the dark-mode card; a light-toned
+      // border in dark mode keeps the avatar readable as its own shape.
+      borderWidth: theme.isDark ? 1 : 0,
+      borderColor: theme.isDark ? theme.colors.borderLight : 'transparent',
     },
     avatarInitials: {
       color: '#FFFFFF',
@@ -130,7 +134,9 @@ function useSettingsStyles() {
     },
     currencyPillActive: {
       backgroundColor: theme.colors.primary,
-      borderColor: theme.colors.primary,
+      // In dark mode, override the border so the pill's shape stays
+      // visible against the dark-mode page instead of blending in.
+      borderColor: theme.isDark ? theme.colors.borderLight : theme.colors.primary,
     },
     currencyPillText: {
       color: theme.colors.textPrimary,
@@ -226,6 +232,10 @@ function useSettingsStyles() {
       backgroundColor: theme.colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
+      // Dark-navy fill blends into the dark-mode row; a light-toned
+      // border in dark mode keeps the avatar readable as its own shape.
+      borderWidth: theme.isDark ? 1 : 0,
+      borderColor: theme.isDark ? theme.colors.borderLight : 'transparent',
     },
     memberAvatarInitials: {
       color: '#FFFFFF',
@@ -277,6 +287,10 @@ function useSettingsStyles() {
       paddingVertical: 10,
       alignItems: 'center',
       justifyContent: 'center',
+      // Dark-navy fill blends into the dark-mode row; a light-toned
+      // border in dark mode keeps the button readable as its own shape.
+      borderWidth: theme.isDark ? 1 : 0,
+      borderColor: theme.isDark ? theme.colors.borderLight : 'transparent',
     },
     inviteSendBtnDisabled: {
       opacity: 0.5,

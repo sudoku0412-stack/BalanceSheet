@@ -426,6 +426,10 @@ const makeStyles = (t: Theme) => ({
   },
   tabBtnActive: {
     backgroundColor: t.colors.primary,
+    // Dark-navy fill blends into the dark-mode "tabs" pill container;
+    // a light-toned border in dark mode keeps the active tab readable.
+    borderWidth: t.isDark ? 1 : 0,
+    borderColor: t.isDark ? t.colors.borderLight : 'transparent',
   },
   tabBtnText: {
     color: t.colors.textSecondary,

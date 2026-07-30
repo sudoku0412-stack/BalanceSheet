@@ -26,7 +26,11 @@ export default function TabLayout() {
       marginBottom: 26,
       backgroundColor: t.colors.primary,
       borderWidth: 4,
-      borderColor: t.colors.surface,
+      // In light mode this border matches the tab bar surface, cutting
+      // the FAB out as a notch. In dark mode surface/primary are both
+      // near-black, so the notch disappears — use borderLight instead
+      // so the FAB still reads as a distinct raised shape.
+      borderColor: t.isDark ? t.colors.borderLight : t.colors.surface,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: 0.4,
@@ -38,7 +42,10 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarStyle: styles.tabBar,
-        tabBarActiveTintColor: theme.colors.primary,
+        // NOT theme.colors.primary — dark navy active-tab icon/label on
+        // the dark-mode tab bar (also near-black) is effectively
+        // invisible; accent has real contrast in both themes.
+        tabBarActiveTintColor: theme.colors.accent,
         tabBarInactiveTintColor: theme.colors.textMuted,
         tabBarLabelStyle: styles.tabLabel,
         headerStyle: { backgroundColor: theme.colors.surface },

@@ -208,7 +208,7 @@ function ReportsScreen() {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={theme.colors.primary}
+              tintColor={theme.colors.accent}
             />
           }
         >
@@ -226,7 +226,9 @@ function ReportsScreen() {
                   );
                   const color = standard
                     ? theme.colors.category[c.category as Category]
-                    : theme.colors.primary;
+                    // NOT theme.colors.primary — dark navy is invisible as a
+                    // legend-dot fill against dark mode's card background.
+                    : theme.colors.accent;
                   return (
                     <View key={c.category} style={styles.row}>
                       <View style={[styles.categoryDot, { backgroundColor: color }]} />
@@ -360,7 +362,9 @@ function CategoryDonut({
           );
           const color = standard
             ? theme.colors.category[c.category as Category]
-            : theme.colors.primary;
+            // NOT theme.colors.primary — dark navy would be invisible as a
+            // donut-segment stroke against dark mode's card background.
+            : theme.colors.accent;
           const frac = c.total / total;
           const dash = Math.max(0, frac * circumference);
           const dashOffset = -offset;
