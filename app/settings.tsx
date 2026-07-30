@@ -28,6 +28,7 @@ import { getAllReceipts, getCurrentHouseholdId, setCurrentHouseholdId } from '..
 import {
   getHouseholdMembers,
   inviteUserToHousehold,
+  isCloudSyncAvailable,
   leaveCurrentHousehold,
   type HouseholdMember,
 } from '../lib/cloudSync';
@@ -285,6 +286,19 @@ function useSettingsStyles() {
       fontSize: theme.font.sm,
       fontFamily: theme.fonts.display.bold,
     },
+    inviteHint: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.xs,
+      fontFamily: theme.fonts.body.regular,
+      marginTop: 6,
+      marginBottom: 4,
+    },
+    cloudSyncWarning: {
+      color: theme.colors.error,
+      fontSize: theme.font.xs,
+      fontFamily: theme.fonts.body.regular,
+      marginBottom: theme.spacing.sm,
+    },
     leaveHouseholdBtn: {
       alignItems: 'center',
       justifyContent: 'center',
@@ -323,6 +337,13 @@ export default function SettingsScreen() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitingSending, setInviteSending] = useState(false);
   const [leavingHousehold, setLeavingHousehold] = useState(false);
+  // Local-only echo of the last invite this device successfully sent —
+  // NOT a query of pending invites (Firestore only tracks one pending
+  // invite per invitee email, not per-sender). Exists purely so "Send"
+  // gives visible confirmation beyond a toast that can be missed,
+  // since sending an invite never changes `members` (the invitee only
+  // joins once THEY sign in and accept).
+  const [lastInvitedEmail, setLastInvitedEmail] = useState<string | null>(null);
 
   const loadMembers = React.useCallback(async () => {
     const householdId = getCurrentHouseholdId();
@@ -354,6 +375,7 @@ export default function SettingsScreen() {
       });
       if (res.ok) {
         toast.show({ kind: 'success', message: 'Invite sent' });
+        setLastInvitedEmail(email);
         setInviteEmail('');
       } else {
         toast.show({ kind: 'error', message: res.reason || "Couldn't send invite" });
@@ -553,6 +575,14 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title="Household">
+          {!isCloudSyncAvailable() && (
+            <Text style={styles.cloudSyncWarning}>
+              Cloud sync isn't available on this install, so household members
+              and split can't work right now. This app may need a fresh
+              build/update — try updating the app, and if that doesn't help,
+              let the developer know.
+            </Text>
+          )}
           {(members ?? [{ uid: user?.uid ?? 'you', email: user?.email ?? null, displayName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null, role: 'owner' as const, isYou: true }]).map(
             (m) => (
               <View key={m.uid} style={styles.memberRow}>
@@ -592,6 +622,12 @@ export default function SettingsScreen() {
               <Text style={styles.inviteSendText}>{invitingSending ? 'Sending…' : 'Send'}</Text>
             </Pressable>
           </View>
+          {lastInvitedEmail && (
+            <Text style={styles.inviteHint}>
+              Invite sent to {lastInvitedEmail} — they'll show up here once
+              they sign in with that email and accept.
+            </Text>
+          )}
 
           {members && members.length > 1 ? (
             <Pressable
