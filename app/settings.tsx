@@ -64,7 +64,7 @@ function useSettingsStyles() {
     screenTitle: {
       color: theme.colors.textPrimary,
       fontSize: theme.font.xxxl,
-      fontWeight: '800',
+      fontFamily: theme.fonts.display.extraBold,
       marginBottom: theme.spacing.lg,
     },
     section: {
@@ -73,7 +73,7 @@ function useSettingsStyles() {
     sectionTitle: {
       color: theme.colors.textSecondary,
       fontSize: theme.font.xs,
-      fontWeight: '700',
+      fontFamily: theme.fonts.display.bold,
       letterSpacing: 1,
       textTransform: 'uppercase',
       marginBottom: theme.spacing.sm,
@@ -98,11 +98,12 @@ function useSettingsStyles() {
     rowLabel: {
       color: theme.colors.textSecondary,
       fontSize: theme.font.sm,
+      fontFamily: theme.fonts.body.regular,
     },
     rowValue: {
       color: theme.colors.textPrimary,
       fontSize: theme.font.sm,
-      fontWeight: '600',
+      fontFamily: theme.fonts.body.medium,
       maxWidth: '60%',
     },
     linkRow: {
@@ -113,9 +114,9 @@ function useSettingsStyles() {
       paddingVertical: 14,
     },
     linkText: {
-      color: theme.colors.primary,
+      color: theme.colors.accent,
       fontSize: theme.font.md,
-      fontWeight: '600',
+      fontFamily: theme.fonts.display.bold,
     },
     profileHeader: {
       flexDirection: 'row',
@@ -126,25 +127,31 @@ function useSettingsStyles() {
       borderBottomColor: theme.colors.border,
     },
     avatar: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
+      width: 48,
+      height: 48,
+      borderRadius: theme.radius.full,
       borderWidth: 1,
       borderColor: theme.colors.border,
     },
     avatarPlaceholder: {
-      backgroundColor: theme.colors.background,
+      backgroundColor: theme.colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
+    },
+    avatarInitials: {
+      color: '#FFFFFF',
+      fontSize: theme.font.md,
+      fontFamily: theme.fonts.display.bold,
     },
     profileName: {
       color: theme.colors.textPrimary,
       fontSize: theme.font.lg,
-      fontWeight: '700',
+      fontFamily: theme.fonts.display.bold,
     },
     profileMeta: {
       color: theme.colors.textMuted,
       fontSize: theme.font.sm,
+      fontFamily: theme.fonts.body.regular,
       marginTop: 2,
     },
     signOutTextBtn: {
@@ -155,7 +162,7 @@ function useSettingsStyles() {
     signOutTextLabel: {
       color: theme.colors.error,
       fontSize: theme.font.md,
-      fontWeight: '700',
+      fontFamily: theme.fonts.display.bold,
     },
     dangerZone: {
       marginTop: theme.spacing.md,
@@ -175,11 +182,12 @@ function useSettingsStyles() {
     deleteText: {
       color: theme.colors.error,
       fontSize: theme.font.md,
-      fontWeight: '700',
+      fontFamily: theme.fonts.display.bold,
     },
     deleteHelp: {
       color: theme.colors.textMuted,
       fontSize: theme.font.xs,
+      fontFamily: theme.fonts.body.regular,
       textAlign: 'center',
       marginTop: theme.spacing.sm,
       paddingHorizontal: theme.spacing.md,
@@ -194,7 +202,7 @@ function useSettingsStyles() {
     keyLabel: {
       color: theme.colors.textSecondary,
       fontSize: theme.font.xs,
-      fontWeight: '600',
+      fontFamily: theme.fonts.display.medium,
       marginBottom: 6,
     },
     keyRow: {
@@ -211,7 +219,7 @@ function useSettingsStyles() {
       borderWidth: 1,
       borderColor: theme.colors.border,
       fontSize: theme.font.sm,
-      fontFamily: 'monospace',
+      fontFamily: theme.fonts.mono.regular,
     },
     keyButtons: {
       flexDirection: 'row',
@@ -233,7 +241,7 @@ function useSettingsStyles() {
     keyButtonText: {
       color: '#fff',
       fontSize: theme.font.sm,
-      fontWeight: '700',
+      fontFamily: theme.fonts.display.bold,
     },
     keyButtonGhostText: {
       color: theme.colors.textPrimary,
@@ -241,6 +249,7 @@ function useSettingsStyles() {
     keyHelp: {
       color: theme.colors.textMuted,
       fontSize: theme.font.xs,
+      fontFamily: theme.fonts.body.regular,
       lineHeight: 16,
       marginTop: theme.spacing.sm,
     },
@@ -256,20 +265,20 @@ function useSettingsStyles() {
     categoryDot: {
       width: 10,
       height: 10,
-      borderRadius: 5,
+      borderRadius: theme.radius.full,
     },
     categoryName: {
       flex: 1,
       color: theme.colors.textPrimary,
       fontSize: theme.font.md,
-      fontWeight: '600',
+      fontFamily: theme.fonts.display.bold,
     },
     budgetInputBox: {
       flexDirection: 'row',
       alignItems: 'center',
       borderWidth: 1,
       borderColor: theme.colors.border,
-      borderRadius: theme.radius.sm,
+      borderRadius: theme.radius.full,
       paddingHorizontal: theme.spacing.sm,
       paddingVertical: 6,
       backgroundColor: theme.colors.background,
@@ -277,11 +286,13 @@ function useSettingsStyles() {
     budgetCurrencyPrefix: {
       color: theme.colors.textMuted,
       fontSize: theme.font.sm,
+      fontFamily: theme.fonts.mono.regular,
       marginRight: 2,
     },
     budgetInput: {
       color: theme.colors.textPrimary,
       fontSize: theme.font.sm,
+      fontFamily: theme.fonts.mono.medium,
       minWidth: 44,
       padding: 0,
       textAlign: 'right',
@@ -296,12 +307,19 @@ function useSettingsStyles() {
     alertLabel: {
       color: theme.colors.textPrimary,
       fontSize: theme.font.md,
-      fontWeight: '600',
+      fontFamily: theme.fonts.display.bold,
     },
     alertCaption: {
       color: theme.colors.textMuted,
       fontSize: theme.font.xs,
+      fontFamily: theme.fonts.body.regular,
       marginTop: 2,
+    },
+    budgetAlertsSwitch: {
+      // Native Switch has no width/height props — the design spec calls
+      // for a 40x24px pill, close to the default ~51x31 control, so we
+      // scale it down instead of reimplementing a custom pill toggle.
+      transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
     },
   }));
 }
@@ -584,6 +602,13 @@ export default function SettingsScreen() {
   const identity =
     user?.email ?? user?.phoneNumber ?? user?.displayName ?? 'Signed in';
 
+  // Initials shown on the navy avatar circle when the user hasn't set a
+  // profile photo — e.g. "John Doe" -> "JD". Falls back to a generic
+  // person glyph if there's no name to derive initials from.
+  const initials = profile
+    ? `${profile.firstName?.trim()?.[0] ?? ''}${profile.lastName?.trim()?.[0] ?? ''}`.toUpperCase()
+    : '';
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -597,11 +622,11 @@ export default function SettingsScreen() {
                   <Image source={{ uri: profile.photoUri }} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                    <Ionicons
-                      name="person-outline"
-                      size={28}
-                      color={theme.colors.textMuted}
-                    />
+                    {initials ? (
+                      <Text style={styles.avatarInitials}>{initials}</Text>
+                    ) : (
+                      <Ionicons name="person-outline" size={22} color="#FFFFFF" />
+                    )}
                   </View>
                 )}
                 <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
@@ -615,13 +640,13 @@ export default function SettingsScreen() {
               </View>
               <Pressable onPress={editProfile} style={styles.linkRow}>
                 <Text style={styles.linkText}>Edit profile</Text>
-                <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+                <Ionicons name="chevron-forward" size={16} color={theme.colors.accent} />
               </Pressable>
             </>
           ) : (
             <Pressable onPress={editProfile} style={styles.linkRow}>
               <Text style={styles.linkText}>Add profile details</Text>
-              <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+              <Ionicons name="chevron-forward" size={16} color={theme.colors.accent} />
             </Pressable>
           )}
         </Section>
@@ -665,8 +690,9 @@ export default function SettingsScreen() {
             <Switch
               value={budgetAlertsEnabled}
               onValueChange={toggleBudgetAlerts}
-              trackColor={{ false: theme.colors.border, true: theme.colors.primaryFaint }}
-              thumbColor={budgetAlertsEnabled ? theme.colors.primary : theme.colors.textMuted}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+              thumbColor="#FFFFFF"
+              style={styles.budgetAlertsSwitch}
             />
           </View>
         </Section>
@@ -999,14 +1025,26 @@ function FamilyPanel() {
 
   if (loading) {
     return (
-      <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.sm }}>
+      <Text
+        style={{
+          color: theme.colors.textMuted,
+          fontSize: theme.font.sm,
+          fontFamily: theme.fonts.body.regular,
+        }}
+      >
         Loading household…
       </Text>
     );
   }
   if (!members) {
     return (
-      <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.sm }}>
+      <Text
+        style={{
+          color: theme.colors.textMuted,
+          fontSize: theme.font.sm,
+          fontFamily: theme.fonts.body.regular,
+        }}
+      >
         Cloud sync isn't ready yet — check back in a moment, or look at the debug panel below.
       </Text>
     );
@@ -1052,7 +1090,7 @@ function FamilyPanel() {
                 style={{
                   color: theme.colors.textPrimary,
                   fontSize: theme.font.md,
-                  fontWeight: '600',
+                  fontFamily: theme.fonts.display.bold,
                 }}
                 numberOfLines={1}
               >
@@ -1061,7 +1099,11 @@ function FamilyPanel() {
               </Text>
               {subtitle ? (
                 <Text
-                  style={{ color: theme.colors.textMuted, fontSize: theme.font.xs }}
+                  style={{
+                    color: theme.colors.textMuted,
+                    fontSize: theme.font.xs,
+                    fontFamily: theme.fonts.body.regular,
+                  }}
                   numberOfLines={1}
                 >
                   {subtitle}
@@ -1073,7 +1115,7 @@ function FamilyPanel() {
                 style={{
                   color: theme.colors.primary,
                   fontSize: theme.font.xs,
-                  fontWeight: '600',
+                  fontFamily: theme.fonts.display.bold,
                 }}
               >
                 Owner
@@ -1130,7 +1172,7 @@ function FamilyPanel() {
           style={styles.linkRow}
         >
           <Text style={styles.linkText}>+ Invite family member</Text>
-          <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+          <Ionicons name="chevron-forward" size={16} color={theme.colors.accent} />
         </Pressable>
       )}
 
@@ -1225,6 +1267,7 @@ function CloudSyncDiagnosticsPanel() {
         style={{
           color: theme.colors.textMuted,
           fontSize: theme.font.xs,
+          fontFamily: theme.fonts.body.regular,
           marginTop: 6,
           fontStyle: 'italic',
         }}

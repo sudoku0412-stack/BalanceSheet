@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,49 +8,52 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { format, isToday, isYesterday } from 'date-fns';
+import { isToday, isYesterday, format } from 'date-fns';
 import { getAllReceipts, deleteReceipt, searchReceipts } from '../../lib/database';
 import { Receipt, Category } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
-import { ALL_CATEGORIES } from '../../constants/categories';
+import { ALL_CATEGORIES, CATEGORY_ICONS } from '../../constants/categories';
+import { ReceiptCard } from '../../components/receipt/ReceiptCard';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ReceiptListSkeleton } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
-import { tapMedium } from '../../lib/haptics';
+import { notifySuccess, tapMedium } from '../../lib/haptics';
 import { receiptMatchesCategory } from '../../lib/receiptFilter';
 
 const FILTER_ALL = 'All' as const;
 type Filter = typeof FILTER_ALL | Category;
 
-/** "Today" / "Yesterday" / "Jul 27" — used for both the row's secondary
- *  line and (uppercased) the section header above each day's group. */
-function relativeLabel(date: Date): string {
-  if (isToday(date)) return 'Today';
-  if (isYesterday(date)) return 'Yesterday';
-  return format(date, 'MMM d');
+/** "Today" / "Yesterday" / "Jul 27" — the date-group label used to
+ *  section the expense list, per the design spec's grouped-list layout. */
+function dateGroupLabel(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (isToday(d)) return 'Today';
+  if (isYesterday(d)) return 'Yesterday';
+  return format(d, 'MMM d');
 }
 
-/** Groups receipts (already date-DESC sorted by the DB query) into
- *  contiguous day sections for the SectionList. */
-function groupByDay(receipts: Receipt[]): { title: string; data: Receipt[] }[] {
-  const order: string[] = [];
-  const map = new Map<string, Receipt[]>();
-  for (const r of receipts) {
-    const title = relativeLabel(new Date(r.date)).toUpperCase();
-    if (!map.has(title)) {
-      map.set(title, []);
-      order.push(title);
+/** Groups an already date-sorted (DESC) receipt list into consecutive
+ *  { title, data } sections keyed by date-group label. */
+function groupByDate(items: Receipt[]): { title: string; data: Receipt[] }[] {
+  const sections: { title: string; data: Receipt[] }[] = [];
+  for (const receipt of items) {
+    const label = dateGroupLabel(receipt.date);
+    const current = sections[sections.length - 1];
+    if (current && current.title === label) {
+      current.data.push(receipt);
+    } else {
+      sections.push({ title: label, data: [receipt] });
     }
-    map.get(title)!.push(r);
   }
-  return order.map((title) => ({ title, data: map.get(title)! }));
+  return sections;
 }
 
 export default function HistoryScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const navigation = useNavigation();
   const styles = useStyles((t) => ({
     screen: {
       flex: 1,
@@ -61,19 +64,19 @@ export default function HistoryScreen() {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: t.spacing.md,
-      paddingTop: t.spacing.sm,
-      paddingBottom: t.spacing.xs,
+      paddingTop: t.spacing.md,
+      paddingBottom: t.spacing.sm,
     },
-    title: {
+    headerTitle: {
+      fontFamily: t.fonts.display.extraBold,
+      fontSize: t.font.xxl,
       color: t.colors.textPrimary,
-      fontSize: t.font.xxxl,
-      fontWeight: '800',
     },
     addButton: {
       width: 36,
       height: 36,
       borderRadius: t.radius.full,
-      backgroundColor: t.colors.surfaceHigh,
+      backgroundColor: t.colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -81,11 +84,10 @@ export default function HistoryScreen() {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 8,
+      height: 40,
       marginHorizontal: t.spacing.md,
-      marginTop: t.spacing.sm,
-      marginBottom: t.spacing.md,
+      marginBottom: t.spacing.sm,
       paddingHorizontal: 12,
-      paddingVertical: 10,
       backgroundColor: t.colors.surface,
       borderRadius: t.radius.lg,
       borderWidth: 1,
@@ -94,34 +96,39 @@ export default function HistoryScreen() {
     searchInput: {
       flex: 1,
       color: t.colors.textPrimary,
+      fontFamily: t.fonts.body.regular,
       fontSize: t.font.md,
     },
     filterScroll: {
       paddingHorizontal: t.spacing.md,
-      paddingBottom: t.spacing.md,
+      paddingBottom: t.spacing.sm,
       gap: 8,
     },
     chip: {
-      paddingHorizontal: 14,
-      paddingVertical: 8,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
       borderRadius: t.radius.full,
-      backgroundColor: t.colors.surface,
+      backgroundColor: 'transparent',
       borderWidth: 1,
       borderColor: t.colors.border,
-      marginRight: 8,
     },
     chipActive: {
       backgroundColor: t.colors.primary,
       borderColor: t.colors.primary,
     },
+    chipIcon: {
+      fontSize: 12,
+    },
     chipLabel: {
-      color: t.colors.textSecondary,
+      fontFamily: t.fonts.display.bold,
       fontSize: t.font.sm,
-      fontWeight: '600',
+      color: t.colors.textSecondary,
     },
     chipLabelActive: {
-      color: t.colors.textPrimary,
-      fontWeight: '700',
+      color: '#FFFFFF',
     },
     summaryRow: {
       flexDirection: 'row',
@@ -131,26 +138,28 @@ export default function HistoryScreen() {
     },
     summaryCount: {
       color: t.colors.textMuted,
+      fontFamily: t.fonts.body.regular,
       fontSize: t.font.sm,
     },
     summaryTotal: {
       color: t.colors.primary,
+      fontFamily: t.fonts.mono.medium,
       fontSize: t.font.sm,
-      fontWeight: '700',
     },
     listContent: {
       paddingHorizontal: t.spacing.md,
       paddingBottom: 32,
+      flexGrow: 1,
     },
     sectionHeader: {
-      color: t.colors.textMuted,
-      fontSize: t.font.xs,
-      fontWeight: '700',
-      letterSpacing: 0.6,
-      textTransform: 'uppercase',
-      paddingTop: t.spacing.md,
-      paddingBottom: t.spacing.sm,
+      paddingTop: t.spacing.sm,
+      paddingBottom: t.spacing.xs,
       backgroundColor: t.colors.background,
+    },
+    sectionHeaderText: {
+      fontFamily: t.fonts.display.bold,
+      fontSize: t.font.md,
+      color: t.colors.textSecondary,
     },
   }));
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -158,6 +167,13 @@ export default function HistoryScreen() {
   const [activeFilter, setActiveFilter] = useState<Filter>(FILTER_ALL);
   const params = useLocalSearchParams<{ category?: string }>();
   const toast = useToast();
+
+  // This screen renders its own "Expenses" headline + add button per the
+  // design spec, so the default per-tab native header ("History") is
+  // suppressed here rather than in the shared tab layout.
+  useEffect(() => {
+    navigation.setOptions({ headerShown: false });
+  }, [navigation]);
 
   // When the dashboard navigates here with `?category=X`, pre-select X
   // as the filter. Re-fires whenever a fresh navigation arrives.
@@ -250,28 +266,28 @@ export default function HistoryScreen() {
       : receipts.filter((r) => receiptMatchesCategory(r, activeFilter));
 
   const totalFiltered = filtered.reduce((s, r) => s + r.totalAmount, 0);
-  const sections = useMemo(() => groupByDay(filtered), [filtered]);
-
-  const goToAdd = () => router.push('/(tabs)/scan');
+  const isFiltering = query.trim().length > 0 || activeFilter !== FILTER_ALL;
+  const sections = groupByDate(filtered);
 
   return (
     <View style={styles.screen}>
-      {/* Header */}
+      {/* Header: "Expenses" headline + circular add button (→ manual entry
+          via the Scan tab, which exposes "Enter manually (no receipt)"). */}
       <View style={styles.header}>
-        <Text style={styles.title}>Expenses</Text>
+        <Text style={styles.headerTitle}>Expenses</Text>
         <TouchableOpacity
           style={styles.addButton}
-          onPress={goToAdd}
+          onPress={() => router.push('/(tabs)/scan')}
           accessibilityRole="button"
-          accessibilityLabel="Add receipt"
+          accessibilityLabel="Add expense"
         >
-          <Ionicons name="add" size={20} color={theme.colors.textPrimary} />
+          <Ionicons name="add" size={22} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
       {/* Search bar */}
       <View style={styles.searchContainer}>
-        <Ionicons name="search-outline" size={18} color={theme.colors.textMuted} />
+        <Ionicons name="search-outline" size={18} color={theme.colors.accent} />
         <TextInput
           style={styles.searchInput}
           value={query}
@@ -288,7 +304,9 @@ export default function HistoryScreen() {
         )}
       </View>
 
-      {/* Category filter chips — horizontal scrollable pill row. */}
+      {/* Category filter chips — single horizontal-scrolling row per the
+          design spec. Active = dark-navy fill/white text; inactive =
+          outlined. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -302,6 +320,11 @@ export default function HistoryScreen() {
               onPress={() => setActiveFilter(item)}
               style={[styles.chip, active && styles.chipActive]}
             >
+              {item !== FILTER_ALL && (
+                <Text style={styles.chipIcon}>
+                  {CATEGORY_ICONS[item as Category]}
+                </Text>
+              )}
               <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
                 {item}
               </Text>
@@ -318,9 +341,10 @@ export default function HistoryScreen() {
         </View>
       )}
 
-      {/* Receipt list — show skeleton placeholders during the first
-          load so the user sees the expected layout instead of the
-          empty state flashing for a fraction of a second. */}
+      {/* Receipt list — grouped by date label ("Today", "Yesterday", "Jul
+          27", …). Shows skeleton placeholders during the first load so the
+          user sees the expected layout instead of the empty state flashing
+          for a fraction of a second. */}
       {initialLoading ? (
         <View style={styles.listContent}>
           <ReceiptListSkeleton count={5} />
@@ -329,11 +353,13 @@ export default function HistoryScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderSectionHeader={({ section }) => (
-            <Text style={styles.sectionHeader}>{section.title}</Text>
-          )}
           renderItem={({ item }) => (
-            <ExpenseRow receipt={item} onDelete={handleDelete} />
+            <ReceiptCard receipt={item} onDelete={handleDelete} />
+          )}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionHeaderText}>{section.title}</Text>
+            </View>
           )}
           contentContainerStyle={styles.listContent}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
@@ -346,16 +372,12 @@ export default function HistoryScreen() {
             />
           }
           ListEmptyComponent={
-            query ? (
-              <EmptyState
-                icon="search-outline"
-                title="No receipts found"
-                description={`No receipts match "${query}". Try a different search term or clear the search to see everything.`}
-              />
+            isFiltering ? (
+              <EmptyState icon="search-outline" title="No expenses match." />
             ) : (
               <EmptyState
                 icon="receipt-outline"
-                title="No receipts yet"
+                title="No expenses yet"
                 description="Scan your first receipt with the camera tab and it'll show up here, grouped by category and date."
               />
             )
@@ -363,119 +385,5 @@ export default function HistoryScreen() {
         />
       )}
     </View>
-  );
-}
-
-/**
- * A single expense row: letter-avatar tinted by category (reusing
- * ReceiptCard's deterministic category-tint + first-letter approach),
- * merchant name, a "Category · relative date" secondary line, and a
- * right-aligned bold amount. Tapping navigates to the edit/detail
- * screen; the trash icon fires the same delete-with-undo flow as
- * before.
- */
-function ExpenseRow({
-  receipt,
-  onDelete,
-}: {
-  receipt: Receipt;
-  onDelete: (id: string) => void;
-}) {
-  const theme = useTheme();
-  const router = useRouter();
-  const styles = useStyles((t) => ({
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: t.colors.surface,
-      borderRadius: t.radius.lg,
-      padding: t.spacing.md,
-      borderWidth: 1,
-      borderColor: t.colors.border,
-      justifyContent: 'space-between',
-    },
-    rowLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: t.spacing.sm,
-      flex: 1,
-    },
-    avatar: {
-      width: 44,
-      height: 44,
-      borderRadius: t.radius.full,
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-    },
-    avatarLetter: {
-      fontSize: t.font.lg,
-      fontWeight: '700',
-      color: t.colors.textPrimary,
-    },
-    rowInfo: {
-      flex: 1,
-      gap: 2,
-    },
-    merchantName: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.md,
-      fontWeight: '700',
-    },
-    subLine: {
-      color: t.colors.textSecondary,
-      fontSize: t.font.xs,
-    },
-    rowRight: {
-      alignItems: 'flex-end',
-      gap: 6,
-      flexShrink: 0,
-      paddingLeft: t.spacing.sm,
-    },
-    amount: {
-      color: t.colors.textPrimary,
-      fontSize: t.font.lg,
-      fontWeight: '700',
-      fontVariant: ['tabular-nums'],
-    },
-  }));
-
-  const tint = theme.colors.category[receipt.category];
-  const sub = `${receipt.category} · ${relativeLabel(new Date(receipt.date))}`;
-
-  return (
-    <TouchableOpacity
-      activeOpacity={0.8}
-      onPress={() => router.push(`/edit/${receipt.id}`)}
-      style={styles.row}
-    >
-      <View style={styles.rowLeft}>
-        <View style={[styles.avatar, { backgroundColor: `${tint}22` }]}>
-          <Text style={styles.avatarLetter}>
-            {receipt.storeName.charAt(0).toUpperCase()}
-          </Text>
-        </View>
-        <View style={styles.rowInfo}>
-          <Text style={styles.merchantName} numberOfLines={1}>
-            {receipt.storeName}
-          </Text>
-          <Text style={styles.subLine} numberOfLines={1}>
-            {sub}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.rowRight}>
-        <Text style={styles.amount}>${receipt.totalAmount.toFixed(2)}</Text>
-        <TouchableOpacity
-          onPress={() => onDelete(receipt.id)}
-          hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-          accessibilityRole="button"
-          accessibilityLabel="Delete receipt"
-        >
-          <Ionicons name="trash-outline" size={16} color={theme.colors.textMuted} />
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
   );
 }
