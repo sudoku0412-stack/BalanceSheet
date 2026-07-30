@@ -4,6 +4,20 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { useFonts } from 'expo-font';
+import {
+  Manrope_300Light,
+  Manrope_500Medium,
+  Manrope_700Bold,
+  Manrope_800ExtraBold,
+} from '@expo-google-fonts/manrope';
+import {
+  Roboto_100Thin,
+  Roboto_300Light,
+  Roboto_400Regular,
+  Roboto_500Medium,
+} from '@expo-google-fonts/roboto';
+import { RobotoMono_400Regular, RobotoMono_500Medium } from '@expo-google-fonts/roboto-mono';
 import { initDatabase } from '../lib/database';
 import { ThemeProvider, useTheme } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/AuthContext';
@@ -14,6 +28,27 @@ export default function RootLayout() {
   useEffect(() => {
     initDatabase().catch(console.error);
   }, []);
+
+  const [fontsLoaded] = useFonts({
+    Manrope_300Light,
+    Manrope_500Medium,
+    Manrope_700Bold,
+    Manrope_800ExtraBold,
+    Roboto_100Thin,
+    Roboto_300Light,
+    Roboto_400Regular,
+    Roboto_500Medium,
+    RobotoMono_400Regular,
+    RobotoMono_500Medium,
+  });
+
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0C0F24' }}>
+        <ActivityIndicator color="#fff" />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaProvider>
@@ -79,7 +114,7 @@ function RootStack() {
 
   useEffect(() => {
     if (initializing) return;
-    const current = segments[0] ?? '';
+    const current = (segments[0] ?? '') as string;
     const target = pickTarget({
       user,
       onboardingSeen,

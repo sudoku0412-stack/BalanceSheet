@@ -1,6 +1,8 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   Dimensions,
+  Easing,
   FlatList,
   NativeScrollEvent,
   NativeSyntheticEvent,
@@ -16,7 +18,7 @@ import { Button } from '../components/ui/Button';
 import { Theme, useStyles, useTheme } from '../constants/theme';
 import { useAuth } from '../lib/AuthContext';
 
-type AccentKey = 'primary' | 'secondary' | 'surfaceTile';
+type AccentKey = 'accent' | 'success' | 'primary';
 
 type Slide = {
   key: string;
@@ -32,21 +34,21 @@ const SLIDES: Slide[] = [
     icon: 'camera',
     title: "Snap a receipt, we'll do the rest",
     body: 'Point your camera at any receipt — amount, merchant and category are captured instantly.',
-    accent: 'primary',
+    accent: 'accent',
   },
   {
     key: 'organize',
     icon: 'stats-chart',
     title: 'See where it goes',
     body: 'Track spending by category and stay under budget without lifting a finger.',
-    accent: 'secondary',
+    accent: 'success',
   },
   {
     key: 'done',
     icon: 'checkmark-circle',
     title: 'One tap, done',
     body: "No forms, no typing. Scan and you're already tracked.",
-    accent: 'surfaceTile',
+    accent: 'primary',
   },
 ];
 
@@ -54,6 +56,7 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function OnboardingScreen() {
   const { markOnboardingSeen } = useAuth();
+  const theme = useTheme();
   const [index, setIndex] = useState(0);
   const listRef = useRef<FlatList<Slide>>(null);
   const styles = useStyles(makeStyles);
@@ -81,11 +84,19 @@ export default function OnboardingScreen() {
     router.replace('/auth');
   };
 
+  const isFirst = index === 0;
   const isLast = index === SLIDES.length - 1;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.topRow}>
+        {!isFirst ? (
+          <Pressable onPress={() => goToSlide(index - 1)} hitSlop={12}>
+            <Ionicons name="chevron-back" size={22} color={theme.colors.textSecondary} />
+          </Pressable>
+        ) : (
+          <View />
+        )}
         {!isLast && (
           <Pressable onPress={finish} hitSlop={12}>
             <Text style={styles.skip}>SKIP</Text>
@@ -116,7 +127,7 @@ export default function OnboardingScreen() {
 
       <View style={styles.cta}>
         {isLast ? (
-          <Button label="Get started" size="lg" onPress={finish} />
+          <Button label="Get Started" size="lg" onPress={finish} />
         ) : (
           <Button label="Next" size="lg" onPress={() => goToSlide(index + 1)} />
         )}
@@ -128,16 +139,42 @@ export default function OnboardingScreen() {
 function SlideView({ slide }: { slide: Slide }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
-  const tileColor =
-    slide.accent === 'surfaceTile'
-      ? theme.colors.surfaceHigh
-      : slide.accent === 'secondary'
-        ? theme.colors.secondary
-        : theme.colors.primary;
+  const tileColor = theme.colors[slide.accent];
+
+  // Slow ambient "breathe" scale-pulse — the one deliberate decorative
+  // animation flourish called for on the onboarding icon tile.
+  const pulse = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, {
+          toValue: 1.06,
+          duration: 2000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulse, {
+          toValue: 1,
+          duration: 2000,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulse]);
+
   return (
     <View style={styles.slide}>
-      <View style={[styles.iconTile, { backgroundColor: tileColor }]}>
-        <Ionicons name={slide.icon} size={56} color={theme.colors.textPrimary} />
+      <View style={styles.decorWrap}>
+        <View style={[styles.decorCircleOuter, { backgroundColor: `${tileColor}14` }]} />
+        <View style={[styles.decorCircleInner, { backgroundColor: `${tileColor}22` }]} />
+        <Animated.View
+          style={[styles.iconTile, { backgroundColor: tileColor, transform: [{ scale: pulse }] }]}
+        >
+          <Ionicons name={slide.icon} size={48} color="#fff" />
+        </Animated.View>
       </View>
       <Text style={styles.title}>{slide.title}</Text>
       <Text style={styles.body}>{slide.body}</Text>
@@ -150,15 +187,15 @@ const makeStyles = (t: Theme) => ({
   topRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'flex-end' as const,
+    justifyContent: 'space-between' as const,
     paddingHorizontal: t.spacing.lg,
     paddingTop: t.spacing.sm,
     paddingBottom: t.spacing.md,
   },
   skip: {
     color: t.colors.textSecondary,
+    fontFamily: t.fonts.display.bold,
     fontSize: t.font.sm,
-    fontWeight: '700' as const,
     letterSpacing: 0.5,
   },
   slide: {
@@ -167,27 +204,47 @@ const makeStyles = (t: Theme) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  iconTile: {
-    width: 96,
-    height: 96,
-    borderRadius: t.radius.lg,
+  decorWrap: {
+    width: 220,
+    height: 220,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     marginBottom: t.spacing.xl,
   },
+  decorCircleOuter: {
+    position: 'absolute' as const,
+    width: 220,
+    height: 220,
+    borderRadius: t.radius.full,
+  },
+  decorCircleInner: {
+    position: 'absolute' as const,
+    width: 160,
+    height: 160,
+    borderRadius: t.radius.full,
+  },
+  iconTile: {
+    width: 108,
+    height: 108,
+    borderRadius: t.radius.lg,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
   title: {
     color: t.colors.textPrimary,
-    fontSize: t.font.xxl,
-    fontWeight: '700' as const,
+    fontFamily: t.fonts.display.extraBold,
+    fontSize: 26,
     textAlign: 'center' as const,
     marginBottom: t.spacing.md,
+    maxWidth: 280,
   },
   body: {
     color: t.colors.textSecondary,
+    fontFamily: t.fonts.body.regular,
     fontSize: t.font.md,
     textAlign: 'center' as const,
     lineHeight: 22,
-    paddingHorizontal: t.spacing.md,
+    maxWidth: 280,
   },
   dotsRow: {
     flexDirection: 'row' as const,
@@ -197,13 +254,13 @@ const makeStyles = (t: Theme) => ({
     paddingVertical: t.spacing.lg,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 6,
+    height: 6,
+    borderRadius: t.radius.full,
     backgroundColor: t.colors.border,
   },
   dotActive: {
-    width: 24,
+    width: 6,
     backgroundColor: t.colors.primary,
   },
   cta: {

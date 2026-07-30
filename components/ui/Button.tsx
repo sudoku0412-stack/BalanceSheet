@@ -55,17 +55,28 @@ export function Button({
     },
     size_sm: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: t.radius.sm },
     size_md: { paddingHorizontal: 20, paddingVertical: 12 },
-    size_lg: { paddingHorizontal: 28, paddingVertical: 16, borderRadius: t.radius.lg },
-    text: { fontWeight: '600' },
+    size_lg: { paddingHorizontal: 28, paddingVertical: 16 },
+    text: {
+      fontFamily: t.fonts.display.bold,
+      textTransform: 'uppercase',
+      letterSpacing: 0.04,
+    },
     text_primary: { color: '#fff' },
     text_secondary: { color: t.colors.textPrimary },
-    text_ghost: { color: t.colors.primary },
+    text_ghost: { color: t.colors.accent },
     text_danger: { color: '#fff' },
-    textSize_sm: { fontSize: t.font.sm },
-    textSize_md: { fontSize: t.font.md },
-    textSize_lg: { fontSize: t.font.lg },
+    textSize_sm: { fontSize: t.font.xs },
+    textSize_md: { fontSize: t.font.sm },
+    textSize_lg: { fontSize: t.font.sm },
   }));
   const isDisabled = disabled || loading;
+
+  const spinnerColor =
+    variant === 'primary' || variant === 'danger'
+      ? '#fff'
+      : variant === 'ghost'
+        ? theme.colors.accent
+        : theme.colors.textPrimary;
 
   return (
     <TouchableOpacity
@@ -81,10 +92,7 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator
-          size="small"
-          color={variant === 'primary' ? '#fff' : theme.colors.primary}
-        />
+        <ActivityIndicator size="small" color={spinnerColor} />
       ) : (
         <Text style={[styles.text, styles[`text_${variant}`], styles[`textSize_${size}`], textStyle]}>
           {label}

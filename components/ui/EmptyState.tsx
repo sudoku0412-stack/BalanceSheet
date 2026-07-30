@@ -39,7 +39,7 @@ export function EmptyState({
   style,
 }: Props) {
   const theme = useTheme();
-  const accent = tint ?? theme.colors.primary;
+  const accent = tint ?? theme.colors.accent;
   const styles = useStyles((t) => ({
     root: {
       alignItems: 'center',
@@ -71,13 +71,14 @@ export function EmptyState({
     },
     title: {
       color: t.colors.textPrimary,
+      fontFamily: t.fonts.display.bold,
       fontSize: t.font.xl,
-      fontWeight: '700',
       textAlign: 'center',
       marginTop: t.spacing.xs,
     },
     description: {
       color: t.colors.textSecondary,
+      fontFamily: t.fonts.body.regular,
       fontSize: t.font.sm,
       textAlign: 'center',
       lineHeight: 20,
@@ -87,13 +88,14 @@ export function EmptyState({
       marginTop: t.spacing.md,
       paddingHorizontal: t.spacing.lg,
       paddingVertical: 12,
-      borderRadius: t.radius.full,
+      borderRadius: t.radius.md,
       backgroundColor: accent,
     },
     ctaText: {
       color: '#FFFFFF',
+      fontFamily: t.fonts.display.bold,
       fontSize: t.font.sm,
-      fontWeight: '700',
+      textTransform: 'uppercase',
       letterSpacing: 0.3,
     },
   }));

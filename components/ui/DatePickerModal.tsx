@@ -105,7 +105,7 @@ export function DatePickerModal({
       borderRadius: t.radius.full,
     },
     dayCellSelected: {
-      backgroundColor: t.colors.primary,
+      backgroundColor: t.colors.accent,
     },
     dayText: {
       color: t.colors.textPrimary,
@@ -117,7 +117,7 @@ export function DatePickerModal({
       opacity: 0.35,
     },
     dayTextToday: {
-      color: t.colors.primary,
+      color: t.colors.accent,
       fontWeight: '700',
     },
     dayTextSelected: {
@@ -144,7 +144,7 @@ export function DatePickerModal({
       paddingHorizontal: 16,
       paddingVertical: 8,
       borderRadius: t.radius.full,
-      backgroundColor: t.colors.primary,
+      backgroundColor: t.colors.accent,
     },
     doneBtnText: {
       color: '#fff',

@@ -53,7 +53,7 @@ export function CategoryTagsPicker({
       marginTop: 4,
     },
     customBtnText: {
-      color: t.colors.primary,
+      color: t.colors.accent,
       fontSize: t.font.sm,
       fontWeight: '600',
     },
@@ -75,7 +75,7 @@ export function CategoryTagsPicker({
       paddingVertical: 8,
     },
     customSaveBtn: {
-      backgroundColor: t.colors.primary,
+      backgroundColor: t.colors.accent,
       paddingHorizontal: 12,
       paddingVertical: 8,
       borderRadius: t.radius.sm,
@@ -161,7 +161,7 @@ export function CategoryTagsPicker({
           style={styles.customBtn}
           hitSlop={6}
         >
-          <Ionicons name="add" size={14} color={theme.colors.primary} />
+          <Ionicons name="add" size={14} color={theme.colors.accent} />
           <Text style={styles.customBtnText}>Add custom tag</Text>
         </Pressable>
       ) : (

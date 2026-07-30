@@ -107,7 +107,7 @@ export function ItemEditModal({
       marginTop: t.spacing.xs,
     },
     addTagBtnText: {
-      color: t.colors.primary,
+      color: t.colors.accent,
       fontSize: t.font.sm,
       fontWeight: '600',
     },
@@ -293,7 +293,7 @@ export function ItemEditModal({
                     style={styles.addTagBtn}
                     hitSlop={6}
                   >
-                    <Ionicons name="add" size={14} color={theme.colors.primary} />
+                    <Ionicons name="add" size={14} color={theme.colors.accent} />
                     <Text style={styles.addTagBtnText}>Add custom tag</Text>
                   </Pressable>
                 ) : (

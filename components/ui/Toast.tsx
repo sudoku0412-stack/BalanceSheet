@@ -135,10 +135,10 @@ function ToastBubble({
   const kind = toast.kind ?? 'info';
   const accent =
     kind === 'success'
-      ? theme.colors.primary
+      ? theme.colors.success
       : kind === 'error'
         ? theme.colors.error
-        : theme.colors.info;
+        : theme.colors.accent;
   const icon: keyof typeof Ionicons.glyphMap =
     kind === 'success'
       ? 'checkmark-circle'

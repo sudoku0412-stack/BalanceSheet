@@ -46,13 +46,13 @@ export function TagChip({
       marginRight: 4,
     },
     label: {
-      fontWeight: '700',
+      fontFamily: t.fonts.display.bold,
     },
   }));
   const standard = isStandardCategory(tag);
   const accent = standard
     ? theme.colors.category[tag as Category]
-    : theme.colors.primary;
+    : theme.colors.accent;
   const iconName = standard ? null : 'pricetag-outline';
   const emoji = standard ? CATEGORY_ICONS[tag as Category] : '';
 

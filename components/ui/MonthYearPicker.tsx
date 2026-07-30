@@ -95,11 +95,11 @@ export function MonthYearPicker({
       justifyContent: 'center',
     },
     cellInnerSelected: {
-      backgroundColor: t.colors.primary,
+      backgroundColor: t.colors.accent,
     },
     cellInnerToday: {
       borderWidth: 1,
-      borderColor: t.colors.primary,
+      borderColor: t.colors.accent,
     },
     cellText: {
       color: t.colors.textPrimary,
@@ -111,7 +111,7 @@ export function MonthYearPicker({
       fontWeight: '700',
     },
     cellTextToday: {
-      color: t.colors.primary,
+      color: t.colors.accent,
       fontWeight: '700',
     },
     footer: {
@@ -128,10 +128,10 @@ export function MonthYearPicker({
       paddingHorizontal: 14,
       paddingVertical: 8,
       borderRadius: t.radius.full,
-      backgroundColor: `${t.colors.primary}1A`,
+      backgroundColor: `${t.colors.accent}1A`,
     },
     todayBtnText: {
-      color: t.colors.primary,
+      color: t.colors.accent,
       fontSize: t.font.sm,
       fontWeight: '700',
     },
@@ -240,7 +240,7 @@ export function MonthYearPicker({
               <View style={styles.spacer} />
             ) : (
               <TouchableOpacity style={styles.todayBtn} onPress={jumpToToday}>
-                <Ionicons name="today-outline" size={16} color={theme.colors.primary} />
+                <Ionicons name="today-outline" size={16} color={theme.colors.accent} />
                 <Text style={styles.todayBtnText}>This Month</Text>
               </TouchableOpacity>
             )}

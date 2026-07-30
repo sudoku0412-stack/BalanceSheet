@@ -89,8 +89,8 @@ export function ModalHeader({
     },
     title: {
       color: t.colors.textPrimary,
+      fontFamily: t.fonts.display.bold,
       fontSize: t.font.lg,
-      fontWeight: '700',
     },
   }));
 
@@ -138,7 +138,7 @@ export function ModalHeader({
             accessibilityLabel={a.accessibilityLabel}
           >
             {a.loading ? (
-              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <ActivityIndicator size="small" color={theme.colors.accent} />
             ) : (
               <Ionicons
                 name={a.icon}
