@@ -12,7 +12,9 @@ import {
   Easing,
   Modal,
   Pressable,
+  StyleSheet,
 } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import Constants from 'expo-constants';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -103,6 +105,13 @@ function uniqueItemCategories(items: LineItem[]): string[] {
 export default function ScanScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string }>();
+
+  // Live in-app camera preview (the idle/"Scan" screen renders this
+  // behind the dashed guide frame, per the design spec — previously
+  // the shutter just launched the OS's own camera app with no preview
+  // at all, which isn't what "camera should open within the app" means).
+  const cameraRef = useRef<CameraView>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const theme = useTheme();
   const toast = useToast();
   const styles = useStyles((t) => ({
@@ -154,6 +163,18 @@ export default function ScanScreen() {
       fontFamily: t.fonts.body.regular,
       textAlign: 'center',
       marginTop: t.spacing.md,
+    },
+    permissionDeniedWrap: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: t.spacing.xl,
+    },
+    permissionDeniedText: {
+      color: 'rgba(255,255,255,0.75)',
+      fontSize: t.font.sm,
+      fontFamily: t.fonts.body.regular,
+      textAlign: 'center',
     },
     shutterRow: {
       flexDirection: 'row',
@@ -839,19 +860,26 @@ export default function ScanScreen() {
     }
   };
 
-  const pickFromCamera = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Camera access is needed to scan receipts.');
-      return;
+  // Shutter handler for the live in-app preview (CameraView in the idle
+  // state below) — takes the photo directly from the preview instead of
+  // handing off to the OS's separate camera app.
+  const capturePhoto = async () => {
+    if (!cameraPermission?.granted) {
+      const res = await requestCameraPermission();
+      if (!res.granted) {
+        Alert.alert('Permission required', 'Camera access is needed to scan receipts.');
+        return;
+      }
     }
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.85,
-      allowsEditing: false,
-    });
-    if (!result.canceled && result.assets[0]) {
-      setImageUri(result.assets[0].uri);
-      await runOCR(result.assets[0].uri);
+    if (!cameraRef.current) return;
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+      if (photo?.uri) {
+        setImageUri(photo.uri);
+        await runOCR(photo.uri);
+      }
+    } catch (e) {
+      Alert.alert('Camera error', (e as Error)?.message ?? 'Could not capture the photo.');
     }
   };
 
@@ -903,6 +931,16 @@ export default function ScanScreen() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [params.mode, isManualEntry, scanState]),
   );
+
+  // Request camera permission as soon as the idle (camera) screen is
+  // reached, so the live preview has something to show instead of a
+  // blank/black view while the user hasn't been asked yet.
+  useEffect(() => {
+    if (scanState !== 'idle') return;
+    if (!cameraPermission) return;
+    if (cameraPermission.granted || !cameraPermission.canAskAgain) return;
+    requestCameraPermission();
+  }, [scanState, cameraPermission, requestCameraPermission]);
 
   const pickFromGallery = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1336,8 +1374,26 @@ export default function ScanScreen() {
   // keep working, so they ride along as small icon affordances either
   // side of the shutter rather than the old two-card grid.
   if (scanState === 'idle') {
+    const showLivePreview = !!cameraPermission?.granted;
     return (
       <View style={styles.cameraScreen}>
+        {showLivePreview ? (
+          <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" />
+        ) : (
+          // No live preview until permission is granted (or if it was
+          // denied) — the dashed-frame chrome still renders on top so
+          // the screen isn't blank while the permission prompt is up.
+          <View style={StyleSheet.absoluteFill}>
+            {cameraPermission && !cameraPermission.granted && !cameraPermission.canAskAgain && (
+              <View style={styles.permissionDeniedWrap}>
+                <Text style={styles.permissionDeniedText}>
+                  Camera access was denied. Enable it in your phone's Settings to scan receipts.
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
         <TouchableOpacity
           style={styles.closeBtn}
           onPress={exitScan}
@@ -1360,7 +1416,7 @@ export default function ScanScreen() {
             <Ionicons name="images-outline" size={22} color="#fff" />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={pickFromCamera} activeOpacity={0.8}>
+          <TouchableOpacity onPress={capturePhoto} activeOpacity={0.8}>
             <View style={styles.shutterRing}>
               <View style={styles.shutterButton} />
             </View>
