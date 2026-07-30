@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import {
   Pressable,
   Switch,
 } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
@@ -542,25 +542,32 @@ function EditReceiptScreen() {
   // Real household members (lib/cloudSync.getHouseholdMembers), mirroring
   // the FamilyPanel fetch pattern in app/settings.tsx. Used as the split
   // participant list — no fictional demo names.
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      if (!user?.uid) {
-        if (mounted) setHouseholdMembers([]);
-        return;
-      }
-      const hid = getCurrentHouseholdId();
-      if (!hid) {
-        if (mounted) setHouseholdMembers([]);
-        return;
-      }
-      const list = await getHouseholdMembers({ householdId: hid, currentUid: user.uid });
-      if (mounted) setHouseholdMembers(list ?? []);
-    })();
-    return () => {
-      mounted = false;
-    };
+  //
+  // Refetched on screen FOCUS (useFocusEffect), not just on mount: if the
+  // user invites/accepts a household member on another screen and then
+  // navigates back here, a mount-only effect would leave the participant
+  // list stale until a full app restart. Matches the useFocusEffect(
+  // useCallback(...)) pattern already used by app/(tabs)/index.tsx,
+  // app/(tabs)/history.tsx, and app/reports.tsx.
+  const loadHouseholdMembers = useCallback(async () => {
+    if (!user?.uid) {
+      setHouseholdMembers([]);
+      return;
+    }
+    const hid = getCurrentHouseholdId();
+    if (!hid) {
+      setHouseholdMembers([]);
+      return;
+    }
+    const list = await getHouseholdMembers({ householdId: hid, currentUid: user.uid });
+    setHouseholdMembers(list ?? []);
   }, [user?.uid]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadHouseholdMembers();
+    }, [loadHouseholdMembers]),
+  );
 
   const handleSave = async () => {
     if (!receipt) return;
@@ -702,6 +709,53 @@ function EditReceiptScreen() {
     if (Math.abs(sumAmt - totalAmountVal) > 0.01) {
       splitWarning = `Amounts add up to ${formatCurrency(sumAmt, currencyCode)}, not ${formatCurrency(totalAmountVal, currencyCode)}.`;
     }
+  }
+
+  // ── Per-item split override ──
+  // Scanned receipts don't carry per-item split assignments, so the flat
+  // Equal/%/$ math above stays the answer in the common case. But the
+  // manual-entry flow (app/(tabs)/scan.tsx) can tag individual LineItems
+  // with `splitWith` — a subset of participants sharing just that item.
+  // When at least one line item's splitWith is a genuine (non-empty,
+  // proper) subset of the current participant list, the flat total-based
+  // split is the wrong math: some people didn't share every item. In that
+  // case, recompute each participant's share item-by-item (splitting each
+  // item equally among its own splitWith, or among everyone selected if
+  // splitWith is empty/undefined) and sum per participant across items —
+  // this replaces yourShare/owedToYou instead of showing a second,
+  // contradictory number.
+  const fullParticipantIds = ['self', ...Array.from(selectedOtherUids)];
+  const fullParticipantSet = new Set(fullParticipantIds);
+  const lineItemsForSplit = receipt.lineItems ?? [];
+  const usesPerItemSplit =
+    splitEnabled &&
+    lineItemsForSplit.some((li) => {
+      const sw = li.splitWith;
+      if (!sw || sw.length === 0) return false;
+      const validSw = sw.filter((p) => fullParticipantSet.has(p));
+      return validSw.length > 0 && validSw.length < fullParticipantIds.length;
+    });
+
+  if (usesPerItemSplit) {
+    const perItemShares: Record<string, number> = {};
+    for (const pid of fullParticipantIds) perItemShares[pid] = 0;
+    for (const li of lineItemsForSplit) {
+      const itemAmt =
+        typeof li.amount === 'number' && Number.isFinite(li.amount) ? li.amount : 0;
+      const validSw = (li.splitWith ?? []).filter((p) => fullParticipantSet.has(p));
+      const participants = validSw.length > 0 ? validSw : fullParticipantIds;
+      const share = itemAmt / participants.length;
+      for (const p of participants) {
+        perItemShares[p] = (perItemShares[p] ?? 0) + share;
+      }
+    }
+    yourShare = perItemShares.self ?? 0;
+    owedToYou = fullParticipantIds
+      .filter((p) => p !== 'self')
+      .reduce((s, p) => s + (perItemShares[p] ?? 0), 0);
+    // The flat-method warning ("percentages don't add to 100%", etc.)
+    // doesn't apply once we're computing from line items instead.
+    splitWarning = null;
   }
 
   const toggleOtherParticipant = (uid: string) => {
@@ -1013,6 +1067,12 @@ function EditReceiptScreen() {
             </View>
 
             {splitWarning && <Text style={styles.splitWarning}>{splitWarning}</Text>}
+
+            {usesPerItemSplit && (
+              <Text style={styles.captionText}>
+                Split by item — some items are shared with fewer people
+              </Text>
+            )}
 
             <Text style={styles.splitSummary}>
               You paid {formatCurrency(totalAmountVal, currencyCode)} ·{' '}

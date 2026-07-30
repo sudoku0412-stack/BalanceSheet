@@ -1058,11 +1058,13 @@ function serializeReceipt(
     imageUri: r.imageUri ?? null,
     photoUrl: (r as Receipt & { photoUrl?: string | null }).photoUrl ?? null,
     notes: r.notes ?? null,
+    split: r.split ?? null,
     lineItems: (r.lineItems ?? []).map((it) => ({
       id: it.id,
       name: it.name,
       amount: it.amount,
       category: it.category ?? null,
+      splitWith: it.splitWith ?? [],
     })),
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,

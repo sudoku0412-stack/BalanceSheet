@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert } from 'react-native';
 import Constants from 'expo-constants';
 import {
   AuthUser,
@@ -16,8 +17,11 @@ import {
   setCurrentUserId,
 } from './database';
 import {
+  acceptInvite,
+  declineInvite,
   deleteCloudUserData,
   ensureHouseholdForUser,
+  getPendingInviteForEmail,
   migrateLocalReceiptsToCloud,
   subscribeToHouseholdReceipts,
 } from './cloudSync';
@@ -99,6 +103,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Guards the pending-invite check below so it fires once per signed-in
+  // session rather than on every token-refresh echo of the auth listener
+  // (onAuthStateChanged can re-fire for the same uid many times).
+  const invitePromptedForUidRef = useRef<string | null>(null);
+
+  const checkPendingInvite = useCallback(
+    (u: AuthUser) => {
+      if (!u.email) return;
+      if (invitePromptedForUidRef.current === u.uid) return;
+      invitePromptedForUidRef.current = u.uid;
+      getPendingInviteForEmail(u.email)
+        .then((invite) => {
+          if (!invite) return;
+          const inviterLabel = invite.invitedByName || invite.invitedByEmail || 'Someone';
+          Alert.alert(
+            'Household invite',
+            `${inviterLabel} invited you to join their household${
+              invite.householdName ? ` "${invite.householdName}"` : ''
+            }.`,
+            [
+              {
+                text: 'Decline',
+                style: 'cancel',
+                onPress: () => {
+                  declineInvite({ invite }).catch(() => {
+                    // Best-effort — a failed decline just leaves the
+                    // invite pending for next launch.
+                  });
+                },
+              },
+              {
+                text: 'Accept',
+                onPress: async () => {
+                  try {
+                    const res = await acceptInvite({ invite, uid: u.uid });
+                    if (!res.ok) return;
+                    setCurrentHouseholdId(res.newHouseholdId);
+                    tearDownReceiptsListener();
+                    const unsubReceipts = subscribeToHouseholdReceipts(
+                      res.newHouseholdId,
+                      u.uid,
+                    );
+                    if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
+                    Alert.alert('Joined household', `You're now part of ${inviterLabel}'s household.`);
+                  } catch {
+                    // Cloud sync is optional-by-design throughout this
+                    // codebase — a failed accept just leaves the invite
+                    // pending for the user to retry.
+                  }
+                },
+              },
+            ],
+          );
+        })
+        .catch(() => {
+          // No pending invite / lookup failed — skip silently.
+        });
+    },
+    [tearDownReceiptsListener],
+  );
+
   useEffect(() => {
     const unsub = onAuthStateChanged(async (u) => {
       setUser(u);
@@ -113,8 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (u?.uid) {
         // Silent household bootstrap so split/reports have a real (if
         // solo) household to read from, and receipt photos sync across
-        // this user's own devices. No invite UI in this app — a
-        // household is always exactly this one user's own.
+        // this user's own devices.
         const hid = await ensureHouseholdForUser({
           uid: u.uid,
           email: u.email,
@@ -129,13 +193,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
           const unsubReceipts = subscribeToHouseholdReceipts(hid, u.uid);
           if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
+
+          // A signed-in user with a real household may have a pending
+          // invite waiting for their email (e.g. a household-mate
+          // invited them before they ever signed up). Surface it once
+          // per session.
+          checkPendingInvite(u);
         }
       } else {
         setCurrentHouseholdId(null);
+        invitePromptedForUidRef.current = null;
       }
     });
     return unsub;
-  }, []);
+  }, [checkPendingInvite, tearDownReceiptsListener]);
 
   const refreshProfile = useCallback(async () => {
     if (!user) {

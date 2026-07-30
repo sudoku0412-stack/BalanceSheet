@@ -96,9 +96,14 @@ export default function HistoryScreen() {
       fontFamily: t.fonts.body.regular,
       fontSize: t.font.md,
     },
+    filterScrollContainer: {
+      flexGrow: 0,
+      height: 44,
+      marginBottom: t.spacing.sm,
+    },
     filterScroll: {
       paddingHorizontal: t.spacing.md,
-      paddingBottom: t.spacing.sm,
+      alignItems: 'center',
       gap: 8,
     },
     chip: {
@@ -116,6 +121,7 @@ export default function HistoryScreen() {
     chipLabel: {
       fontFamily: t.fonts.display.bold,
       fontSize: t.font.sm,
+      lineHeight: t.font.sm + 4,
       color: t.colors.textPrimary,
     },
     chipLabelActive: {
@@ -317,6 +323,7 @@ export default function HistoryScreen() {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.filterScrollContainer}
         contentContainerStyle={styles.filterScroll}
       >
         {([FILTER_ALL, ...ALL_CATEGORIES] as Filter[]).map((item) => {

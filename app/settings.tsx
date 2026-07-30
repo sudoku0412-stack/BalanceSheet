@@ -13,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
 import { useStyles, useTheme } from '../constants/theme';
 import { Button } from '../components/ui/Button';
+import { useToast } from '../components/ui/Toast';
 import { ALL_CATEGORIES } from '../constants/categories';
 import { useAuth } from '../lib/AuthContext';
 import {
@@ -23,7 +24,13 @@ import {
   setCategoryBudget,
   setCurrency as persistCurrency,
 } from '../lib/secureStorage';
-import { getAllReceipts } from '../lib/database';
+import { getAllReceipts, getCurrentHouseholdId, setCurrentHouseholdId } from '../lib/database';
+import {
+  getHouseholdMembers,
+  inviteUserToHousehold,
+  leaveCurrentHousehold,
+  type HouseholdMember,
+} from '../lib/cloudSync';
 import { receiptsToCsv } from '../lib/reports';
 import {
   CURRENCIES,
@@ -202,6 +209,94 @@ function useSettingsStyles() {
       // scale it down instead of reimplementing a custom pill toggle.
       transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
     },
+    memberRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+      gap: theme.spacing.sm,
+    },
+    memberAvatar: {
+      width: 36,
+      height: 36,
+      borderRadius: theme.radius.full,
+      backgroundColor: theme.colors.primary,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    memberAvatarInitials: {
+      color: '#FFFFFF',
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.display.bold,
+    },
+    memberName: {
+      flex: 1,
+      color: theme.colors.textPrimary,
+      fontSize: theme.font.md,
+      fontFamily: theme.fonts.display.bold,
+    },
+    memberRoleBadge: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.full,
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+    },
+    memberRoleText: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.xs,
+      fontFamily: theme.fonts.display.bold,
+      textTransform: 'uppercase',
+    },
+    inviteRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: theme.spacing.md,
+      gap: theme.spacing.sm,
+    },
+    inviteInput: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.full,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 10,
+      color: theme.colors.textPrimary,
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.body.regular,
+      backgroundColor: theme.colors.background,
+    },
+    inviteSendBtn: {
+      backgroundColor: theme.colors.primary,
+      borderRadius: theme.radius.full,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    inviteSendBtnDisabled: {
+      opacity: 0.5,
+    },
+    inviteSendText: {
+      color: '#FFFFFF',
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.display.bold,
+    },
+    leaveHouseholdBtn: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: theme.colors.border,
+    },
+    leaveHouseholdText: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.display.bold,
+    },
   }));
 }
 
@@ -209,6 +304,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const styles = useSettingsStyles();
   const { user, profile, signOut } = useAuth();
+  const toast = useToast();
 
   // Per-category budget amounts (canonical USD) and the "notify near
   // limit" toggle are persisted via lib/secureStorage
@@ -219,6 +315,95 @@ export default function SettingsScreen() {
   const [budgetAlertsEnabled, setBudgetAlertsEnabledState] = useState(true);
   const [exportingAll, setExportingAll] = useState(false);
   const [currency, setCurrencyState] = useState<CurrencyCode>('USD');
+
+  // Household membership (Phase 3 split feature). Loaded from Firestore
+  // via getHouseholdMembers — null while loading, [] if cloud sync isn't
+  // available (or the household has no doc yet).
+  const [members, setMembers] = useState<HouseholdMember[] | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [invitingSending, setInviteSending] = useState(false);
+  const [leavingHousehold, setLeavingHousehold] = useState(false);
+
+  const loadMembers = React.useCallback(async () => {
+    const householdId = getCurrentHouseholdId();
+    if (!householdId || !user?.uid) {
+      setMembers(null);
+      return;
+    }
+    const result = await getHouseholdMembers({ householdId, currentUid: user.uid });
+    setMembers(result);
+  }, [user?.uid]);
+
+  useEffect(() => {
+    loadMembers();
+  }, [loadMembers]);
+
+  const sendInvite = async () => {
+    const householdId = getCurrentHouseholdId();
+    if (!householdId || !user?.uid) return;
+    const email = inviteEmail.trim();
+    if (!email) return;
+    setInviteSending(true);
+    try {
+      const res = await inviteUserToHousehold({
+        email,
+        householdId,
+        invitedByUid: user.uid,
+        invitedByEmail: user.email ?? null,
+        invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
+      });
+      if (res.ok) {
+        toast.show({ kind: 'success', message: 'Invite sent' });
+        setInviteEmail('');
+      } else {
+        toast.show({ kind: 'error', message: res.reason || "Couldn't send invite" });
+      }
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't send invite" });
+    } finally {
+      setInviteSending(false);
+    }
+  };
+
+  const confirmLeaveHousehold = () => {
+    Alert.alert('Leave household?', 'You will move to your own solo household. Other members keep the shared receipts.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Leave', style: 'destructive', onPress: () => leaveHousehold() },
+    ]);
+  };
+
+  const leaveHousehold = async () => {
+    const householdId = getCurrentHouseholdId();
+    if (!householdId || !user?.uid || leavingHousehold) return;
+    setLeavingHousehold(true);
+    try {
+      const res = await leaveCurrentHousehold({
+        uid: user.uid,
+        currentHouseholdId: householdId,
+        email: user.email ?? null,
+        displayName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
+      });
+      if (res.ok) {
+        setCurrentHouseholdId(res.newSoloHouseholdId);
+        toast.show({ kind: 'success', message: 'You left the household' });
+        await loadMembers();
+      } else {
+        toast.show({ kind: 'error', message: res.reason || "Couldn't leave household" });
+      }
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't leave household" });
+    } finally {
+      setLeavingHousehold(false);
+    }
+  };
+
+  const memberInitials = (m: HouseholdMember): string => {
+    const label = m.displayName || m.email || '';
+    const parts = label.trim().split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return '·';
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -365,6 +550,61 @@ export default function SettingsScreen() {
               </Text>
             </View>
           </View>
+        </Section>
+
+        <Section title="Household">
+          {(members ?? [{ uid: user?.uid ?? 'you', email: user?.email ?? null, displayName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null, role: 'owner' as const, isYou: true }]).map(
+            (m) => (
+              <View key={m.uid} style={styles.memberRow}>
+                <View style={styles.memberAvatar}>
+                  <Text style={styles.memberAvatarInitials}>{memberInitials(m)}</Text>
+                </View>
+                <Text style={styles.memberName} numberOfLines={1}>
+                  {m.displayName || m.email || 'Household member'}
+                </Text>
+                <View style={styles.memberRoleBadge}>
+                  <Text style={styles.memberRoleText}>
+                    {m.isYou ? 'You' : m.role === 'owner' ? 'Owner' : 'Member'}
+                  </Text>
+                </View>
+              </View>
+            ),
+          )}
+
+          <View style={styles.inviteRow}>
+            <TextInput
+              value={inviteEmail}
+              onChangeText={setInviteEmail}
+              placeholder="Invite by email"
+              placeholderTextColor={theme.colors.textMuted}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={styles.inviteInput}
+            />
+            <Pressable
+              onPress={sendInvite}
+              disabled={invitingSending || !inviteEmail.trim()}
+              style={[
+                styles.inviteSendBtn,
+                (invitingSending || !inviteEmail.trim()) && styles.inviteSendBtnDisabled,
+              ]}
+            >
+              <Text style={styles.inviteSendText}>{invitingSending ? 'Sending…' : 'Send'}</Text>
+            </Pressable>
+          </View>
+
+          {members && members.length > 1 ? (
+            <Pressable
+              onPress={confirmLeaveHousehold}
+              style={styles.leaveHouseholdBtn}
+              disabled={leavingHousehold}
+              hitSlop={4}
+            >
+              <Text style={styles.leaveHouseholdText}>
+                {leavingHousehold ? 'Leaving…' : 'Leave household'}
+              </Text>
+            </Pressable>
+          ) : null}
         </Section>
 
         <Section title="Currency">

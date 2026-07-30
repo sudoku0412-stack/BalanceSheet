@@ -156,6 +156,9 @@ export async function initDatabase(): Promise<void> {
     // method, per-participant percent/amount values), serialized as
     // JSON. See Receipt['split'] in types/index.ts.
     `ALTER TABLE receipts             ADD COLUMN split_json TEXT`,
+    // Per-item split participants (JSON array of participant ids).
+    // See LineItem['splitWith'] in types/index.ts.
+    `ALTER TABLE line_items           ADD COLUMN split_with TEXT`,
   ]) {
     try {
       await db.execAsync(sql);
@@ -438,8 +441,8 @@ export async function replaceLineItems(
     await db.runAsync(`DELETE FROM line_items WHERE receipt_id=?`, [receiptId]);
     for (const item of items) {
       await db.runAsync(
-        `INSERT INTO line_items (id, receipt_id, name, amount, category) VALUES (?, ?, ?, ?, ?)`,
-        [item.id, receiptId, item.name, item.amount, item.category ?? null],
+        `INSERT INTO line_items (id, receipt_id, name, amount, category, split_with) VALUES (?, ?, ?, ?, ?, ?)`,
+        [item.id, receiptId, item.name, item.amount, item.category ?? null, serializeSplitWith(item.splitWith)],
       );
     }
     // Bump the receipt's updated_at so list views know to re-render.
@@ -548,8 +551,8 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
 
     for (const item of receipt.lineItems ?? []) {
       await db.runAsync(
-        `INSERT INTO line_items (id, receipt_id, name, amount, category) VALUES (?, ?, ?, ?, ?)`,
-        [item.id, receipt.id, item.name, item.amount, item.category ?? null],
+        `INSERT INTO line_items (id, receipt_id, name, amount, category, split_with) VALUES (?, ?, ?, ?, ?, ?)`,
+        [item.id, receipt.id, item.name, item.amount, item.category ?? null, serializeSplitWith(item.splitWith)],
       );
     }
   });
@@ -601,8 +604,8 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
       );
       for (const item of receipt.lineItems) {
         await db.runAsync(
-          `INSERT INTO line_items (id, receipt_id, name, amount, category) VALUES (?, ?, ?, ?, ?)`,
-          [item.id, receipt.id, item.name, item.amount, item.category ?? null],
+          `INSERT INTO line_items (id, receipt_id, name, amount, category, split_with) VALUES (?, ?, ?, ?, ?, ?)`,
+          [item.id, receipt.id, item.name, item.amount, item.category ?? null, serializeSplitWith(item.splitWith)],
         );
       }
     }
@@ -618,6 +621,23 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
 function serializeTags(tags: string[] | undefined): string | null {
   if (!tags || tags.length === 0) return null;
   return JSON.stringify(tags);
+}
+
+function serializeSplitWith(ids: string[] | undefined): string | null {
+  if (!ids || ids.length === 0) return null;
+  return JSON.stringify(ids);
+}
+
+function parseSplitWith(raw: string | null): string[] | undefined {
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')
+      ? parsed
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function serializeSplit(split: Receipt['split'] | undefined): string | null {
@@ -716,8 +736,9 @@ async function attachLineItems(rows: RawRow[]): Promise<Receipt[]> {
     name: string;
     amount: number;
     category: string | null;
+    split_with: string | null;
   }>(
-    `SELECT id, receipt_id, name, amount, category
+    `SELECT id, receipt_id, name, amount, category, split_with
      FROM line_items WHERE receipt_id IN (${placeholders})`,
     rows.map((r) => r.id),
   );
@@ -735,6 +756,7 @@ async function attachLineItems(rows: RawRow[]): Promise<Receipt[]> {
       // a non-empty category string.
       category:
         r.category && r.category.trim() ? r.category : 'Other',
+      splitWith: parseSplitWith(r.split_with),
     });
     byReceiptId.set(r.receipt_id, list);
   }
@@ -823,11 +845,13 @@ type CloudReceiptShape = {
   imageUri?: string | null;
   photoUrl?: string | null;
   notes?: string | null;
+  split?: Receipt['split'];
   lineItems?: Array<{
     id: string;
     name: string;
     amount: number;
     category?: string | null;
+    splitWith?: string[];
   }>;
   createdAt: string;
   updatedAt: string;
@@ -849,8 +873,8 @@ export async function upsertReceiptFromCloud(
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          split_json, created_at, updated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          store_name      = excluded.store_name,
          date            = excluded.date,
@@ -863,6 +887,7 @@ export async function upsertReceiptFromCloud(
          image_uri       = excluded.image_uri,
          photo_url       = excluded.photo_url,
          notes           = excluded.notes,
+         split_json      = excluded.split_json,
          updated_at      = excluded.updated_at,
          user_id         = excluded.user_id`,
       [
@@ -878,6 +903,7 @@ export async function upsertReceiptFromCloud(
         cloud.imageUri ?? null,
         cloud.photoUrl ?? null,
         cloud.notes ?? null,
+        serializeSplit(cloud.split),
         cloud.createdAt,
         cloud.updatedAt,
         uid,
@@ -889,8 +915,8 @@ export async function upsertReceiptFromCloud(
     await db.runAsync(`DELETE FROM line_items WHERE receipt_id = ?`, [cloud.id]);
     for (const it of cloud.lineItems ?? []) {
       await db.runAsync(
-        `INSERT INTO line_items (id, receipt_id, name, amount, category) VALUES (?, ?, ?, ?, ?)`,
-        [it.id, cloud.id, it.name, it.amount, it.category ?? null],
+        `INSERT INTO line_items (id, receipt_id, name, amount, category, split_with) VALUES (?, ?, ?, ?, ?, ?)`,
+        [it.id, cloud.id, it.name, it.amount, it.category ?? null, serializeSplitWith(it.splitWith)],
       );
     }
   });

@@ -20,6 +20,11 @@ export interface LineItem {
    *  per-item categorization may be undefined; treat as the receipt's
    *  overall category in that case. */
   category?: Category | string;
+  /** Household member ids (uid, or 'self' for the signed-in user) this
+   *  item is shared with, split equally among them. Undefined/empty
+   *  means "everyone in the receipt's split" (the default). Only
+   *  meaningful when the parent receipt's `split.enabled` is true. */
+  splitWith?: string[];
 }
 
 export interface Receipt {
