@@ -16,29 +16,33 @@ import { Category } from '../types';
  * won't update on system theme changes until they're migrated.
  */
 
-// Brand colors shared across both palettes — saturated enough to work
-// on a dark background AND a light one without needing per-theme variants.
+// Brand colors shared across both palettes — a navy/periwinkle system:
+// lavender-blue primary, teal-green secondary/success, muted red for
+// alerts. Saturated enough to work on a dark background AND a light
+// one without needing per-theme variants.
 const BRAND = {
-  primary: '#10B981',
-  primaryDark: '#059669',
-  primaryLight: '#34D399',
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-  info: '#3B82F6',
+  primary: '#7B86D9',
+  primaryDark: '#5B67C7',
+  primaryLight: '#9AA3E8',
+  secondary: '#4F9B82',
+  success: '#4F9B82',
+  watch: '#7B86D9',
+  warning: '#D0A257',
+  error: '#C2504F',
+  info: '#5FA8C9',
 };
 
 const CATEGORY_COLORS = {
-  Groceries: '#10B981',
-  Electronics: '#3B82F6',
-  Dining: '#F59E0B',
-  Pharmacy: '#EC4899',
-  Gas: '#8B5CF6',
-  Clothing: '#F97316',
-  Entertainment: '#06B6D4',
-  Travel: '#84CC16',
-  Healthcare: '#EF4444',
-  Other: '#64748B', // slightly darker on light, still readable on dark
+  Groceries: '#4F9B82',
+  Electronics: '#7B86D9',
+  Dining: '#6E7BDB',
+  Pharmacy: '#B07BC9',
+  Gas: '#7B86D9',
+  Clothing: '#9AA3E8',
+  Entertainment: '#B14B4B',
+  Travel: '#5FA8C9',
+  Healthcare: '#D06B6B',
+  Other: '#6B7191', // slightly darker on light, still readable on dark
 } as Record<Category, string>;
 
 const SHAPE = {
@@ -50,18 +54,20 @@ const SHAPE = {
 export const darkTheme = {
   isDark: true,
   colors: {
-    background: '#0F172A',
-    surface: '#1E293B',
-    surfaceHigh: '#263447',
-    border: '#334155',
-    borderLight: '#475569',
+    background: '#0A0E27',
+    surface: '#141936',
+    surfaceHigh: '#1C2247',
+    border: '#262C52',
+    borderLight: '#363C6B',
 
     ...BRAND,
-    primaryFaint: 'rgba(16, 185, 129, 0.12)',
+    primaryFaint: 'rgba(123, 134, 217, 0.16)',
+    successFaint: 'rgba(79, 155, 130, 0.16)',
+    errorFaint: 'rgba(194, 80, 79, 0.16)',
 
-    textPrimary: '#F8FAFC',
-    textSecondary: '#94A3B8',
-    textMuted: '#64748B',
+    textPrimary: '#F5F6FA',
+    textSecondary: '#9AA0C3',
+    textMuted: '#6B7191',
 
     category: CATEGORY_COLORS,
   },
@@ -71,18 +77,20 @@ export const darkTheme = {
 export const lightTheme = {
   isDark: false,
   colors: {
-    background: '#F8FAFC', // very light gray-blue
+    background: '#F4F5FB',
     surface: '#FFFFFF',
-    surfaceHigh: '#F1F5F9',
-    border: '#E2E8F0',
-    borderLight: '#CBD5E1',
+    surfaceHigh: '#ECEDF9',
+    border: '#DBDDF0',
+    borderLight: '#C6C9E8',
 
     ...BRAND,
-    primaryFaint: 'rgba(16, 185, 129, 0.10)',
+    primaryFaint: 'rgba(91, 103, 199, 0.10)',
+    successFaint: 'rgba(63, 143, 114, 0.10)',
+    errorFaint: 'rgba(194, 80, 79, 0.10)',
 
-    textPrimary: '#0F172A',
-    textSecondary: '#475569',
-    textMuted: '#94A3B8',
+    textPrimary: '#141936',
+    textSecondary: '#4B5178',
+    textMuted: '#8489AD',
 
     category: CATEGORY_COLORS,
   },

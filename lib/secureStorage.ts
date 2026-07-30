@@ -13,6 +13,8 @@ const Keys = {
   // the suffix `:${uid}` so different users on the same device each
   // do their own one-time backfill.
   cloudMigrationDone: 'bs.cloud.migrationDone',
+  categoryBudgets: 'bs.budgets.byCategory',
+  budgetAlertsEnabled: 'bs.budgets.alertsEnabled',
 } as const;
 
 export async function getOnboardingSeen(): Promise<boolean> {
@@ -90,6 +92,31 @@ export async function setAiClassifyEnabled(enabled: boolean): Promise<void> {
   } else {
     await SecureStore.deleteItemAsync(Keys.aiClassifyEnabled);
   }
+}
+
+export async function getCategoryBudgets(): Promise<Record<string, number>> {
+  const v = await SecureStore.getItemAsync(Keys.categoryBudgets);
+  if (!v) return {};
+  try {
+    return JSON.parse(v) as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+export async function setCategoryBudget(category: string, amount: number): Promise<void> {
+  const current = await getCategoryBudgets();
+  const next = { ...current, [category]: amount };
+  await SecureStore.setItemAsync(Keys.categoryBudgets, JSON.stringify(next));
+}
+
+export async function getBudgetAlertsEnabled(): Promise<boolean> {
+  const v = await SecureStore.getItemAsync(Keys.budgetAlertsEnabled);
+  return v !== '0'; // default on
+}
+
+export async function setBudgetAlertsEnabled(enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(Keys.budgetAlertsEnabled, enabled ? '1' : '0');
 }
 
 export async function resetAllSecureStorage(): Promise<void> {

@@ -12,9 +12,10 @@ import {
   ActivityIndicator,
   Pressable,
 } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getReceiptById,
@@ -64,6 +65,20 @@ function safeFormat(input: unknown, fmt: string): string {
 function safeAmount(n: number | null | undefined, digits = 2): string {
   if (typeof n !== 'number' || !Number.isFinite(n)) return '0.00';
   return n.toFixed(digits);
+}
+
+/** Safe wrapper around date-fns formatDistanceToNow() for the hero meta
+ *  line — same "legacy receipt may have a bad timestamp" guard as
+ *  safeFormat above, just producing "3 days ago" instead of a date. */
+function safeRelative(input: unknown): string {
+  if (input == null || input === '') return '';
+  try {
+    const d = new Date(input as string);
+    if (isNaN(d.getTime())) return '';
+    return formatDistanceToNow(d, { addSuffix: true });
+  } catch {
+    return '';
+  }
 }
 
 function groupItemsByCategory(
@@ -117,22 +132,78 @@ function EditReceiptScreen() {
       fontSize: t.font.lg,
       marginBottom: t.spacing.md,
     },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.sm,
+      paddingHorizontal: t.spacing.md,
+      paddingTop: t.spacing.sm,
+      paddingBottom: t.spacing.xs,
+    },
+    headerBack: {
+      padding: t.spacing.xs,
+      marginLeft: -t.spacing.xs,
+    },
+    headerTitle: {
+      color: t.colors.textSecondary,
+      fontSize: t.font.sm,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 2,
+    },
+    imageBox: {
+      width: '100%',
+      height: 220,
+      borderRadius: t.radius.lg,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      backgroundColor: t.colors.surfaceHigh,
+      overflow: 'hidden',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: t.spacing.md,
+    },
     image: {
       width: '100%',
-      height: 200,
-      borderRadius: t.radius.lg,
-      marginBottom: t.spacing.xs,
+      height: '100%',
     },
-    meta: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      flexWrap: 'wrap',
-      gap: 4,
-      marginBottom: t.spacing.xs,
-    },
-    metaText: {
+    imagePlaceholderText: {
       color: t.colors.textMuted,
-      fontSize: t.font.xs,
+      fontSize: t.font.sm,
+      marginTop: t.spacing.xs,
+    },
+    merchantName: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.xxl,
+      fontWeight: '800',
+    },
+    heroAmount: {
+      color: t.colors.textPrimary,
+      fontSize: t.font.xxxl,
+      fontWeight: '800',
+      marginTop: t.spacing.xs,
+    },
+    heroMeta: {
+      color: t.colors.textSecondary,
+      fontSize: t.font.sm,
+      marginTop: t.spacing.xs,
+    },
+    heroCategoryRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: t.spacing.sm,
+      marginBottom: t.spacing.md,
+    },
+    heroCategoryDot: {
+      width: 10,
+      height: 10,
+      borderRadius: t.radius.full,
+    },
+    heroCategoryLabel: {
+      color: t.colors.textSecondary,
+      fontSize: t.font.sm,
+      fontWeight: '600',
     },
     fieldCard: {
       gap: t.spacing.sm,
@@ -302,6 +373,12 @@ function EditReceiptScreen() {
     },
     deleteBtn: {
       marginTop: t.spacing.xs,
+      backgroundColor: 'transparent',
+      borderWidth: 1,
+      borderColor: t.colors.error,
+    },
+    deleteBtnText: {
+      color: t.colors.error,
     },
     lineItemRowSelected: {
       backgroundColor: `${t.colors.primary}1A`,
@@ -580,20 +657,29 @@ function EditReceiptScreen() {
     ]);
   };
 
+  // This screen owns its own header (small-caps title + back chevron,
+  // per the new visual spec) instead of the native one configured in
+  // app/_layout.tsx, so headerShown:false needs to apply across every
+  // return path below — not just the loaded one — or the native "Edit
+  // Receipt" header would flash briefly during loading/not-found.
+  const hiddenHeader = <Stack.Screen options={{ headerShown: false }} />;
+
   if (loading) {
     return (
-      <View style={[styles.screen, styles.centered]}>
+      <SafeAreaView style={[styles.screen, styles.centered]} edges={['top']}>
+        {hiddenHeader}
         <ActivityIndicator size="large" color={theme.colors.primary} />
-      </View>
+      </SafeAreaView>
     );
   }
 
   if (!receipt) {
     return (
-      <View style={[styles.screen, styles.centered]}>
+      <SafeAreaView style={[styles.screen, styles.centered]} edges={['top']}>
+        {hiddenHeader}
         <Text style={styles.notFoundText}>Receipt not found</Text>
         <Button label="Go back" onPress={() => router.back()} variant="ghost" />
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -628,8 +714,46 @@ function EditReceiptScreen() {
     applyBulkCategory(trimmed);
   };
 
+  // Relative timestamps for the hero meta line. No payment-method /
+  // card-last4 metadata exists anywhere in the Receipt type or
+  // lib/cloudSync — see grep before this change — so the meta line
+  // is just the relative added/edited dates, guarded the same way
+  // safeFormat guards legacy bad timestamps.
+  const addedRelative = safeRelative(receipt.createdAt);
+  const editedRelative =
+    receipt.updatedAt && receipt.updatedAt !== receipt.createdAt
+      ? safeRelative(receipt.updatedAt)
+      : '';
+  const heroMetaText = [
+    addedRelative && `Added ${addedRelative}`,
+    editedRelative && `Edited ${editedRelative}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  // Same "derive primary from tags" logic as handleSave, so the hero
+  // category dot/label reflects live edits to the Categories chip list
+  // instead of only the value loaded from disk.
+  const heroCategory: Category =
+    (categoryTags.find((t) =>
+      (ALL_CATEGORIES as readonly string[]).includes(t),
+    ) as Category | undefined) ?? category;
+
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
+    {hiddenHeader}
+    {/* Custom header — small-caps title + back chevron per the new
+        visual spec, replacing the native stack header. */}
+    <View style={styles.header}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={styles.headerBack}
+        hitSlop={10}
+      >
+        <Ionicons name="chevron-back" size={24} color={theme.colors.textPrimary} />
+      </TouchableOpacity>
+      <Text style={styles.headerTitle}>Expense</Text>
+    </View>
     <ScrollView
       style={styles.screen}
       contentContainerStyle={[
@@ -638,34 +762,50 @@ function EditReceiptScreen() {
       ]}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Receipt image — hides itself if the file is missing (older
-          receipts may have stale cache:// paths from before we
-          started copying to documentDirectory on save). */}
-      {receipt.imageUri && !imageMissing && (
-        <Image
-          source={{ uri: receipt.imageUri }}
-          style={styles.image}
-          resizeMode="cover"
-          onError={() => setImageMissing(true)}
-        />
-      )}
-
-      {/* Meta info — guard against missing/invalid timestamps on
-          legacy receipts so a bad createdAt doesn't crash the
-          whole screen render. */}
-      <View style={styles.meta}>
-        {safeFormat(receipt.createdAt, 'MMM d, yyyy · h:mm a') !== '' && (
-          <Text style={styles.metaText}>
-            Added {safeFormat(receipt.createdAt, 'MMM d, yyyy · h:mm a')}
-          </Text>
+      {/* Receipt image — bordered rounded box per the new hero style.
+          Hides the <Image> itself (falling back to the placeholder
+          box) if the file is missing — older receipts may have stale
+          cache:// paths from before we started copying to
+          documentDirectory on save. */}
+      <View style={styles.imageBox}>
+        {receipt.imageUri && !imageMissing ? (
+          <Image
+            source={{ uri: receipt.imageUri }}
+            style={styles.image}
+            resizeMode="cover"
+            onError={() => setImageMissing(true)}
+          />
+        ) : (
+          <>
+            <Ionicons name="receipt-outline" size={32} color={theme.colors.textMuted} />
+            <Text style={styles.imagePlaceholderText}>No receipt image</Text>
+          </>
         )}
-        {receipt.updatedAt &&
-          receipt.updatedAt !== receipt.createdAt &&
-          safeFormat(receipt.updatedAt, 'MMM d, yyyy') !== '' && (
-            <Text style={styles.metaText}>
-              Edited {safeFormat(receipt.updatedAt, 'MMM d, yyyy')}
-            </Text>
-          )}
+      </View>
+
+      {/* Hero — merchant name + amount, mirroring the editable Store/
+          Amount cards below so the big display numbers always match
+          what's currently typed, even before Save is tapped. */}
+      <Text style={styles.merchantName} numberOfLines={1}>
+        {storeName || 'Untitled receipt'}
+      </Text>
+      <Text style={styles.heroAmount}>
+        $
+        {(() => {
+          const parsed = parseFloat(amount.replace(',', '.'));
+          return safeAmount(Number.isFinite(parsed) ? parsed : receipt.totalAmount);
+        })()}
+      </Text>
+      {heroMetaText !== '' && <Text style={styles.heroMeta}>{heroMetaText}</Text>}
+
+      <View style={styles.heroCategoryRow}>
+        <View
+          style={[
+            styles.heroCategoryDot,
+            { backgroundColor: theme.colors.category[heroCategory] ?? theme.colors.textMuted },
+          ]}
+        />
+        <Text style={styles.heroCategoryLabel}>{heroCategory}</Text>
       </View>
 
       {/* Store name */}
@@ -720,7 +860,7 @@ function EditReceiptScreen() {
           style={[styles.input, styles.inputMultiline]}
           value={notes}
           onChangeText={setNotes}
-          placeholder="Add notes..."
+          placeholder="No notes added."
           placeholderTextColor={theme.colors.textMuted}
           multiline
           numberOfLines={3}
@@ -894,12 +1034,17 @@ function EditReceiptScreen() {
         style={styles.saveBtn}
       />
 
+      {/* Red-outlined per the new spec (not solid danger fill) — override
+          Button's variant="danger" background/text via style/textStyle
+          rather than adding a new variant to components/ui/Button.tsx,
+          since this task only touches app/edit/[id].tsx. */}
       <Button
-        label="Delete Receipt"
+        label="DELETE EXPENSE"
         onPress={handleDelete}
         variant="danger"
         size="lg"
         style={styles.deleteBtn}
+        textStyle={styles.deleteBtnText}
       />
 
       <ItemEditModal
@@ -1019,7 +1164,7 @@ function EditReceiptScreen() {
         </Pressable>
       </Pressable>
     </Modal>
-    </View>
+    </SafeAreaView>
   );
 }
 

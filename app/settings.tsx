@@ -5,6 +5,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -12,16 +13,23 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as FileSystem from 'expo-file-system';
 import { useStyles, useTheme } from '../constants/theme';
+import { Button } from '../components/ui/Button';
+import { ALL_CATEGORIES } from '../constants/categories';
 import { useAuth } from '../lib/AuthContext';
 import { humanizeAuthError } from '../lib/authErrors';
 import { classifyWithAnthropic } from '../lib/anthropicClassify';
 import {
   getAiClassifyEnabled,
   getAnthropicApiKey,
+  getBudgetAlertsEnabled,
+  getCategoryBudgets,
   getGeminiApiKey,
   setAiClassifyEnabled,
   setAnthropicApiKey,
+  setBudgetAlertsEnabled as persistBudgetAlertsEnabled,
+  setCategoryBudget,
   setGeminiApiKey,
 } from '../lib/secureStorage';
 import { parseReceiptWithGemini } from '../lib/geminiParseReceipt';
@@ -37,7 +45,13 @@ import {
   rememberPendingInviteEmail,
   sendInviteEmailLink,
 } from '../lib/inviteLink';
-import { setCurrentHouseholdId, getCurrentHouseholdId } from '../lib/database';
+import {
+  setCurrentHouseholdId,
+  getCurrentHouseholdId,
+  getAllReceipts,
+} from '../lib/database';
+import { receiptsToCsv } from '../lib/reports';
+import { Category } from '../types';
 
 function useSettingsStyles() {
   return useStyles((theme) => ({
@@ -46,6 +60,12 @@ function useSettingsStyles() {
       paddingHorizontal: theme.spacing.lg,
       paddingTop: theme.spacing.lg,
       paddingBottom: theme.spacing.xl,
+    },
+    screenTitle: {
+      color: theme.colors.textPrimary,
+      fontSize: theme.font.xxxl,
+      fontWeight: '800',
+      marginBottom: theme.spacing.lg,
     },
     section: {
       marginBottom: theme.spacing.lg,
@@ -123,40 +143,34 @@ function useSettingsStyles() {
       fontWeight: '700',
     },
     profileMeta: {
-      color: theme.colors.textSecondary,
+      color: theme.colors.textMuted,
       fontSize: theme.font.sm,
       marginTop: 2,
     },
-    dangerZone: {
-      marginTop: theme.spacing.md,
-    },
-    signOutBtn: {
-      flexDirection: 'row',
+    signOutTextBtn: {
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 8,
-      backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.md,
-      paddingVertical: 14,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      paddingVertical: theme.spacing.md,
     },
-    signOutText: {
-      color: theme.colors.textPrimary,
+    signOutTextLabel: {
+      color: theme.colors.error,
       fontSize: theme.font.md,
-      fontWeight: '600',
+      fontWeight: '700',
+    },
+    dangerZone: {
+      marginTop: theme.spacing.md,
     },
     deleteBtn: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
       gap: 8,
-      backgroundColor: 'rgba(239, 68, 68, 0.08)',
+      backgroundColor: theme.colors.errorFaint,
       borderRadius: theme.radius.md,
       paddingVertical: 14,
       marginTop: theme.spacing.md,
       borderWidth: 1,
-      borderColor: 'rgba(239, 68, 68, 0.4)',
+      borderColor: theme.colors.error,
     },
     deleteText: {
       color: theme.colors.error,
@@ -230,6 +244,65 @@ function useSettingsStyles() {
       lineHeight: 16,
       marginTop: theme.spacing.sm,
     },
+    budgetRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+      gap: theme.spacing.sm,
+    },
+    categoryDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    categoryName: {
+      flex: 1,
+      color: theme.colors.textPrimary,
+      fontSize: theme.font.md,
+      fontWeight: '600',
+    },
+    budgetInputBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.sm,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: 6,
+      backgroundColor: theme.colors.background,
+    },
+    budgetCurrencyPrefix: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.sm,
+      marginRight: 2,
+    },
+    budgetInput: {
+      color: theme.colors.textPrimary,
+      fontSize: theme.font.sm,
+      minWidth: 44,
+      padding: 0,
+      textAlign: 'right',
+    },
+    alertRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 14,
+    },
+    alertLabel: {
+      color: theme.colors.textPrimary,
+      fontSize: theme.font.md,
+      fontWeight: '600',
+    },
+    alertCaption: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.xs,
+      marginTop: 2,
+    },
   }));
 }
 
@@ -251,23 +324,52 @@ export default function SettingsScreen() {
   const [savingGemini, setSavingGemini] = useState(false);
   const [testingGemini, setTestingGemini] = useState(false);
 
+  // Per-category budget amounts and the "notify near limit" toggle are
+  // persisted via lib/secureStorage (getCategoryBudgets/setCategoryBudget,
+  // getBudgetAlertsEnabled/setBudgetAlertsEnabled) — the same store the
+  // dashboard reads from to render the Budgets section and status pills.
+  const [categoryBudgets, setCategoryBudgets] = useState<Record<string, string>>({});
+  const [budgetAlertsEnabled, setBudgetAlertsEnabledState] = useState(true);
+  const [exportingAll, setExportingAll] = useState(false);
+
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const [stored, enabled, gemini] = await Promise.all([
+      const [stored, enabled, gemini, budgets, alertsEnabled] = await Promise.all([
         getAnthropicApiKey(),
         getAiClassifyEnabled(),
         getGeminiApiKey(),
+        getCategoryBudgets(),
+        getBudgetAlertsEnabled(),
       ]);
       if (!mounted) return;
       setApiKeyState(stored ?? '');
       setAiEnabledState(enabled);
       setGeminiKeyState(gemini ?? '');
+      setCategoryBudgets(
+        Object.fromEntries(
+          Object.entries(budgets).map(([cat, amount]) => [cat, String(amount)]),
+        ),
+      );
+      setBudgetAlertsEnabledState(alertsEnabled);
     })();
     return () => {
       mounted = false;
     };
   }, []);
+
+  const updateCategoryBudget = (cat: string, value: string) => {
+    setCategoryBudgets((prev) => ({ ...prev, [cat]: value }));
+    const parsed = parseFloat(value);
+    if (!Number.isNaN(parsed) && parsed >= 0) {
+      setCategoryBudget(cat, parsed);
+    }
+  };
+
+  const toggleBudgetAlerts = (enabled: boolean) => {
+    setBudgetAlertsEnabledState(enabled);
+    persistBudgetAlertsEnabled(enabled);
+  };
 
   const toggleAi = async () => {
     if (!aiEnabled && !apiKey.trim()) {
@@ -361,6 +463,59 @@ export default function SettingsScreen() {
     }
   };
 
+  /**
+   * Exports every receipt on this device/household as a single CSV —
+   * reuses the same `getAllReceipts` + `receiptsToCsv` + share-sheet
+   * pattern already proven out in Reports' date-range export
+   * (app/reports.tsx), just without the date filter. Lazily requires
+   * expo-sharing so this doesn't crash on an APK where the native
+   * module isn't linked yet; falls back to reporting the saved path.
+   */
+  const exportAllData = async () => {
+    if (exportingAll) return;
+    setExportingAll(true);
+    try {
+      const receipts = await getAllReceipts();
+      if (receipts.length === 0) {
+        Alert.alert('Nothing to export', 'Scan a few receipts before exporting.');
+        return;
+      }
+      const csv = receiptsToCsv(receipts);
+      const filename = `BalanceSheet All Data - ${new Date().toISOString().slice(0, 10)}.csv`;
+      const path = `${FileSystem.documentDirectory}${filename}`;
+      await FileSystem.writeAsStringAsync(path, csv, {
+        encoding: FileSystem.EncodingType.UTF8,
+      });
+
+      let Sharing: typeof import('expo-sharing') | null = null;
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+        Sharing = require('expo-sharing');
+      } catch {
+        Sharing = null;
+      }
+      const canShare = Sharing
+        ? await Sharing.isAvailableAsync().catch(() => false)
+        : false;
+      if (Sharing && canShare) {
+        await Sharing.shareAsync(path, {
+          mimeType: 'text/csv',
+          dialogTitle: 'Export all data',
+          UTI: 'public.comma-separated-values-text',
+        });
+      } else {
+        Alert.alert(
+          'Saved',
+          `Sharing isn't available in this build, but the file was written to ${path}.`,
+        );
+      }
+    } catch (e) {
+      Alert.alert('Export failed', (e as Error)?.message ?? 'Try again.');
+    } finally {
+      setExportingAll(false);
+    }
+  };
+
   const confirmSignOut = () => {
     Alert.alert('Sign out?', 'You will need to sign in again to use the app.', [
       { text: 'Cancel', style: 'cancel' },
@@ -432,6 +587,8 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
+        <Text style={styles.screenTitle}>Settings</Text>
+
         <Section title="Profile">
           {profile ? (
             <>
@@ -452,7 +609,7 @@ export default function SettingsScreen() {
                     {profile.firstName} {profile.lastName}
                   </Text>
                   <Text style={styles.profileMeta} numberOfLines={1}>
-                    {profile.gender} · {profile.age}
+                    {identity}
                   </Text>
                 </View>
               </View>
@@ -468,6 +625,64 @@ export default function SettingsScreen() {
             </Pressable>
           )}
         </Section>
+
+        {/*
+          No CURRENCY section here: there's no multi-currency support
+          anywhere in this codebase (no currency field on Receipt/
+          Profile, no conversion helper in lib/). Rather than invent a
+          USD/EUR/GBP/INR picker with no exchange-rate logic behind it,
+          this section from the mockup is intentionally omitted — see
+          the settings.tsx restyle notes for detail.
+        */}
+
+        <Section title="Categories & budgets">
+          {ALL_CATEGORIES.map((cat: Category) => (
+            <View key={cat} style={styles.budgetRow}>
+              <View
+                style={[styles.categoryDot, { backgroundColor: theme.colors.category[cat] }]}
+              />
+              <Text style={styles.categoryName} numberOfLines={1}>
+                {cat}
+              </Text>
+              <View style={styles.budgetInputBox}>
+                <Text style={styles.budgetCurrencyPrefix}>$</Text>
+                <TextInput
+                  value={categoryBudgets[cat] ?? ''}
+                  onChangeText={(v) => updateCategoryBudget(cat, v)}
+                  placeholder="0"
+                  placeholderTextColor={theme.colors.textMuted}
+                  keyboardType="numeric"
+                  style={styles.budgetInput}
+                />
+              </View>
+            </View>
+          ))}
+          <View style={styles.alertRow}>
+            <View>
+              <Text style={styles.alertLabel}>Budget alerts</Text>
+              <Text style={styles.alertCaption}>Notify near limit</Text>
+            </View>
+            <Switch
+              value={budgetAlertsEnabled}
+              onValueChange={toggleBudgetAlerts}
+              trackColor={{ false: theme.colors.border, true: theme.colors.primaryFaint }}
+              thumbColor={budgetAlertsEnabled ? theme.colors.primary : theme.colors.textMuted}
+            />
+          </View>
+        </Section>
+
+        <View style={{ marginBottom: theme.spacing.sm }}>
+          <Button
+            label={exportingAll ? 'Exporting…' : 'Export all data'}
+            onPress={exportAllData}
+            variant="secondary"
+            loading={exportingAll}
+          />
+        </View>
+
+        <Pressable onPress={confirmSignOut} style={styles.signOutTextBtn} hitSlop={4}>
+          <Text style={styles.signOutTextLabel}>Sign out</Text>
+        </Pressable>
 
         <Section title="Account">
           <Row label="Signed in with" value={providerLabel} />
@@ -623,10 +838,6 @@ export default function SettingsScreen() {
         </Section>
 
         <View style={styles.dangerZone}>
-          <Pressable onPress={confirmSignOut} style={styles.signOutBtn} hitSlop={4}>
-            <Ionicons name="log-out-outline" size={18} color={theme.colors.textPrimary} />
-            <Text style={styles.signOutText}>Sign out</Text>
-          </Pressable>
           <Pressable
             onPress={confirmDelete}
             style={[styles.deleteBtn, working && { opacity: 0.5 }]}

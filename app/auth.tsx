@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
@@ -26,7 +26,7 @@ import {
 } from '../lib/auth';
 import { humanizeAuthError } from '../lib/authErrors';
 
-type Tab = 'email' | 'phone' | 'google';
+type Tab = 'login' | 'signup';
 
 export default function AuthScreen() {
   // Email pre-fill + success message come from the invite-finish
@@ -35,7 +35,9 @@ export default function AuthScreen() {
   const params = useLocalSearchParams<{ email?: string; msg?: string }>();
   const initialEmail = (params.email ?? '').trim();
   const initialMsg = (params.msg ?? '').trim();
-  const [tab, setTab] = useState<Tab>('email');
+  const [tab, setTab] = useState<Tab>('login');
+  const [showPhone, setShowPhone] = useState(false);
+  const theme = useTheme();
   const styles = useStyles(makeStyles);
   const toast = useToast();
   const toastShownRef = useRef(false);
@@ -56,21 +58,50 @@ export default function AuthScreen() {
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
-            <Text style={styles.brand}>BalanceSheet</Text>
-            <Text style={styles.tagline}>Sign in to keep every receipt in sync.</Text>
+            <View style={styles.brandRow}>
+              <View style={styles.brandIcon}>
+                <Ionicons name="receipt" size={18} color={theme.colors.textPrimary} />
+              </View>
+              <Text style={styles.brand}>Receiptly</Text>
+            </View>
+            <Text style={styles.title}>{tab === 'login' ? 'Welcome back' : 'Create your account'}</Text>
+            <Text style={styles.tagline}>
+              {tab === 'login'
+                ? "Sign in to see where your money's going."
+                : 'Start tracking every receipt in seconds.'}
+            </Text>
           </View>
 
           <View style={styles.tabs}>
-            <TabButton label="Email" active={tab === 'email'} onPress={() => setTab('email')} icon="mail-outline" />
-            <TabButton label="Phone" active={tab === 'phone'} onPress={() => setTab('phone')} icon="call-outline" />
-            <TabButton label="Google" active={tab === 'google'} onPress={() => setTab('google')} icon="logo-google" />
+            <TabButton label="LOG IN" active={tab === 'login'} onPress={() => setTab('login')} />
+            <TabButton label="SIGN UP" active={tab === 'signup'} onPress={() => setTab('signup')} />
           </View>
 
-          <View style={styles.formWrap}>
-            {tab === 'email' && <EmailForm initialEmail={initialEmail} />}
-            {tab === 'phone' && <PhoneForm />}
-            {tab === 'google' && <GoogleForm />}
-          </View>
+          {showPhone ? (
+            <PhoneForm onUseEmail={() => setShowPhone(false)} />
+          ) : (
+            <>
+              <EmailForm mode={tab} initialEmail={initialEmail} />
+
+              <View style={styles.dividerRow}>
+                <View style={styles.dividerLine} />
+                <Text style={styles.dividerText}>OR</Text>
+                <View style={styles.dividerLine} />
+              </View>
+
+              <GoogleForm />
+              <Button
+                label="Continue with Phone"
+                variant="secondary"
+                onPress={() => setShowPhone(true)}
+              />
+            </>
+          )}
+
+          <Pressable onPress={() => router.replace('/onboarding')} hitSlop={8} style={styles.backRow}>
+            <Ionicons name="chevron-back" size={14} color={theme.colors.textSecondary} />
+            <Text style={styles.linkMuted}>Back to intro</Text>
+          </Pressable>
 
           <Text style={styles.legal}>
             By continuing you agree to our Terms of Service and Privacy Policy.
@@ -85,35 +116,25 @@ function TabButton({
   label,
   active,
   onPress,
-  icon,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
-  icon: keyof typeof Ionicons.glyphMap;
 }) {
-  const theme = useTheme();
   const styles = useStyles(makeStyles);
   return (
     <Pressable
       onPress={onPress}
       style={[styles.tabBtn, active && styles.tabBtnActive]}
     >
-      <Ionicons
-        name={icon}
-        size={16}
-        color={active ? theme.colors.primary : theme.colors.textSecondary}
-        style={{ marginRight: 6 }}
-      />
       <Text style={[styles.tabBtnText, active && styles.tabBtnTextActive]}>{label}</Text>
     </Pressable>
   );
 }
 
-function EmailForm({ initialEmail }: { initialEmail?: string }) {
+function EmailForm({ mode, initialEmail }: { mode: Tab; initialEmail?: string }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState(initialEmail ?? '');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -129,7 +150,7 @@ function EmailForm({ initialEmail }: { initialEmail?: string }) {
     }
     try {
       setLoading(true);
-      if (mode === 'signin') {
+      if (mode === 'login') {
         await signInWithEmail(email, password);
       } else {
         await signUpWithEmail(email, password);
@@ -160,7 +181,7 @@ function EmailForm({ initialEmail }: { initialEmail?: string }) {
         label="Email"
         value={email}
         onChangeText={setEmail}
-        placeholder="you@example.com"
+        placeholder="you@email.com"
         keyboardType="email-address"
         autoCapitalize="none"
         autoComplete="email"
@@ -175,30 +196,23 @@ function EmailForm({ initialEmail }: { initialEmail?: string }) {
       />
 
       <Button
-        label={mode === 'signin' ? 'Sign in' : 'Create account'}
+        label={mode === 'login' ? 'Log in' : 'Create account'}
         onPress={submit}
         loading={loading}
         size="lg"
-        style={{ marginTop: theme.spacing.md }}
+        style={{ marginTop: theme.spacing.sm }}
       />
 
-      <View style={styles.linkRow}>
-        <Pressable onPress={() => setMode(mode === 'signin' ? 'signup' : 'signin')} hitSlop={8}>
-          <Text style={styles.link}>
-            {mode === 'signin' ? 'Create an account' : 'I already have an account'}
-          </Text>
+      {mode === 'login' && (
+        <Pressable onPress={reset} hitSlop={8} style={styles.forgotRow}>
+          <Text style={styles.linkMuted}>Forgot password?</Text>
         </Pressable>
-        {mode === 'signin' && (
-          <Pressable onPress={reset} hitSlop={8}>
-            <Text style={styles.linkMuted}>Forgot password?</Text>
-          </Pressable>
-        )}
-      </View>
+      )}
     </View>
   );
 }
 
-function PhoneForm() {
+function PhoneForm({ onUseEmail }: { onUseEmail: () => void }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [phone, setPhone] = useState('');
@@ -257,6 +271,9 @@ function PhoneForm() {
           size="lg"
           style={{ marginTop: theme.spacing.md }}
         />
+        <Pressable onPress={onUseEmail} hitSlop={8} style={{ marginTop: theme.spacing.md }}>
+          <Text style={styles.linkMuted}>Use email instead</Text>
+        </Pressable>
       </View>
     );
   }
@@ -350,7 +367,26 @@ const makeStyles = (t: Theme) => ({
     alignItems: 'center' as const,
     marginBottom: t.spacing.xl,
   },
+  brandRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: t.spacing.xs,
+    marginBottom: t.spacing.md,
+  },
+  brandIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: t.radius.sm,
+    backgroundColor: t.colors.surfaceHigh,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
   brand: {
+    color: t.colors.textPrimary,
+    fontSize: t.font.lg,
+    fontWeight: '700' as const,
+  },
+  title: {
     color: t.colors.textPrimary,
     fontSize: t.font.xxxl,
     fontWeight: '700' as const,
@@ -387,12 +423,32 @@ const makeStyles = (t: Theme) => ({
   tabBtnTextActive: {
     color: t.colors.primary,
   },
-  formWrap: {
-    backgroundColor: t.colors.surface,
-    borderRadius: t.radius.lg,
-    padding: t.spacing.lg,
-    borderWidth: 1,
-    borderColor: t.colors.border,
+  dividerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: t.spacing.sm,
+    marginVertical: t.spacing.lg,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: t.colors.border,
+  },
+  dividerText: {
+    color: t.colors.textMuted,
+    fontSize: t.font.xs,
+    fontWeight: '600' as const,
+  },
+  backRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: 4,
+    marginTop: t.spacing.lg,
+  },
+  forgotRow: {
+    alignItems: 'center' as const,
+    marginTop: t.spacing.md,
   },
   field: {
     marginBottom: t.spacing.md,
@@ -412,17 +468,6 @@ const makeStyles = (t: Theme) => ({
     borderWidth: 1,
     borderColor: t.colors.border,
     fontSize: t.font.md,
-  },
-  linkRow: {
-    flexDirection: 'row' as const,
-    justifyContent: 'space-between' as const,
-    alignItems: 'center' as const,
-    marginTop: t.spacing.md,
-  },
-  link: {
-    color: t.colors.primary,
-    fontSize: t.font.sm,
-    fontWeight: '600' as const,
   },
   linkMuted: {
     color: t.colors.textSecondary,

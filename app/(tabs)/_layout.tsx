@@ -1,8 +1,7 @@
-import { Tabs } from 'expo-router';
+import { Tabs, router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View } from 'react-native';
 import { useStyles, useTheme } from '../../constants/theme';
-import { HeaderProfileButton } from '../../components/ui/HeaderProfileButton';
 
 export default function TabLayout() {
   const theme = useTheme();
@@ -19,15 +18,16 @@ export default function TabLayout() {
       fontWeight: '600',
     },
     scanButton: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: 52,
+      height: 52,
+      borderRadius: 26,
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 20,
-      shadowColor: t.colors.primary,
+      backgroundColor: t.colors.background,
+      shadowColor: '#000',
       shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.5,
+      shadowOpacity: 0.4,
       shadowRadius: 8,
       elevation: 8,
     },
@@ -47,32 +47,62 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Dashboard',
+          title: 'Home',
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="grid-outline" size={size} color={color} />
+            <Ionicons name="home-outline" size={size} color={color} />
           ),
-          headerRight: () => <HeaderProfileButton />,
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'Expenses',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="receipt-outline" size={size} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
         name="scan"
         options={{
           title: 'Scan',
-          tabBarIcon: ({ color }) => (
-            <View style={[styles.scanButton, { backgroundColor: theme.colors.primary }]}>
-              <Ionicons name="camera" size={26} color="#fff" />
+          tabBarIcon: () => (
+            <View style={styles.scanButton}>
+              <Ionicons name="camera" size={24} color={theme.colors.textPrimary} />
             </View>
           ),
           tabBarLabel: () => null,
         }}
       />
       <Tabs.Screen
-        name="history"
+        name="reports-tab"
         options={{
-          title: 'History',
+          title: 'Reports',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="receipt-outline" size={size} color={color} />
+            <Ionicons name="bar-chart-outline" size={size} color={color} />
           ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push('/reports');
+          },
+        }}
+      />
+      <Tabs.Screen
+        name="settings-tab"
+        options={{
+          title: 'Settings',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings-outline" size={size} color={color} />
+          ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            router.push('/settings');
+          },
         }}
       />
     </Tabs>

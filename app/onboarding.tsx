@@ -10,14 +10,13 @@ import {
   ViewToken,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Button } from '../components/ui/Button';
 import { Theme, useStyles, useTheme } from '../constants/theme';
 import { useAuth } from '../lib/AuthContext';
 
-type AccentKey = 'primary' | 'info' | 'warning' | 'primaryLight';
+type AccentKey = 'primary' | 'secondary' | 'surfaceTile';
 
 type Slide = {
   key: string;
@@ -30,31 +29,24 @@ type Slide = {
 const SLIDES: Slide[] = [
   {
     key: 'capture',
-    icon: 'scan-outline',
-    title: 'Snap any receipt in seconds.',
-    body: "Point, shoot, done. We'll read every line so you don't have to type a thing.",
+    icon: 'camera',
+    title: "Snap a receipt, we'll do the rest",
+    body: 'Point your camera at any receipt — amount, merchant and category are captured instantly.',
     accent: 'primary',
   },
   {
     key: 'organize',
-    icon: 'pricetags-outline',
-    title: 'Your spending, automatically sorted.',
-    body: 'Groceries, fuel, dining, bills — every receipt lands in the right bucket the moment you scan it.',
-    accent: 'info',
+    icon: 'stats-chart',
+    title: 'See where it goes',
+    body: 'Track spending by category and stay under budget without lifting a finger.',
+    accent: 'secondary',
   },
   {
-    key: 'understand',
-    icon: 'stats-chart-outline',
-    title: 'See where your money actually goes.',
-    body: 'Clean charts and trends so you spot the leaks before payday.',
-    accent: 'warning',
-  },
-  {
-    key: 'secure',
-    icon: 'finger-print-outline',
-    title: 'Locked down with your fingerprint.',
-    body: 'Sign in once. After that, just your face or thumb — your receipts stay yours.',
-    accent: 'primaryLight',
+    key: 'done',
+    icon: 'checkmark-circle',
+    title: 'One tap, done',
+    body: "No forms, no typing. Scan and you're already tracked.",
+    accent: 'surfaceTile',
   },
 ];
 
@@ -94,10 +86,9 @@ export default function OnboardingScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.topRow}>
-        <Text style={styles.brand}>BalanceSheet</Text>
         {!isLast && (
           <Pressable onPress={finish} hitSlop={12}>
-            <Text style={styles.skip}>Skip</Text>
+            <Text style={styles.skip}>SKIP</Text>
           </Pressable>
         )}
       </View>
@@ -137,19 +128,17 @@ export default function OnboardingScreen() {
 function SlideView({ slide }: { slide: Slide }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
-  const accent = theme.colors[slide.accent];
+  const tileColor =
+    slide.accent === 'surfaceTile'
+      ? theme.colors.surfaceHigh
+      : slide.accent === 'secondary'
+        ? theme.colors.secondary
+        : theme.colors.primary;
   return (
     <View style={styles.slide}>
-      <LinearGradient
-        colors={[accent + '33', 'transparent']}
-        style={styles.iconWrap}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-      >
-        <View style={[styles.iconCircle, { backgroundColor: accent + '22' }]}>
-          <Ionicons name={slide.icon} size={64} color={accent} />
-        </View>
-      </LinearGradient>
+      <View style={[styles.iconTile, { backgroundColor: tileColor }]}>
+        <Ionicons name={slide.icon} size={56} color={theme.colors.textPrimary} />
+      </View>
       <Text style={styles.title}>{slide.title}</Text>
       <Text style={styles.body}>{slide.body}</Text>
     </View>
@@ -161,21 +150,16 @@ const makeStyles = (t: Theme) => ({
   topRow: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    justifyContent: 'space-between' as const,
+    justifyContent: 'flex-end' as const,
     paddingHorizontal: t.spacing.lg,
     paddingTop: t.spacing.sm,
     paddingBottom: t.spacing.md,
   },
-  brand: {
-    color: t.colors.textPrimary,
-    fontSize: t.font.lg,
-    fontWeight: '700' as const,
-    letterSpacing: 0.3,
-  },
   skip: {
     color: t.colors.textSecondary,
-    fontSize: t.font.md,
-    fontWeight: '600' as const,
+    fontSize: t.font.sm,
+    fontWeight: '700' as const,
+    letterSpacing: 0.5,
   },
   slide: {
     width: SCREEN_WIDTH,
@@ -183,20 +167,13 @@ const makeStyles = (t: Theme) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
-  iconWrap: {
-    width: 220,
-    height: 220,
-    borderRadius: 110,
+  iconTile: {
+    width: 96,
+    height: 96,
+    borderRadius: t.radius.lg,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     marginBottom: t.spacing.xl,
-  },
-  iconCircle: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
   },
   title: {
     color: t.colors.textPrimary,
