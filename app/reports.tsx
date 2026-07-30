@@ -88,7 +88,11 @@ function ReportsScreen() {
   const monthReceipts = filterReceiptsInRange(receipts, monthStart, monthEnd);
   const stats: MonthlyStats = computeStats(monthReceipts);
 
-  const [exporting, setExporting] = useState(false);
+  // Separate loading flags per button — a single shared `exporting`
+  // flag made tapping either button spin BOTH (each button's `loading`
+  // prop was bound to the same boolean).
+  const [exportingCsv, setExportingCsv] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   // Lazy-require expo-sharing — the native side wasn't in the
   // original APK before this branch added it, so a top-level
@@ -118,7 +122,7 @@ function ReportsScreen() {
   );
 
   const exportCsv = useCallback(async () => {
-    if (exporting) return;
+    if (exportingCsv) return;
     if (monthReceipts.length === 0) {
       Alert.alert(
         'Nothing to export',
@@ -126,7 +130,7 @@ function ReportsScreen() {
       );
       return;
     }
-    setExporting(true);
+    setExportingCsv(true);
     try {
       const csv = receiptsToCsv(monthReceipts);
       const filename = buildExportFilename(monthStart, 'csv');
@@ -143,12 +147,12 @@ function ReportsScreen() {
     } catch (e) {
       Alert.alert('Export failed', (e as Error)?.message ?? 'Try again.');
     } finally {
-      setExporting(false);
+      setExportingCsv(false);
     }
-  }, [monthReceipts, exporting, monthStart, shareFile]);
+  }, [monthReceipts, exportingCsv, monthStart, shareFile]);
 
   const exportPdf = useCallback(async () => {
-    if (exporting) return;
+    if (exportingPdf) return;
     if (monthReceipts.length === 0) {
       Alert.alert(
         'Nothing to export',
@@ -166,7 +170,7 @@ function ReportsScreen() {
       );
       return;
     }
-    setExporting(true);
+    setExportingPdf(true);
     try {
       const startLabel = format(monthStart, 'PP');
       const endLabel = format(monthEnd, 'PP');
@@ -183,9 +187,9 @@ function ReportsScreen() {
     } catch (e) {
       Alert.alert('Export failed', (e as Error)?.message ?? 'Try again.');
     } finally {
-      setExporting(false);
+      setExportingPdf(false);
     }
-  }, [monthReceipts, exporting, monthStart, monthEnd, shareFile]);
+  }, [monthReceipts, exportingPdf, monthStart, monthEnd, shareFile]);
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
@@ -255,7 +259,7 @@ function ReportsScreen() {
               label="Export CSV"
               variant="secondary"
               onPress={exportCsv}
-              loading={exporting}
+              loading={exportingCsv}
               disabled={monthReceipts.length === 0}
               style={styles.exportButton}
             />
@@ -263,7 +267,7 @@ function ReportsScreen() {
               label="Export PDF"
               variant="secondary"
               onPress={exportPdf}
-              loading={exporting}
+              loading={exportingPdf}
               disabled={monthReceipts.length === 0}
               style={styles.exportButton}
             />
