@@ -12,6 +12,8 @@ npm-debug.*
 *.orig.*
 web-build/
 .env
+.env.local
+.env.*.local
 
 # Firebase config (do not commit — contains project keys)
 google-services.json
