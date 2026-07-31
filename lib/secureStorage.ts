@@ -14,6 +14,7 @@ const Keys = {
   categoryBudgets: 'bs.budgets.byCategory',
   budgetAlertsEnabled: 'bs.budgets.alertsEnabled',
   currency: 'bs.currency',
+  lastBudgetAlertDate: 'bs.budgets.lastAlertDate',
 } as const;
 
 export async function getOnboardingSeen(): Promise<boolean> {
@@ -98,6 +99,14 @@ export async function setBudgetAlertsEnabled(enabled: boolean): Promise<void> {
 
 export async function getCurrency(): Promise<string | null> {
   return await SecureStore.getItemAsync(Keys.currency);
+}
+
+export async function getLastBudgetAlertDate(): Promise<string | null> {
+  return await SecureStore.getItemAsync(Keys.lastBudgetAlertDate);
+}
+
+export async function setLastBudgetAlertDate(ymd: string): Promise<void> {
+  await SecureStore.setItemAsync(Keys.lastBudgetAlertDate, ymd);
 }
 
 export async function setCurrency(code: string): Promise<void> {

@@ -45,6 +45,13 @@
         {
           "photosPermission": "Allow ReceiptScanner to access your photos to import receipts."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#0C0F24"
+        }
       ]
     ],
     "experiments": {

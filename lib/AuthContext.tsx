@@ -26,6 +26,7 @@ import {
   subscribeToHouseholdReceipts,
 } from './cloudSync';
 import { getOnboardingSeen, setOnboardingSeen as persistOnboardingSeen, resetAllSecureStorage } from './secureStorage';
+import { processRecurringReceipts } from './recurring';
 
 type AuthState = {
   initializing: boolean;
@@ -107,6 +108,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // session rather than on every token-refresh echo of the auth listener
   // (onAuthStateChanged can re-fire for the same uid many times).
   const invitePromptedForUidRef = useRef<string | null>(null);
+  // Same one-per-session guard for the recurring-expense processor.
+  const recurringProcessedForUidRef = useRef<string | null>(null);
 
   const checkPendingInvite = useCallback(
     (u: AuthUser) => {
@@ -174,6 +177,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
 
       tearDownReceiptsListener();
+
+      if (u?.uid && recurringProcessedForUidRef.current !== u.uid) {
+        recurringProcessedForUidRef.current = u.uid;
+        // setCurrentUserId (above) sets the module-level uid
+        // synchronously before its own async backfill runs, so it's
+        // already safe to read here despite not being awaited.
+        processRecurringReceipts().catch(() => {
+          // Best-effort — a failed run just leaves any due occurrences
+          // to be generated on the next app open instead.
+        });
+      }
 
       if (u?.uid) {
         // Silent household bootstrap so split/reports have a real (if

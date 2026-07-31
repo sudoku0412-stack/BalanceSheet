@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { format, isToday, isYesterday, subMonths } from 'date-fns';
 import { getReceiptsByMonth } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
+import { checkBudgetsAndNotify } from '../../lib/notifications';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { Receipt, MonthlyStats } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
@@ -262,6 +263,10 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       load();
+      // Fire-and-forget: checkBudgetsAndNotify handles its own toggle +
+      // OS-permission gating and once/day throttling, so this call site
+      // just needs to trigger it without blocking the data load above.
+      checkBudgetsAndNotify().catch(() => {});
     }, [load]),
   );
 

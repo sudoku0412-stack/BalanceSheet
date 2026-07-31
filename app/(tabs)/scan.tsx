@@ -13,6 +13,8 @@ import {
   Modal,
   Pressable,
   StyleSheet,
+  Switch,
+  Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,7 +43,8 @@ import {
 } from '../../lib/geminiParseReceipt';
 import { parseReceiptWithCloudflare } from '../../lib/cloudflareReceiptParse';
 import { getGeminiApiKey } from '../../lib/secureStorage';
-import { ParsedReceipt, Category, LineItem } from '../../types';
+import { computeRecurringEndDate } from '../../lib/recurring';
+import { ParsedReceipt, Category, LineItem, Receipt } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES } from '../../constants/categories';
 import { Button } from '../../components/ui/Button';
@@ -417,6 +420,35 @@ export default function ScanScreen() {
       fontWeight: '700',
       fontFamily: t.fonts.body.medium,
     },
+    // ── Recurring section (Add Expense only) ──
+    recurringToggleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    recurringBody: {
+      marginTop: t.spacing.sm,
+      gap: t.spacing.sm,
+    },
+    segmented: {
+      flexDirection: 'row',
+      borderRadius: t.radius.lg,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      overflow: 'hidden',
+    },
+    segmentedTab: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    segmentedTabText: {
+      fontSize: t.font.sm,
+      fontWeight: '600',
+      fontFamily: t.fonts.body.medium,
+      color: t.colors.textSecondary,
+    },
     actionsColumn: {
       gap: t.spacing.sm,
       marginTop: t.spacing.sm,
@@ -639,6 +671,16 @@ export default function ScanScreen() {
   const [category, setCategory] = useState<Category>('Other');
   const [categoryTags, setCategoryTags] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
+  // ── Recurring expense (Add Expense / manual entry only) ──
+  // Mirrors Receipt.recurring (types/index.ts). When enabled, this
+  // receipt itself becomes the recurring template: its own date is the
+  // first occurrence, and lib/recurring.ts's processor generates future
+  // occurrences from `nextDueDate` up to `endDate`.
+  const [recurringEnabled, setRecurringEnabled] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<'weekly' | 'monthly' | 'yearly'>(
+    'monthly',
+  );
+  const [recurringDuration, setRecurringDuration] = useState('');
   // Parsed/AI-extracted line items are kept in state and passed through
   // to saveReceipt (see handleSave) even though this screen no longer
   // shows a line-items list or per-item edit UI — Reports' category
@@ -975,6 +1017,26 @@ export default function ScanScreen() {
       return;
     }
 
+    // Recurring duration must be a positive whole number of months
+    // when the toggle is on — same validation weight as merchant/amount.
+    let recurringDurationVal = 0;
+    if (recurringEnabled) {
+      const trimmed = recurringDuration.trim();
+      recurringDurationVal = parseInt(trimmed, 10);
+      if (
+        !trimmed ||
+        isNaN(recurringDurationVal) ||
+        recurringDurationVal <= 0 ||
+        String(recurringDurationVal) !== trimmed
+      ) {
+        toast.show({
+          message: 'Please enter how many months this expense should repeat for.',
+          kind: 'error',
+        });
+        return;
+      }
+    }
+
     // Final guardrail: if items still don't match the subtotal, give
     // the user one last chance to fix it before persisting. They can
     // confirm "Save anyway" if they've already cross-verified visually.
@@ -1020,6 +1082,18 @@ export default function ScanScreen() {
         'Other';
       const finalTags = categoryTags.length ? categoryTags : [primaryCategory];
 
+      // Recurring config: the FIRST occurrence is this receipt itself —
+      // nextDueDate starts at its own date, and lib/recurring.ts's
+      // processor generates future occurrences from here.
+      const receiptDateYmd = format(parsedDate, 'yyyy-MM-dd');
+      const recurring: Receipt['recurring'] | undefined = recurringEnabled
+        ? {
+            frequency: recurringFrequency,
+            nextDueDate: receiptDateYmd,
+            endDate: computeRecurringEndDate(receiptDateYmd, recurringDurationVal),
+          }
+        : undefined;
+
       // Copy the captured image from cache into persistent storage
       // BEFORE saving — otherwise Android will prune the cache and
       // the receipt's saved imageUri ends up pointing at a missing
@@ -1043,6 +1117,7 @@ export default function ScanScreen() {
         imageUri: persistentImageUri,
         notes: notes.trim() || undefined,
         lineItems: items,
+        recurring,
         createdAt: now,
         updatedAt: now,
       });
@@ -1110,6 +1185,9 @@ export default function ScanScreen() {
     setCategoryTags([]);
     setNotes('');
     setItems([]);
+    setRecurringEnabled(false);
+    setRecurringFrequency('monthly');
+    setRecurringDuration('');
     setAiPending(false);
     setAiApplied(false);
     setAiError(null);
@@ -1632,6 +1710,64 @@ export default function ScanScreen() {
           textAlignVertical="top"
         />
       </Card>
+
+      {/* Recurring — Add Expense (manual entry) only. This receipt
+          becomes the recurring template: its own date is the first
+          occurrence, and lib/recurring.ts's processor auto-generates
+          future occurrences from here up to the computed end date. */}
+      {isManualEntry && (
+        <Card style={styles.fieldCard}>
+          <View style={styles.recurringToggleRow}>
+            <Text style={styles.fieldLabel}>Repeat this expense</Text>
+            <Switch
+              value={recurringEnabled}
+              onValueChange={setRecurringEnabled}
+              trackColor={{ false: theme.colors.border, true: theme.colors.accent }}
+              thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+            />
+          </View>
+
+          {recurringEnabled && (
+            <View style={styles.recurringBody}>
+              <View style={styles.segmented}>
+                {(['weekly', 'monthly', 'yearly'] as const).map((freq) => {
+                  const active = recurringFrequency === freq;
+                  const label = freq === 'weekly' ? 'Weekly' : freq === 'monthly' ? 'Monthly' : 'Yearly';
+                  return (
+                    <Pressable
+                      key={freq}
+                      style={[
+                        styles.segmentedTab,
+                        active && { backgroundColor: theme.colors.accent },
+                      ]}
+                      onPress={() => setRecurringFrequency(freq)}
+                    >
+                      <Text
+                        style={[
+                          styles.segmentedTabText,
+                          active && { color: '#fff' },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.fieldLabel}>For how many months</Text>
+              <TextInput
+                style={[styles.input, styles.amountInput]}
+                value={recurringDuration}
+                onChangeText={setRecurringDuration}
+                placeholder="12"
+                placeholderTextColor={theme.colors.textMuted}
+                keyboardType="numeric"
+              />
+            </View>
+          )}
+        </Card>
+      )}
 
       {/* Items — shown on BOTH Review Receipt (scanned) and Add Expense
           (manual). Scanned receipts arrive with `items` already

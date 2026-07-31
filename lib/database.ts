@@ -867,6 +867,7 @@ type CloudReceiptShape = {
   photoUrl?: string | null;
   notes?: string | null;
   split?: Receipt['split'];
+  recurring?: Receipt['recurring'];
   lineItems?: Array<{
     id: string;
     name: string;
@@ -894,8 +895,8 @@ export async function upsertReceiptFromCloud(
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          split_json, created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          split_json, recurring_json, created_at, updated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          store_name      = excluded.store_name,
          date            = excluded.date,
@@ -909,6 +910,7 @@ export async function upsertReceiptFromCloud(
          photo_url       = excluded.photo_url,
          notes           = excluded.notes,
          split_json      = excluded.split_json,
+         recurring_json  = excluded.recurring_json,
          updated_at      = excluded.updated_at,
          user_id         = excluded.user_id`,
       [
@@ -925,6 +927,7 @@ export async function upsertReceiptFromCloud(
         cloud.photoUrl ?? null,
         cloud.notes ?? null,
         serializeSplit(cloud.split),
+        serializeRecurring(cloud.recurring),
         cloud.createdAt,
         cloud.updatedAt,
         uid,

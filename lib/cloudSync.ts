@@ -1059,6 +1059,7 @@ function serializeReceipt(
     photoUrl: (r as Receipt & { photoUrl?: string | null }).photoUrl ?? null,
     notes: r.notes ?? null,
     split: r.split ?? null,
+    recurring: r.recurring ?? null,
     lineItems: (r.lineItems ?? []).map((it) => ({
       id: it.id,
       name: it.name,

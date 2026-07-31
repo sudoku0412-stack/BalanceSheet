@@ -25,6 +25,7 @@ import {
   setCurrency as persistCurrency,
 } from '../lib/secureStorage';
 import { getAllReceipts, getCurrentHouseholdId, setCurrentHouseholdId } from '../lib/database';
+import { requestNotificationPermission } from '../lib/notifications';
 import {
   getHouseholdMembers,
   inviteUserToHousehold,
@@ -497,9 +498,22 @@ export default function SettingsScreen() {
     }
   };
 
-  const toggleBudgetAlerts = (enabled: boolean) => {
+  const toggleBudgetAlerts = async (enabled: boolean) => {
+    // The toggle itself just represents "I want alerts" and is always
+    // persisted as chosen. Turning it ON additionally kicks off the OS
+    // permission handshake — turning it OFF never prompts for anything.
     setBudgetAlertsEnabledState(enabled);
     persistBudgetAlertsEnabled(enabled);
+    if (enabled) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        toast.show({
+          kind: 'error',
+          message:
+            "Notifications are turned off for BalanceSheet — enable them in your device Settings to actually receive budget alerts.",
+        });
+      }
+    }
   };
 
   /**
