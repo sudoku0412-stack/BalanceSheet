@@ -658,15 +658,14 @@ export default function ScanScreen() {
   } | null>(null);
   const [rawText, setRawText] = useState('');
 
-  // ─── Per-item "Split with" (Add Expense / manual entry only) ──────────────
+  // ─── Per-item "Split with" (Review Receipt + Add Expense) ──────────────
   const { user } = useAuth();
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
 
-  // Load household members once we're on the manual-entry screen — the
-  // Review Receipt (scanned) path never shows the items UI so there's
-  // no need to fetch this otherwise.
+  // Load household members once we're in the review state (either a
+  // scanned receipt or a manual entry — both show the Items UI now).
   useEffect(() => {
-    if (!isManualEntry || scanState !== 'review') return;
+    if (scanState !== 'review') return;
     let active = true;
     (async () => {
       try {
@@ -1627,11 +1626,12 @@ export default function ScanScreen() {
         />
       </Card>
 
-      {/* Items — manual entry only. Review Receipt (scanned) keeps its
-          simple 4-field form; OCR/AI line items still flow through
-          invisibly via the `items` state passed to handleSave. */}
-      {isManualEntry && (
-        <Card style={styles.fieldCard}>
+      {/* Items — shown on BOTH Review Receipt (scanned) and Add Expense
+          (manual). Scanned receipts arrive with `items` already
+          populated from OCR/AI parsing (previously edited invisibly,
+          with no UI here) — now the user can see, add, edit, remove,
+          categorize, and split them same as a manual entry. */}
+      <Card style={styles.fieldCard}>
           <Text style={styles.fieldLabel}>
             Items{items.length ? ` (${items.length})` : ''}
           </Text>
@@ -1675,7 +1675,6 @@ export default function ScanScreen() {
             <Text style={styles.addItemText}>Add item</Text>
           </TouchableOpacity>
         </Card>
-      )}
 
       {/* Add/edit line-item modal */}
       <Modal
