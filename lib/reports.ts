@@ -1,4 +1,5 @@
 import { Category, Receipt } from '../types';
+import { CurrencyCode, convertFromUsd } from './currency';
 
 /**
  * Pure analytics over a list of receipts. None of these functions
@@ -668,10 +669,15 @@ export function findRecurring(
  * Columns: Date, Store, Total, Subtotal, Tax, ItemName, ItemAmount,
  * ItemCategory, ReceiptCategoryTags, Notes.
  */
-export function receiptsToCsv(receipts: Receipt[]): string {
+export function receiptsToCsv(receipts: Receipt[], currency: CurrencyCode = 'USD'): string {
+  // Every stored amount is USD-canonical — convert once here so the
+  // export matches whatever currency the app is showing, instead of
+  // always dumping raw USD regardless of the user's selection.
+  const money = (n: number) => convertFromUsd(n, currency).toFixed(currency === 'INR' ? 0 : 2);
   const header = [
     'Date',
     'Store',
+    'Currency',
     'ReceiptTotal',
     'Subtotal',
     'Tax',
@@ -691,9 +697,10 @@ export function receiptsToCsv(receipts: Receipt[]): string {
     const base = [
       dateOnly,
       csvEscape(r.storeName),
-      r.totalAmount.toFixed(2),
-      r.subtotalAmount != null ? r.subtotalAmount.toFixed(2) : '',
-      r.taxAmount != null ? r.taxAmount.toFixed(2) : '',
+      currency,
+      money(r.totalAmount),
+      r.subtotalAmount != null ? money(r.subtotalAmount) : '',
+      r.taxAmount != null ? money(r.taxAmount) : '',
     ];
     if (r.lineItems && r.lineItems.length > 0) {
       for (const it of r.lineItems) {
@@ -701,7 +708,7 @@ export function receiptsToCsv(receipts: Receipt[]): string {
           [
             ...base,
             csvEscape(it.name),
-            it.amount.toFixed(2),
+            money(it.amount),
             csvEscape((it.category ?? '') as string),
             csvEscape(tags),
             csvEscape(r.notes ?? ''),

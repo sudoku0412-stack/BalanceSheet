@@ -162,6 +162,9 @@ export async function initDatabase(): Promise<void> {
     // Auto-repeat config (frequency, next due date, end date), JSON.
     // See Receipt['recurring'] in types/index.ts.
     `ALTER TABLE receipts             ADD COLUMN recurring_json TEXT`,
+    // Currency this receipt was actually entered in. See
+    // Receipt['originalCurrency'] in types/index.ts.
+    `ALTER TABLE receipts             ADD COLUMN original_currency TEXT`,
   ]) {
     try {
       await db.execAsync(sql);
@@ -530,8 +533,8 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          split_json, recurring_json, created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          split_json, recurring_json, original_currency, created_at, updated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         receipt.id,
         receipt.storeName,
@@ -547,6 +550,7 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
         receipt.notes ?? null,
         serializeSplit(receipt.split),
         serializeRecurring(receipt.recurring),
+        receipt.originalCurrency ?? null,
         receipt.createdAt,
         receipt.updatedAt,
         uid,
@@ -576,7 +580,8 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
     await db.runAsync(
       `UPDATE receipts
        SET store_name=?, date=?, total_amount=?, subtotal_amount=?, tax_amount=?,
-           category=?, category_tags=?, notes=?, split_json=?, recurring_json=?, updated_at=?
+           category=?, category_tags=?, notes=?, split_json=?, recurring_json=?,
+           original_currency=?, updated_at=?
        WHERE id=? AND user_id=?`,
       [
         receipt.storeName,
@@ -589,6 +594,7 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
         receipt.notes ?? null,
         serializeSplit(receipt.split),
         serializeRecurring(receipt.recurring),
+        receipt.originalCurrency ?? null,
         new Date().toISOString(),
         receipt.id,
         uid,
@@ -802,6 +808,7 @@ interface RawRow {
   notes: string | null;
   split_json: string | null;
   recurring_json: string | null;
+  original_currency: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -820,6 +827,7 @@ function rowToReceipt(row: RawRow): Receipt {
     imageUri: row.image_uri ?? undefined,
     photoUrl: row.photo_url ?? undefined,
     notes: row.notes ?? undefined,
+    originalCurrency: (row.original_currency as Receipt['originalCurrency']) ?? undefined,
     split: parseSplit(row.split_json),
     recurring: parseRecurring(row.recurring_json),
     createdAt: row.created_at,

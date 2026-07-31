@@ -533,7 +533,7 @@ export default function SettingsScreen() {
         Alert.alert('Nothing to export', 'Scan a few receipts before exporting.');
         return;
       }
-      const csv = receiptsToCsv(receipts);
+      const csv = receiptsToCsv(receipts, currency);
       const filename = `BalanceSheet All Data - ${new Date().toISOString().slice(0, 10)}.csv`;
       const path = `${FileSystem.documentDirectory}${filename}`;
       await FileSystem.writeAsStringAsync(path, csv, {
@@ -671,7 +671,7 @@ export default function SettingsScreen() {
           ) : null}
         </Section>
 
-        <Section title="Currency">
+        <Section title="Profile Currency">
           <View style={{ paddingVertical: theme.spacing.sm }}>
             <View style={styles.currencyRow}>
               {CURRENCIES.map((code) => {

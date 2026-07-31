@@ -132,7 +132,7 @@ function ReportsScreen() {
     }
     setExportingCsv(true);
     try {
-      const csv = receiptsToCsv(monthReceipts);
+      const csv = receiptsToCsv(monthReceipts, currency);
       const filename = buildExportFilename(monthStart, 'csv');
       const path = `${FileSystem.documentDirectory}${filename}`;
       await FileSystem.writeAsStringAsync(path, csv, {
@@ -180,6 +180,7 @@ function ReportsScreen() {
         startLabel,
         endLabel,
         filename,
+        currency,
       });
       if (path) {
         await shareFile(path, 'application/pdf', 'com.adobe.pdf', 'Export expense report');

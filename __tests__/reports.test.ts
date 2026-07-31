@@ -538,7 +538,7 @@ describe('receiptsToCsv', () => {
       }),
     ]);
     const lines = csv.split('\n');
-    expect(lines[0]).toContain('Date,Store,ReceiptTotal');
+    expect(lines[0]).toContain('Date,Store,Currency,ReceiptTotal');
     expect(lines).toHaveLength(3); // header + 2 items
     expect(lines[1]).toContain('Walmart');
     expect(lines[1]).toContain('Milk');

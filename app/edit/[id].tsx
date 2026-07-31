@@ -191,6 +191,33 @@ function EditReceiptScreen() {
       padding: 0,
       flex: 1,
     },
+    currencyPickerRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: t.spacing.xs,
+      marginBottom: t.spacing.sm,
+    },
+    currencyPill: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: t.radius.full,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+    },
+    currencyPillActive: {
+      backgroundColor: t.colors.primary,
+      borderColor: t.isDark ? t.colors.borderLight : t.colors.primary,
+    },
+    currencyPillText: {
+      fontSize: t.font.xs,
+      fontWeight: '700',
+      fontFamily: t.fonts.body.medium,
+      color: t.colors.textSecondary,
+    },
+    currencyPillTextActive: {
+      color: '#fff',
+    },
     captionRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -655,11 +682,17 @@ function EditReceiptScreen() {
       // permanently, if that effect hasn't resolved yet) showing the
       // raw unconverted USD number.
       const [r, rawCurrency] = await Promise.all([getReceiptById(id), getCurrency()]);
-      const loadCurrency = toCurrencyCode(rawCurrency);
+      const profileCurrency = toCurrencyCode(rawCurrency);
       if (!mounted || !r) {
         if (mounted) setLoading(false);
         return;
       }
+      // Default to whatever currency THIS receipt was actually entered
+      // in, not the profile currency — a receipt genuinely paid in USD
+      // should still show/edit as USD even if the profile is now CAD.
+      // Legacy receipts with nothing recorded fall back to profile.
+      const loadCurrency = r.originalCurrency ?? profileCurrency;
+      setCurrencyCode(loadCurrency);
       setReceipt(r);
       setStoreName(r.storeName);
       setDate(safeFormat(r.date, 'yyyy-MM-dd'));
@@ -738,17 +771,11 @@ function EditReceiptScreen() {
     };
   }, [id]);
 
-  // User's selected display currency (lib/secureStorage.getCurrency).
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const raw = await getCurrency();
-      if (mounted) setCurrencyCode(toCurrencyCode(raw));
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // currencyCode is now initialized inside the receipt-load effect
+  // above (defaults to the receipt's own originalCurrency, falling
+  // back to the profile currency) — no separate fetch needed here,
+  // and one would just clobber that receipt-aware default back to
+  // the plain profile currency once it resolved.
 
   // Real household members (lib/cloudSync.getHouseholdMembers), mirroring
   // the FamilyPanel fetch pattern in app/settings.tsx. Used as the split
@@ -877,6 +904,7 @@ function EditReceiptScreen() {
         // (matches how it's loaded/edited above; see totalAmountVal's
         // comment for the bug this fixes).
         totalAmount: convertToUsd(amountVal, currencyCode),
+        originalCurrency: currencyCode,
         category: primary,
         categoryTags: categoryTags.length ? categoryTags : [primary],
         notes: notes.trim() || undefined,
@@ -1214,6 +1242,31 @@ function EditReceiptScreen() {
           placeholder="0.00"
           placeholderTextColor={theme.colors.textMuted}
         />
+      </View>
+
+      {/* Per-receipt currency — defaults to whatever this receipt was
+          originally entered in (or the profile currency for a legacy
+          receipt with none recorded), overridable here. Switching it
+          does NOT recompute the typed Amount digits — it just relabels
+          what unit they're in (e.g. "I typed 57.09 thinking CAD, but
+          this was actually paid in USD"). Saving converts to USD-
+          canonical using WHICHEVER currency is selected here. */}
+      <View style={styles.currencyPickerRow}>
+        {CURRENCIES.map((code) => {
+          const active = code === currencyCode;
+          return (
+            <TouchableOpacity
+              key={code}
+              onPress={() => setCurrencyCode(code)}
+              activeOpacity={0.7}
+              style={[styles.currencyPill, active && styles.currencyPillActive]}
+            >
+              <Text style={[styles.currencyPillText, active && styles.currencyPillTextActive]}>
+                {code}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {/* "{date} · {payment method}" caption. There is no payment-method

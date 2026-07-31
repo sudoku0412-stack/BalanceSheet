@@ -421,6 +421,32 @@ export default function ScanScreen() {
       fontWeight: '700',
       fontFamily: t.fonts.body.medium,
     },
+    currencyPickerRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: t.spacing.xs,
+    },
+    currencyPill: {
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: t.radius.full,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+    },
+    currencyPillActive: {
+      backgroundColor: t.colors.primary,
+      borderColor: t.isDark ? t.colors.borderLight : t.colors.primary,
+    },
+    currencyPillText: {
+      fontSize: t.font.xs,
+      fontWeight: '700',
+      fontFamily: t.fonts.body.medium,
+      color: t.colors.textSecondary,
+    },
+    currencyPillTextActive: {
+      color: '#fff',
+    },
     // ── Recurring section (Add Expense only) ──
     recurringToggleRow: {
       flexDirection: 'row',
@@ -1149,6 +1175,7 @@ export default function ScanScreen() {
         imageUri: persistentImageUri,
         notes: notes.trim() || undefined,
         lineItems: items.map((it) => ({ ...it, amount: convertToUsd(it.amount, currencyCode) })),
+        originalCurrency: currencyCode,
         recurring,
         createdAt: now,
         updatedAt: now,
@@ -1672,7 +1699,7 @@ export default function ScanScreen() {
           Entered in the user's selected display currency (symbol shown
           in the label); converted to USD-canonical once at save time. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Amount ({CURRENCY_SYMBOLS[currencyCode]})</Text>
+        <Text style={styles.fieldLabel}>Amount</Text>
         <TextInput
           style={[styles.input, styles.amountInput]}
           value={amount}
@@ -1681,6 +1708,29 @@ export default function ScanScreen() {
           placeholderTextColor={theme.colors.textMuted}
           keyboardType="decimal-pad"
         />
+        {/* Per-receipt currency — defaults to the profile currency but
+            overridable here (e.g. a USD purchase while the profile is
+            CAD). Converted to USD-canonical at save using WHICHEVER
+            currency is selected here, not necessarily the profile one. */}
+        <View style={styles.currencyPickerRow}>
+          {CURRENCIES.map((code) => {
+            const active = code === currencyCode;
+            return (
+              <TouchableOpacity
+                key={code}
+                onPress={() => setCurrencyCode(code)}
+                activeOpacity={0.7}
+                style={[styles.currencyPill, active && styles.currencyPillActive]}
+              >
+                <Text
+                  style={[styles.currencyPillText, active && styles.currencyPillTextActive]}
+                >
+                  {code}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </Card>
 
       {/* Category — single row of tappable colored chips, one per

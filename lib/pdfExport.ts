@@ -1,4 +1,5 @@
 import { Receipt } from '../types';
+import { CurrencyCode, CURRENCY_SYMBOLS, convertFromUsd } from './currency';
 
 // expo-file-system is required lazily inside generateReceiptsPdf so
 // Jest (running pure-JS template tests for the HTML output) doesn't
@@ -67,12 +68,19 @@ export const buildHtmlForPreview = (args: {
   receipts: Receipt[];
   startLabel: string;
   endLabel: string;
+  currency?: CurrencyCode;
 }): string => buildHtml(args);
 
 // ---------- HTML template ----------
 
-function fmtMoney(n: number): string {
-  return `$${n.toFixed(2)}`;
+// Every amount fed to fmtMoney is USD-canonical (Receipt.totalAmount
+// etc.) — this converts to the export's target currency once, at the
+// point of formatting, so the PDF matches whatever the user sees in
+// the app instead of always showing raw USD with a hardcoded "$".
+function fmtMoney(n: number, currency: CurrencyCode): string {
+  const converted = convertFromUsd(n, currency);
+  const decimals = currency === 'INR' ? 0 : 2;
+  return `${CURRENCY_SYMBOLS[currency]}${converted.toFixed(decimals)}`;
 }
 
 function escapeHtml(s: string): string {
@@ -119,8 +127,10 @@ function buildHtml(args: {
   receipts: Receipt[];
   startLabel: string;
   endLabel: string;
+  currency?: CurrencyCode;
 }): string {
-  const { receipts, startLabel, endLabel } = args;
+  const { receipts, startLabel, endLabel, currency = 'USD' } = args;
+  const money = (n: number) => fmtMoney(n, currency);
   const sorted = [...receipts].sort((a, b) => a.date.localeCompare(b.date));
 
   const totalSpent = sorted.reduce((s, r) => s + (r.totalAmount || 0), 0);
@@ -155,7 +165,7 @@ function buildHtml(args: {
             </span>
             <span class="cat-meta">
               <span class="cat-pct">${pct.toFixed(1)}%</span>
-              <span class="cat-amt">${fmtMoney(amt)}</span>
+              <span class="cat-amt">${money(amt)}</span>
             </span>
           </div>
           <div class="cat-bar-bg">
@@ -185,7 +195,7 @@ function buildHtml(args: {
                 <span class="item-cat-dot" style="background:${v.color};"></span>
                 ${escapeHtml((it.category ?? '') as string)}
               </td>
-              <td class="num">${fmtMoney(it.amount)}</td>
+              <td class="num">${money(it.amount)}</td>
             </tr>`;
         })
         .join('');
@@ -197,11 +207,11 @@ function buildHtml(args: {
         : '<p class="muted">No line items captured.</p>';
       const subtotal =
         r.subtotalAmount != null
-          ? `<span class="tot-sub">Subtotal <strong>${fmtMoney(r.subtotalAmount)}</strong></span>`
+          ? `<span class="tot-sub">Subtotal <strong>${money(r.subtotalAmount)}</strong></span>`
           : '';
       const tax =
         r.taxAmount != null
-          ? `<span class="tot-sub">Tax <strong>${fmtMoney(r.taxAmount)}</strong></span>`
+          ? `<span class="tot-sub">Tax <strong>${money(r.taxAmount)}</strong></span>`
           : '';
       const notes = r.notes
         ? `<p class="notes"><strong>Notes:</strong> ${escapeHtml(r.notes)}</p>`
@@ -214,7 +224,7 @@ function buildHtml(args: {
               <h3>${escapeHtml(r.storeName)}</h3>
               <span class="receipt-date">${dateOnly}</span>
             </div>
-            <div class="receipt-grand">${fmtMoney(r.totalAmount)}</div>
+            <div class="receipt-grand">${money(r.totalAmount)}</div>
           </header>
           ${tagPills ? `<div class="tag-row">${tagPills}</div>` : ''}
           ${itemsTable}
@@ -442,11 +452,11 @@ function buildHtml(args: {
     </div>
     <div class="stat">
       <div class="stat-label">Total spent</div>
-      <span class="stat-value">${fmtMoney(totalSpent)}</span>
+      <span class="stat-value">${money(totalSpent)}</span>
     </div>
     <div class="stat">
       <div class="stat-label">Avg / receipt</div>
-      <span class="stat-value">${fmtMoney(avgPerReceipt)}</span>
+      <span class="stat-value">${money(avgPerReceipt)}</span>
     </div>
   </div>
 </section>
@@ -465,7 +475,7 @@ function buildHtml(args: {
 
 <footer class="footer">
   <span>BalanceSheet · ${totalReceipts} receipt${totalReceipts === 1 ? '' : 's'}</span>
-  <span>${fmtMoney(totalSpent)} total</span>
+  <span>${money(totalSpent)} total</span>
 </footer>
 
 </body></html>`;
@@ -487,6 +497,7 @@ export async function generateReceiptsPdf(args: {
   startLabel: string;
   endLabel: string;
   filename?: string;
+  currency?: CurrencyCode;
 }): Promise<string | null> {
   const Print = loadPrint();
   if (!Print) return null;

@@ -1,3 +1,5 @@
+import { CurrencyCode } from '../lib/currency';
+
 export type Category =
   | 'Groceries'
   | 'Electronics'
@@ -52,6 +54,15 @@ export interface Receipt {
    *  Cloud Storage URL. */
   photoUrl?: string;
   notes?: string;
+  /** Currency this receipt was actually entered/scanned in — may differ
+   *  from the user's profile currency (e.g. a USD purchase while the
+   *  profile is set to CAD). `totalAmount`/`subtotalAmount`/`taxAmount`/
+   *  line-item amounts are always converted to USD-canonical at save
+   *  time regardless; this is purely what to convert back to when
+   *  re-editing, so the amount shown matches what was actually typed
+   *  rather than snapping to whatever the profile currency is NOW.
+   *  Absent on legacy receipts — treat as the profile currency. */
+  originalCurrency?: CurrencyCode;
   lineItems?: LineItem[];
   /** Splitwise-style split state. Absent/enabled=false means the expense
    *  isn't split. Participant ids are 'self' (the signed-in user, always
