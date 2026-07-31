@@ -146,7 +146,9 @@ function RootStack() {
         name="settings"
         options={{
           title: 'Settings',
-          presentation: 'modal',
+          // Regular stack screen, not a modal sheet — navigates like
+          // every other page (slide transition + back chevron) instead
+          // of popping up as a separate overlay.
           headerStyle: { backgroundColor: theme.colors.surface },
         }}
       />
@@ -154,17 +156,12 @@ function RootStack() {
         name="edit/[id]"
         options={{
           title: 'Edit Receipt',
-          // Regular stack screen (NOT modal). expo-router can't reliably
-          // navigate from a modal (reports) into another modal — the new
-          // screen renders behind the active one. With edit as a plain
-          // stack screen, push() works from anywhere.
           headerStyle: { backgroundColor: theme.colors.surface },
         }}
       />
       <Stack.Screen
         name="reports"
         options={{
-          presentation: 'modal',
           headerShown: false,
         }}
       />

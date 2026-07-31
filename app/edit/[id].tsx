@@ -14,6 +14,7 @@ import {
   Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, useFocusEffect, Stack } from 'expo-router';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
 import { format } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
@@ -1051,7 +1052,7 @@ function EditReceiptScreen() {
   };
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
       {/* Native header hidden in favor of the custom back-chevron +
           "EXPENSE" label row below, matching the design export. */}
       <Stack.Screen options={{ headerShown: false }} />
@@ -1624,6 +1625,6 @@ function EditReceiptScreen() {
         <Text style={styles.deleteBtnOutlinedText}>Delete expense</Text>
       </Pressable>
     </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
