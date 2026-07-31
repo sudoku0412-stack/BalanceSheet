@@ -33,6 +33,8 @@ import { parseYmdLocal } from '../../lib/parser';
 import { notifySuccess, tapLight, tapMedium } from '../../lib/haptics';
 import {
   formatCurrency,
+  convertFromUsd,
+  convertToUsd,
   CURRENCY_SYMBOLS,
   CURRENCIES,
   CurrencyCode,
@@ -646,7 +648,14 @@ function EditReceiptScreen() {
     if (!id) return;
     let mounted = true;
     (async () => {
-      const r = await getReceiptById(id);
+      // Fetch currency HERE (not just the separate effect below) so the
+      // Amount field's initial display converts USD-canonical ->
+      // selected currency using the value that's actually current at
+      // load time, instead of racing the other effect and briefly (or
+      // permanently, if that effect hasn't resolved yet) showing the
+      // raw unconverted USD number.
+      const [r, rawCurrency] = await Promise.all([getReceiptById(id), getCurrency()]);
+      const loadCurrency = toCurrencyCode(rawCurrency);
       if (!mounted || !r) {
         if (mounted) setLoading(false);
         return;
@@ -654,7 +663,7 @@ function EditReceiptScreen() {
       setReceipt(r);
       setStoreName(r.storeName);
       setDate(safeFormat(r.date, 'yyyy-MM-dd'));
-      setAmount(safeAmount(r.totalAmount));
+      setAmount(safeAmount(convertFromUsd(r.totalAmount, loadCurrency)));
       setCategory(r.category);
       setCategoryTags(r.categoryTags ?? [r.category]);
       setNotes(r.notes ?? '');
@@ -863,7 +872,11 @@ function EditReceiptScreen() {
         ...receipt,
         storeName: storeName.trim(),
         date: parsedDate.toISOString(),
-        totalAmount: amountVal,
+        // amountVal is what the user typed, in the currently SELECTED
+        // display currency — convert to USD-canonical before persisting
+        // (matches how it's loaded/edited above; see totalAmountVal's
+        // comment for the bug this fixes).
+        totalAmount: convertToUsd(amountVal, currencyCode),
         category: primary,
         categoryTags: categoryTags.length ? categoryTags : [primary],
         notes: notes.trim() || undefined,
@@ -918,10 +931,16 @@ function EditReceiptScreen() {
     );
   }
 
-  // ── Split math ── values are entered in the receipt's own amount
-  // units; formatCurrency below just re-renders them in the user's
-  // selected display currency.
-  const totalAmountVal = parseFloat(amount.replace(',', '.')) || 0;
+  // ── Split math ── the Amount field displays/accepts numbers in the
+  // user's SELECTED currency (it's converted on load, see the receipt
+  // effect above), but every other amount in this codebase — line
+  // items, split values, formatCurrency's own input — is USD-canonical.
+  // Converting back here once means every downstream calculation stays
+  // in that same canonical unit; skipping this was the root cause of
+  // "entered a CAD amount, got double-converted" (the raw typed number
+  // was being treated as already-USD, then formatCurrency multiplied
+  // it by the CAD rate AGAIN when displaying it elsewhere).
+  const totalAmountVal = convertToUsd(parseFloat(amount.replace(',', '.')) || 0, currencyCode);
   const otherMembers = (householdMembers ?? []).filter((m) => !m.isYou);
   const selectedOthers = otherMembers.filter((m) => selectedOtherUids.has(m.uid));
   const participantCount = 1 + selectedOthers.length; // "You" + selected others
@@ -1042,7 +1061,10 @@ function EditReceiptScreen() {
   const openEditItem = (item: LineItem) => {
     setEditingItemId(item.id);
     setItemName(item.name);
-    setItemAmount(item.amount ? String(item.amount) : '');
+    // item.amount is USD-canonical (same as the receipt total) — show
+    // it converted to the selected display currency, matching the
+    // top-level Amount field's treatment.
+    setItemAmount(item.amount ? String(convertFromUsd(item.amount, currencyCode)) : '');
     setItemCategory(((item.category as Category) || 'Other') as Category);
     // An item that already has an explicit (proper-subset) splitWith was
     // deliberately customized before — honor it as "touched" so re-saving
@@ -1094,7 +1116,7 @@ function EditReceiptScreen() {
     const newItem: LineItem = {
       id: editingItemId ?? uuidv4(),
       name: trimmedName,
-      amount: amt,
+      amount: convertToUsd(amt, currencyCode),
       category: itemCategory,
       splitWith: sharedByEveryone ? undefined : Array.from(itemSplit),
     };

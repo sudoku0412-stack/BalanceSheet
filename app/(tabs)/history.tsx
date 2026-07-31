@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { isToday, isYesterday, format } from 'date-fns';
@@ -289,7 +290,7 @@ export default function HistoryScreen() {
   }, [receipts]);
 
   return (
-    <View style={styles.screen}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
       {/* Header: "Expenses" headline + circular add button (→ manual entry
           via the Scan tab, same target as Home's "+ Add manually"). */}
       <View style={styles.header}>
@@ -426,6 +427,6 @@ export default function HistoryScreen() {
           ))}
         </ScrollView>
       )}
-    </View>
+    </SafeAreaView>
   );
 }

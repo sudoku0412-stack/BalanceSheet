@@ -42,7 +42,8 @@ import {
   parseGeminiPayload,
 } from '../../lib/geminiParseReceipt';
 import { parseReceiptWithCloudflare } from '../../lib/cloudflareReceiptParse';
-import { getGeminiApiKey } from '../../lib/secureStorage';
+import { getGeminiApiKey, getCurrency } from '../../lib/secureStorage';
+import { CURRENCIES, CURRENCY_SYMBOLS, CurrencyCode, convertToUsd } from '../../lib/currency';
 import { computeRecurringEndDate } from '../../lib/recurring';
 import { ParsedReceipt, Category, LineItem, Receipt } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
@@ -704,6 +705,27 @@ export default function ScanScreen() {
   const { user } = useAuth();
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
 
+  // User's selected display currency. Amount/subtotal/tax/item fields
+  // on this screen are entered in THIS currency, not USD — converted
+  // to USD-canonical exactly once, at save time (see handleSave).
+  const [currencyCode, setCurrencyCode] = useState<CurrencyCode>('USD');
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const raw = await getCurrency();
+      if (mounted) {
+        setCurrencyCode(
+          (CURRENCIES as readonly string[]).includes(raw ?? '')
+            ? (raw as CurrencyCode)
+            : 'USD',
+        );
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Load household members once we're in the review state (either a
   // scanned receipt or a manual entry — both show the Items UI now).
   useEffect(() => {
@@ -1104,19 +1126,29 @@ export default function ScanScreen() {
         receiptId,
       );
 
+      // Every amount typed/parsed on this screen (total, subtotal, tax,
+      // each line item) is in the user's SELECTED display currency —
+      // convert to USD-canonical exactly once, right here, before
+      // persisting. Skipping this was the root cause of amounts
+      // getting double-converted later wherever they're displayed
+      // (formatCurrency always assumes its input is already USD).
       await saveReceipt({
         id: receiptId,
         storeName: storeName.trim(),
         date: parsedDate.toISOString(),
-        totalAmount: amountVal,
-        subtotalAmount: subtotalVal != null && !isNaN(subtotalVal) ? subtotalVal : undefined,
-        taxAmount: taxVal != null && !isNaN(taxVal) ? taxVal : undefined,
+        totalAmount: convertToUsd(amountVal, currencyCode),
+        subtotalAmount:
+          subtotalVal != null && !isNaN(subtotalVal)
+            ? convertToUsd(subtotalVal, currencyCode)
+            : undefined,
+        taxAmount:
+          taxVal != null && !isNaN(taxVal) ? convertToUsd(taxVal, currencyCode) : undefined,
         category: primaryCategory,
         categoryTags: finalTags,
         rawText: parsed?.rawText,
         imageUri: persistentImageUri,
         notes: notes.trim() || undefined,
-        lineItems: items,
+        lineItems: items.map((it) => ({ ...it, amount: convertToUsd(it.amount, currencyCode) })),
         recurring,
         createdAt: now,
         updatedAt: now,
@@ -1636,9 +1668,11 @@ export default function ScanScreen() {
         />
       </Card>
 
-      {/* Amount — Roboto Mono per the design export's numeric-field spec. */}
+      {/* Amount — Roboto Mono per the design export's numeric-field spec.
+          Entered in the user's selected display currency (symbol shown
+          in the label); converted to USD-canonical once at save time. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Amount</Text>
+        <Text style={styles.fieldLabel}>Amount ({CURRENCY_SYMBOLS[currencyCode]})</Text>
         <TextInput
           style={[styles.input, styles.amountInput]}
           value={amount}
@@ -1800,7 +1834,9 @@ export default function ScanScreen() {
                   </Text>
                   <Text style={styles.itemSplitLabel}>{splitSummaryLabel(item)}</Text>
                 </View>
-                <Text style={styles.itemAmount}>${item.amount.toFixed(2)}</Text>
+                <Text style={styles.itemAmount}>
+                  {CURRENCY_SYMBOLS[currencyCode]}{item.amount.toFixed(2)}
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => removeItem(item.id)}
