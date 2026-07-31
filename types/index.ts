@@ -63,6 +63,17 @@ export interface Receipt {
     /** Per-participant % (method='percent') or $ amount (method='amount'). Keyed by participantId. */
     values?: Record<string, number>;
   };
+  /** Auto-repeat config. When set, `lib/recurring.ts`'s processor
+   *  clones this receipt onto new dated rows on a schedule until
+   *  `endDate`, then stops. Absent means this expense is one-off. */
+  recurring?: {
+    frequency: 'weekly' | 'monthly' | 'yearly';
+    /** ISO date (YYYY-MM-DD) of the next occurrence still to generate. */
+    nextDueDate: string;
+    /** ISO date (YYYY-MM-DD) after which auto-add stops — derived once
+     *  at creation time from the user's chosen duration. */
+    endDate: string;
+  };
   createdAt: string;
   updatedAt: string;
 }

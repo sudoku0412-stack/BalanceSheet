@@ -926,6 +926,13 @@ export default function ScanScreen() {
       const alreadyInFreshManualEntry = isManualEntry && scanState === 'review';
       if (params.mode === 'manual' && !alreadyInFreshManualEntry) {
         startManualEntry();
+        // Consume the param immediately. Tapping the tab bar's own Scan
+        // icon later doesn't push a fresh route (React Navigation just
+        // brings this tab's existing screen back to front), so without
+        // clearing it here, `params.mode` stays 'manual' forever and
+        // every future tap on the plain camera icon would silently
+        // re-open the manual-entry form instead of the camera.
+        router.setParams({ mode: undefined } as never);
       }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [params.mode, isManualEntry, scanState]),

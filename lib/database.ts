@@ -159,6 +159,9 @@ export async function initDatabase(): Promise<void> {
     // Per-item split participants (JSON array of participant ids).
     // See LineItem['splitWith'] in types/index.ts.
     `ALTER TABLE line_items           ADD COLUMN split_with TEXT`,
+    // Auto-repeat config (frequency, next due date, end date), JSON.
+    // See Receipt['recurring'] in types/index.ts.
+    `ALTER TABLE receipts             ADD COLUMN recurring_json TEXT`,
   ]) {
     try {
       await db.execAsync(sql);
@@ -527,8 +530,8 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          split_json, created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          split_json, recurring_json, created_at, updated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         receipt.id,
         receipt.storeName,
@@ -543,6 +546,7 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
         receipt.photoUrl ?? null,
         receipt.notes ?? null,
         serializeSplit(receipt.split),
+        serializeRecurring(receipt.recurring),
         receipt.createdAt,
         receipt.updatedAt,
         uid,
@@ -572,7 +576,7 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
     await db.runAsync(
       `UPDATE receipts
        SET store_name=?, date=?, total_amount=?, subtotal_amount=?, tax_amount=?,
-           category=?, category_tags=?, notes=?, split_json=?, updated_at=?
+           category=?, category_tags=?, notes=?, split_json=?, recurring_json=?, updated_at=?
        WHERE id=? AND user_id=?`,
       [
         receipt.storeName,
@@ -584,6 +588,7 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
         serializeTags(receipt.categoryTags),
         receipt.notes ?? null,
         serializeSplit(receipt.split),
+        serializeRecurring(receipt.recurring),
         new Date().toISOString(),
         receipt.id,
         uid,
@@ -635,6 +640,20 @@ function parseSplitWith(raw: string | null): string[] | undefined {
     return Array.isArray(parsed) && parsed.every((v) => typeof v === 'string')
       ? parsed
       : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function serializeRecurring(recurring: Receipt['recurring'] | undefined): string | null {
+  if (!recurring) return null;
+  return JSON.stringify(recurring);
+}
+
+function parseRecurring(raw: string | null): Receipt['recurring'] | undefined {
+  if (!raw) return undefined;
+  try {
+    return JSON.parse(raw) as Receipt['recurring'];
   } catch {
     return undefined;
   }
@@ -782,6 +801,7 @@ interface RawRow {
   photo_url: string | null;
   notes: string | null;
   split_json: string | null;
+  recurring_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -801,6 +821,7 @@ function rowToReceipt(row: RawRow): Receipt {
     photoUrl: row.photo_url ?? undefined,
     notes: row.notes ?? undefined,
     split: parseSplit(row.split_json),
+    recurring: parseRecurring(row.recurring_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
