@@ -99,6 +99,17 @@ function RootStack() {
     ) {
       return;
     }
+    // auth.tsx's "‹ Back to intro" link sends a signed-out user to
+    // /onboarding voluntarily. Without this, pickTarget still resolves
+    // to 'auth' (onboardingSeen is already true, so it doesn't route
+    // to onboarding on its own) and this effect would immediately
+    // replace back to /auth — the link would flash and bounce right
+    // back, i.e. "not working". Signed-out + browsing onboarding again
+    // is harmless; let them be until they act (Skip/Get Started, both
+    // of which navigate onward themselves).
+    if (target === 'auth' && current === 'onboarding') {
+      return;
+    }
     router.replace(targetToHref(target) as never);
   }, [initializing, user, onboardingSeen, segments]);
 

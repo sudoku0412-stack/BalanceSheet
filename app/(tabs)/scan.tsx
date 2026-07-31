@@ -1843,7 +1843,7 @@ export default function ScanScreen() {
         />
         <TouchableOpacity
           style={styles.discardLink}
-          onPress={resetState}
+          onPress={exitScan}
           activeOpacity={0.7}
         >
           <Text style={styles.discardLinkText}>Discard</Text>

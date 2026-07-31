@@ -1,12 +1,13 @@
-export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'INR';
+export type CurrencyCode = 'USD' | 'EUR' | 'GBP' | 'INR' | 'CAD';
 
-export const CURRENCIES: CurrencyCode[] = ['USD', 'EUR', 'GBP', 'INR'];
+export const CURRENCIES: CurrencyCode[] = ['USD', 'EUR', 'GBP', 'INR', 'CAD'];
 
 export const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
   USD: '$',
   EUR: '€',
   GBP: '£',
   INR: '₹',
+  CAD: 'CA$',
 };
 
 /**
@@ -19,6 +20,7 @@ const RATES_FROM_USD: Record<CurrencyCode, number> = {
   EUR: 0.92,
   GBP: 0.79,
   INR: 83.3,
+  CAD: 1.38,
 };
 
 export function convertFromUsd(amountUsd: number, to: CurrencyCode): number {

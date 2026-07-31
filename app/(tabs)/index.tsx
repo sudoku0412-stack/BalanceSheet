@@ -278,14 +278,27 @@ export default function DashboardScreen() {
       ? Math.round(((stats.totalSpent - lastMonthTotal) / lastMonthTotal) * 100)
       : null;
 
-  const budgetRows = stats.categories
-    .filter((c) => (budgets[c.category] ?? 0) > 0)
+  // Budgets track against what actually left the wallet — each receipt's
+  // full totalAmount (tax included) under its PRIMARY category. This is
+  // deliberately NOT stats.categories: that breakdown sums per-LINE-ITEM
+  // amounts (pre-tax, split across a receipt's multiple categories) for
+  // Reports' finer-grained view, which is correct there but means a
+  // receipt's tax never shows up anywhere — confusing for a "spent X of
+  // Y limit" budget number, which should match the real total spent.
+  const categorySpendForBudgets: Record<string, number> = {};
+  for (const r of receipts) {
+    categorySpendForBudgets[r.category] =
+      (categorySpendForBudgets[r.category] ?? 0) + r.totalAmount;
+  }
+  const budgetRows = Object.entries(categorySpendForBudgets)
+    .filter(([category]) => (budgets[category] ?? 0) > 0)
+    .sort((a, b) => b[1] - a[1])
     .slice(0, 3)
-    .map((c) => ({
-      category: c.category,
-      spent: c.total,
-      limit: budgets[c.category],
-      status: budgetStatus(c.total, budgets[c.category]),
+    .map(([category, spent]) => ({
+      category,
+      spent,
+      limit: budgets[category],
+      status: budgetStatus(spent, budgets[category]),
     }));
 
   const statusMeta: Record<BudgetStatus, { label: string; color: string }> = {
