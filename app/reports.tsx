@@ -46,7 +46,20 @@ export default function ReportsScreenWrapped() {
   );
 }
 
-function ReportsScreen() {
+/**
+ * Rendered directly inside the tab bar (reports-tab.tsx) — no ModalHeader
+ * back button since it's a tab root, not a pushed screen; native Tabs
+ * header supplies the "Reports" title instead, same as the Expenses tab.
+ */
+export function ReportsScreenEmbedded() {
+  return (
+    <ErrorBoundary>
+      <ReportsScreen embedded />
+    </ErrorBoundary>
+  );
+}
+
+function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const theme = useTheme();
   const styles = useReportsStyles();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
@@ -193,8 +206,8 @@ function ReportsScreen() {
   }, [monthReceipts, exportingPdf, monthStart, monthEnd, shareFile]);
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <ModalHeader title="Reports" />
+    <SafeAreaView style={styles.root} edges={embedded ? ['bottom'] : ['top', 'bottom']}>
+      {!embedded && <ModalHeader title="Reports" />}
       <Text style={styles.subhead}>{format(now, 'MMMM yyyy')}</Text>
 
       {loading ? (

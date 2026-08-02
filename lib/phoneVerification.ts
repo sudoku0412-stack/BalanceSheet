@@ -40,6 +40,23 @@ export async function confirmPhoneVerification(
   return accepted.joined ? { joinedHouseholdId: accepted.householdId } : {};
 }
 
+/**
+ * Sets a phone number directly, no OTP — used by the profile edit page.
+ * Marks it verified=true for backward compat with the household-by-phone
+ * matching flow (phoneIndex, acceptPhoneInviteIfAny), which only ever
+ * checked the flag, not how the number got there.
+ */
+export async function setPhoneNumberManual(
+  uid: string,
+  phoneE164: string,
+): Promise<{ joinedHouseholdId?: string }> {
+  await setProfilePhone(uid, phoneE164, true);
+  await syncPhoneToCloud(uid, phoneE164, true);
+  await setPhoneIndex(uid, phoneE164);
+  const accepted = await acceptPhoneInviteIfAny(uid, phoneE164);
+  return accepted.joined ? { joinedHouseholdId: accepted.householdId } : {};
+}
+
 export async function removePhoneVerification(uid: string, previousPhone: string | null): Promise<void> {
   await setProfilePhone(uid, null, false);
   await syncPhoneToCloud(uid, null, false);

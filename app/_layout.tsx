@@ -84,7 +84,7 @@ function ThemedStatusBar() {
 // `target` resolves to `(tabs)` and the user is on one of these, leave
 // them alone — the guard's job is to force users to the auth gate, not
 // to drag them back to /(tabs) every time they open a modal.
-const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'reports', 'balances', 'shared-expenses']);
+const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'edit-profile', 'reports', 'balances', 'shared-expenses']);
 
 function RootStack() {
   const theme = useTheme();
@@ -171,6 +171,12 @@ function RootStack() {
       />
       <Stack.Screen
         name="reports"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="edit-profile"
         options={{
           headerShown: false,
         }}

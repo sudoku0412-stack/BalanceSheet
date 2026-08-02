@@ -36,15 +36,7 @@ import {
   type HouseholdMember,
 } from '../lib/cloudSync';
 import { receiptsToCsv } from '../lib/reports';
-import { normalizePhoneE164 } from '../lib/phone';
 import { getCloudSyncDiagnostics, subscribeCloudSyncDiagnostics } from '../lib/cloudSync';
-import {
-  startPhoneVerification,
-  confirmPhoneVerification,
-  removePhoneVerification,
-  isPhoneAlreadyInUseError,
-} from '../lib/phoneVerification';
-import type { ConfirmationResult } from '../lib/auth';
 import { pickContactWithPhone, isContactPickerAvailable } from '../lib/contactPicker';
 import { addByPhone } from '../lib/phoneInvite';
 import {
@@ -383,16 +375,6 @@ export default function SettingsScreen() {
   // joins once THEY sign in and accept).
   const [lastInvitedEmail, setLastInvitedEmail] = useState<string | null>(null);
 
-  // Optional phone number verification (add-anytime, not required at
-  // signup). `phoneConfirmation` holds the Firebase ConfirmationResult
-  // between "code sent" and "code entered" — null means no OTP in flight.
-  const [phoneInput, setPhoneInput] = useState('');
-  const [phoneCodeInput, setPhoneCodeInput] = useState('');
-  const [phoneConfirmation, setPhoneConfirmation] = useState<ConfirmationResult | null>(null);
-  const [sendingPhoneCode, setSendingPhoneCode] = useState(false);
-  const [verifyingPhoneCode, setVerifyingPhoneCode] = useState(false);
-  const [phoneError, setPhoneError] = useState<string | null>(null);
-
   const loadMembers = React.useCallback(async () => {
     const householdId = getCurrentHouseholdId();
     if (!householdId || !user?.uid) {
@@ -508,63 +490,6 @@ export default function SettingsScreen() {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't leave household" });
     } finally {
       setLeavingHousehold(false);
-    }
-  };
-
-  const sendPhoneCode = async () => {
-    const e164 = normalizePhoneE164(phoneInput.trim());
-    if (!e164) {
-      setPhoneError('Enter a valid phone number, e.g. +1 416 555 1234.');
-      return;
-    }
-    setPhoneError(null);
-    setSendingPhoneCode(true);
-    try {
-      const confirmation = await startPhoneVerification(e164);
-      setPhoneConfirmation(confirmation);
-    } catch (e) {
-      if (isPhoneAlreadyInUseError(e)) {
-        setPhoneError('That number is already linked to a different account.');
-      } else {
-        setPhoneError((e as Error)?.message ?? "Couldn't send verification code.");
-      }
-    } finally {
-      setSendingPhoneCode(false);
-    }
-  };
-
-  const confirmPhoneCodeInput = async () => {
-    if (!phoneConfirmation || !phoneCodeInput.trim()) return;
-    setPhoneError(null);
-    setVerifyingPhoneCode(true);
-    try {
-      const result = await confirmPhoneVerification(phoneConfirmation, phoneCodeInput.trim());
-      await refreshProfile();
-      setPhoneConfirmation(null);
-      setPhoneInput('');
-      setPhoneCodeInput('');
-      if (result.joinedHouseholdId) {
-        setCurrentHouseholdId(result.joinedHouseholdId);
-        await loadMembers();
-        toast.show({ kind: 'success', message: 'Phone verified — joined a household' });
-      } else {
-        toast.show({ kind: 'success', message: 'Phone number verified' });
-      }
-    } catch (e) {
-      setPhoneError((e as Error)?.message ?? "Couldn't verify code.");
-    } finally {
-      setVerifyingPhoneCode(false);
-    }
-  };
-
-  const removePhoneNumber = async () => {
-    if (!user?.uid) return;
-    try {
-      await removePhoneVerification(user.uid, profile?.phone ?? null);
-      await refreshProfile();
-      toast.show({ kind: 'success', message: 'Phone number removed' });
-    } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't remove phone number" });
     }
   };
 
@@ -741,70 +666,22 @@ export default function SettingsScreen() {
               <Text style={styles.profileMeta} numberOfLines={1}>
                 {user?.email ?? ''}
               </Text>
+              {profile?.phone ? (
+                <Text style={styles.profileMeta} numberOfLines={1}>
+                  {profile.phone}
+                </Text>
+              ) : null}
             </View>
           </View>
-        </Section>
-
-        <Section title="Phone number">
-          {profile?.phone && profile.phoneVerified ? (
-            <View style={styles.inviteRow}>
-              <Text style={[styles.profileMeta, { flex: 1 }]}>{profile.phone}</Text>
-              <Pressable onPress={removePhoneNumber} style={styles.leaveHouseholdBtn} hitSlop={4}>
-                <Text style={styles.leaveHouseholdText}>Remove</Text>
-              </Pressable>
-            </View>
-          ) : phoneConfirmation ? (
-            <View style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}>
-              <View style={styles.inviteRow}>
-                <TextInput
-                  value={phoneCodeInput}
-                  onChangeText={setPhoneCodeInput}
-                  placeholder="Enter code"
-                  placeholderTextColor={theme.colors.textMuted}
-                  keyboardType="number-pad"
-                  style={styles.inviteInput}
-                />
-                <Pressable
-                  onPress={confirmPhoneCodeInput}
-                  disabled={verifyingPhoneCode || !phoneCodeInput.trim()}
-                  style={[
-                    styles.inviteSendBtn,
-                    (verifyingPhoneCode || !phoneCodeInput.trim()) && styles.inviteSendBtnDisabled,
-                  ]}
-                >
-                  <Text style={styles.inviteSendText}>{verifyingPhoneCode ? 'Verifying…' : 'Verify'}</Text>
-                </Pressable>
-              </View>
-              {phoneError && <Text style={styles.cloudSyncWarning}>{phoneError}</Text>}
-            </View>
-          ) : (
-            <View style={{ paddingHorizontal: 0, paddingVertical: theme.spacing.sm }}>
-              <View style={styles.inviteRow}>
-                <TextInput
-                  value={phoneInput}
-                  onChangeText={setPhoneInput}
-                  placeholder="+1 416 555 1234"
-                  placeholderTextColor={theme.colors.textMuted}
-                  keyboardType="phone-pad"
-                  style={styles.inviteInput}
-                />
-                <Pressable
-                  onPress={sendPhoneCode}
-                  disabled={sendingPhoneCode || !phoneInput.trim()}
-                  style={[
-                    styles.inviteSendBtn,
-                    (sendingPhoneCode || !phoneInput.trim()) && styles.inviteSendBtnDisabled,
-                  ]}
-                >
-                  <Text style={styles.inviteSendText}>{sendingPhoneCode ? 'Sending…' : 'Send code'}</Text>
-                </Pressable>
-              </View>
-              {phoneError && <Text style={styles.cloudSyncWarning}>{phoneError}</Text>}
-              <Text style={styles.inviteHint}>
-                Optional — lets others add you to a household by phone number.
-              </Text>
-            </View>
-          )}
+          <View style={{ paddingHorizontal: theme.spacing.md, paddingBottom: theme.spacing.md }}>
+            <Pressable
+              onPress={() => router.push('/edit-profile')}
+              style={styles.leaveHouseholdBtn}
+              hitSlop={4}
+            >
+              <Text style={styles.leaveHouseholdText}>Edit profile</Text>
+            </Pressable>
+          </View>
         </Section>
 
         <Section title="Sync status (debug)">

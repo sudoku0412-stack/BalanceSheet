@@ -5,8 +5,10 @@ import {
   AuthUser,
   configureGoogleSignIn,
   deleteCurrentAccount,
+  getCurrentUser,
   onAuthStateChanged,
   signOutEverywhere,
+  updateAuthDisplayName,
 } from './auth';
 import { Profile, getProfile, deleteProfile, saveProfile } from './profile';
 import {
@@ -37,7 +39,11 @@ type AuthState = {
   markOnboardingSeen: () => Promise<void>;
   /** Save the local profile (name) right after signup / first Google login. */
   ensureProfile: (firstName: string, lastName: string) => Promise<void>;
+  /** Edit the name on an existing profile — used by the profile edit page. */
+  updateProfileName: (firstName: string, lastName: string) => Promise<void>;
   refreshProfile: () => Promise<void>;
+  /** Re-pull the Firebase Auth user object (e.g. after updateAuthDisplayName). */
+  refreshUser: () => void;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
 };
@@ -86,6 +92,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const p = await getProfile(user.uid);
         if (!mounted) return;
         setProfileState(p);
+        // Backfill for accounts created before Firebase Auth displayName
+        // was set at signup — without this, an existing user's OTHER
+        // devices (no local profile row) keep showing "Signed in".
+        if (p && !user.displayName) {
+          const fullName = `${p.firstName} ${p.lastName}`.trim();
+          if (fullName) {
+            try {
+              await updateAuthDisplayName(fullName);
+              if (mounted) setUser(getCurrentUser());
+            } catch {
+              // Best-effort — retried on next app open.
+            }
+          }
+        }
       } finally {
         if (mounted) setProfileLoaded(true);
       }
@@ -282,8 +302,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (existing) return;
         const p = await saveProfile(user.uid, { firstName, lastName }, null);
         setProfileState(p);
+        try {
+          await updateAuthDisplayName(`${firstName} ${lastName}`.trim());
+          setUser(getCurrentUser());
+        } catch {
+          // Best-effort — local profile already has the name; this just
+          // means it won't show up as `user.displayName` on other devices.
+        }
+      },
+      updateProfileName: async (firstName: string, lastName: string) => {
+        if (!user) return;
+        const existing = await getProfile(user.uid);
+        const p = await saveProfile(user.uid, { firstName, lastName }, existing);
+        setProfileState(p);
+        try {
+          await updateAuthDisplayName(`${firstName} ${lastName}`.trim());
+          setUser(getCurrentUser());
+        } catch {
+          // Best-effort — local profile already has the name.
+        }
       },
       refreshProfile,
+      refreshUser: () => setUser(getCurrentUser()),
       signOut: async () => {
         await signOutEverywhere();
       },

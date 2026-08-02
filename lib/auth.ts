@@ -35,6 +35,19 @@ export async function signUpWithEmail(email: string, password: string): Promise<
   return cred.user;
 }
 
+/**
+ * Sets the Firebase Auth user's displayName — email/password signup never
+ * sets this on its own, unlike Google sign-in. Without it, `user.displayName`
+ * stays null on every OTHER device signed into the same account (the local
+ * SQLite `profile` row with the real name only exists on the device that
+ * originally signed up), so Settings falls back to "Signed in" there.
+ */
+export async function updateAuthDisplayName(displayName: string): Promise<void> {
+  const current = auth().currentUser;
+  if (!current || !displayName.trim()) return;
+  await current.updateProfile({ displayName: displayName.trim() });
+}
+
 export async function signInAsGuest(): Promise<AuthUser> {
   const cred = await auth().signInAnonymously();
   return cred.user;

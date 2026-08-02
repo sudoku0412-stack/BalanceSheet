@@ -1,4 +1,4 @@
-import { Tabs, router } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { View } from 'react-native';
 import { useStyles, useTheme } from '../../constants/theme';
@@ -92,12 +92,6 @@ export default function TabLayout() {
             <Ionicons name="bar-chart-outline" size={size} color={color} />
           ),
         }}
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault();
-            router.push('/reports');
-          },
-        }}
       />
       <Tabs.Screen
         name="settings-tab"
@@ -106,12 +100,6 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="settings-outline" size={size} color={color} />
           ),
-        }}
-        listeners={{
-          tabPress: (e) => {
-            e.preventDefault();
-            router.push('/settings');
-          },
         }}
       />
     </Tabs>
