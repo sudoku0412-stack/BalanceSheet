@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reset your password — Receipt Scanner</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: #0F172A;
+      color: #f3f4f6;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+    .card {
+      max-width: 420px;
+      width: 100%;
+      background: #1f2937;
+      border-radius: 16px;
+      padding: 32px 28px;
+      text-align: center;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 22px;
+      font-weight: 700;
+      color: #ffffff;
+    }
+    p {
+      margin: 8px 0 0;
+      font-size: 15px;
+      line-height: 1.55;
+      color: #d1d5db;
+    }
+    .btn {
+      display: inline-block;
+      margin-top: 20px;
+      padding: 14px 24px;
+      background: #2563eb;
+      color: #ffffff;
+      text-decoration: none;
+      border-radius: 10px;
+      font-weight: 600;
+      font-size: 16px;
+    }
+    .btn.secondary {
+      background: transparent;
+      color: #93c5fd;
+      border: 1px solid #334155;
+      margin-top: 12px;
+    }
+    .footer {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #6b7280;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Reset your password</h1>
+    <p>Open this link in the Receipt Scanner app to set a new password.</p>
+
+    <a class="btn" id="open-btn" href="#">Open in app</a>
+    <a class="btn secondary" id="install-btn" href="https://play.google.com/store/apps/details?id=com.kaushikmajumder.receiptscanner">Don't have the app? Install it</a>
+
+    <div class="footer" id="missing-code" hidden>
+      This link is missing its reset code — open it directly from the email you received, don't forward or retype it.
+    </div>
+    <div class="footer">
+      Receipt Scanner · Thanks, Team Receipt Scanner
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var oobCode = params.get('oobCode');
+      if (!oobCode) {
+        document.getElementById('missing-code').hidden = false;
+      }
+      var here = window.location.pathname + window.location.search;
+      var openBtn = document.getElementById('open-btn');
+      var ua = navigator.userAgent || '';
+      if (/Android/i.test(ua)) {
+        // If App Links verification succeeded, Android would have
+        // opened the app directly instead of showing this page at
+        // all — this re-attempts via an explicit intent as a fallback
+        // (e.g. app installed after this page already loaded).
+        openBtn.setAttribute(
+          'href',
+          'intent://balancesheet-android.web.app' + here +
+          '#Intent;scheme=https;package=com.kaushikmajumder.receiptscanner;end'
+        );
+      } else if (/iPhone|iPad|iPod/i.test(ua)) {
+        // iOS has no apple-app-site-association file yet (needs a paid
+        // Apple Developer account — not set up), so universal links
+        // can't auto-open the app here. The custom URL scheme still
+        // works as a manual tap for anyone who already has the app
+        // installed, no AASA required for that.
+        openBtn.setAttribute('href', 'receipt-scanner://reset-password' + window.location.search);
+        document.getElementById('install-btn').setAttribute(
+          'href',
+          'https://apps.apple.com/app/id0000000000'
+        );
+        document.getElementById('install-btn').textContent = 'Install on App Store';
+      } else {
+        openBtn.hidden = true;
+      }
+    })();
+  </script>
+</body>
+</html>

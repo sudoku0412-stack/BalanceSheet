@@ -31,19 +31,21 @@ import {
   getGeminiCachedResponse,
   setGeminiCachedResponse,
   getCurrentHouseholdId,
+  getReceiptsByMonth,
 } from '../../lib/database';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { useAuth } from '../../lib/AuthContext';
 import { parseReceiptText, parseYmdLocal } from '../../lib/parser';
 import { persistReceiptImage } from '../../lib/receiptPhoto';
 import { notifySuccess } from '../../lib/haptics';
+import { notifyHouseholdOfBudgetStatus, notifyNewSharedExpense } from '../../lib/notifications';
 import {
   parseReceiptWithGemini,
   parseGeminiPayload,
 } from '../../lib/geminiParseReceipt';
 import { parseReceiptWithCloudflare } from '../../lib/cloudflareReceiptParse';
 import { getGeminiApiKey, getCurrency } from '../../lib/secureStorage';
-import { CURRENCIES, CURRENCY_SYMBOLS, CurrencyCode, convertToUsd } from '../../lib/currency';
+import { CURRENCIES, CURRENCY_SYMBOLS, CurrencyCode, convertToUsd, formatCurrency } from '../../lib/currency';
 import { advance as advanceRecurringDate, computeRecurringEndDate } from '../../lib/recurring';
 import { ParsedReceipt, Category, LineItem, Receipt } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
@@ -51,6 +53,8 @@ import { ALL_CATEGORIES } from '../../constants/categories';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../components/ui/Toast';
+import { SplitSection } from '../../components/ui/SplitSection';
+import { DateField } from '../../components/ui/DateField';
 import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
 
 // Household-member display helpers for the per-item "Split with" picker
@@ -708,6 +712,19 @@ export default function ScanScreen() {
     'monthly',
   );
   const [recurringDuration, setRecurringDuration] = useState('');
+  // The date the FIRST auto-generated occurrence should land on — user-
+  // editable so "repeat this" doesn't silently lock to "one period after
+  // today." Auto-filled (not overwritten once the user's touched it) when
+  // the toggle turns on or the frequency changes.
+  const [recurringNextDate, setRecurringNextDate] = useState('');
+  const [recurringNextDateTouched, setRecurringNextDateTouched] = useState(false);
+
+  useEffect(() => {
+    if (!recurringEnabled || recurringNextDateTouched) return;
+    const receiptDateYmd = parseYmdLocal(date) ? date : format(new Date(), 'yyyy-MM-dd');
+    setRecurringNextDate(advanceRecurringDate(receiptDateYmd, recurringFrequency));
+  }, [recurringEnabled, recurringFrequency, recurringNextDateTouched, date]);
+
   // Parsed/AI-extracted line items are kept in state and passed through
   // to saveReceipt (see handleSave) even though this screen no longer
   // shows a line-items list or per-item edit UI — Reports' category
@@ -728,7 +745,7 @@ export default function ScanScreen() {
   const [rawText, setRawText] = useState('');
 
   // ─── Per-item "Split with" (Review Receipt + Add Expense) ──────────────
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
 
   // User's selected display currency. Amount/subtotal/tax/item fields
@@ -778,6 +795,23 @@ export default function ScanScreen() {
       active = false;
     };
   }, [isManualEntry, scanState, user?.uid]);
+
+  // ── Split-this-expense (receipt-level) ──
+  // Same shape/semantics as app/edit/[id].tsx's split state — lets a
+  // manually-added expense be split at SAVE TIME instead of requiring a
+  // separate add-then-edit round trip just to turn splitting on.
+  const [splitEnabled, setSplitEnabled] = useState(false);
+  const [splitMethod, setSplitMethod] = useState<'equal' | 'percent' | 'amount'>('equal');
+  const [selectedOtherUids, setSelectedOtherUids] = useState<Set<string>>(new Set());
+  const [splitPercents, setSplitPercents] = useState<Record<string, string>>({});
+  const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
+  const [paidBy, setPaidBy] = useState<string>('self');
+
+  useEffect(() => {
+    if (paidBy !== 'self' && !selectedOtherUids.has(paidBy)) {
+      setPaidBy('self');
+    }
+  }, [paidBy, selectedOtherUids]);
 
   const otherMembers = useMemo(
     () => householdMembers.filter((m) => !m.isYou),
@@ -950,6 +984,12 @@ export default function ScanScreen() {
       setTax('');
       setCategory('Other');
       setItems([]);
+      setSplitEnabled(false);
+      setSplitMethod('equal');
+      setSelectedOtherUids(new Set());
+      setSplitPercents({});
+      setSplitAmounts({});
+      setPaidBy('self');
       setScanState('review');
     }
   };
@@ -996,6 +1036,12 @@ export default function ScanScreen() {
     setCategoryTags([]);
     setNotes('');
     setItems([]);
+    setSplitEnabled(false);
+    setSplitMethod('equal');
+    setSelectedOtherUids(new Set());
+    setSplitPercents({});
+    setSplitAmounts({});
+    setPaidBy('self');
     setScanState('review');
   };
 
@@ -1088,6 +1134,13 @@ export default function ScanScreen() {
         });
         return;
       }
+      if (!parseYmdLocal(recurringNextDate.trim())) {
+        toast.show({
+          message: 'Please enter a valid next auto-add date (YYYY-MM-DD).',
+          kind: 'error',
+        });
+        return;
+      }
     }
 
     // Final guardrail: if items still don't match the subtotal, give
@@ -1135,15 +1188,15 @@ export default function ScanScreen() {
         'Other';
       const finalTags = categoryTags.length ? categoryTags : [primaryCategory];
 
-      // Recurring config: the FIRST occurrence is this receipt itself, so
-      // nextDueDate starts one period AHEAD of its own date — otherwise
-      // lib/recurring.ts's processor sees this same date as already due
-      // on the very next run and materializes an immediate duplicate.
+      // Recurring config: nextDueDate is now user-chosen (see
+      // recurringNextDate above) instead of always silently defaulting
+      // to one period after the receipt's own date — validated above,
+      // so it's guaranteed parseable here.
       const receiptDateYmd = format(parsedDate, 'yyyy-MM-dd');
       const recurring: Receipt['recurring'] | undefined = recurringEnabled
         ? {
             frequency: recurringFrequency,
-            nextDueDate: advanceRecurringDate(receiptDateYmd, recurringFrequency),
+            nextDueDate: format(parseYmdLocal(recurringNextDate.trim())!, 'yyyy-MM-dd'),
             endDate: computeRecurringEndDate(receiptDateYmd, recurringDurationVal),
           }
         : undefined;
@@ -1158,6 +1211,32 @@ export default function ScanScreen() {
         receiptId,
       );
 
+      // Build the split payload from the current split UI state, same
+      // as app/edit/[id].tsx's handleSave — this is what lets a manual
+      // add be split immediately, no separate edit pass required. Store
+      // the signed-in user's REAL uid instead of the 'self' UI
+      // placeholder (see lib/balances.ts).
+      const selfUidForSave = user?.uid ?? 'self';
+      const normalizeForSave = (pid: string) => (pid === 'self' ? selfUidForSave : pid);
+      const totalAmountUsd = convertToUsd(amountVal, currencyCode);
+      const split: Receipt['split'] = splitEnabled
+        ? {
+            enabled: true,
+            method: splitMethod,
+            participantIds: [selfUidForSave, ...Array.from(selectedOtherUids)],
+            values:
+              splitMethod === 'percent'
+                ? Object.fromEntries(
+                    Object.entries(splitPercents).map(([k, v]) => [normalizeForSave(k), parseFloat(v) || 0]),
+                  )
+                : splitMethod === 'amount'
+                  ? Object.fromEntries(
+                      Object.entries(splitAmounts).map(([k, v]) => [normalizeForSave(k), parseFloat(v) || 0]),
+                    )
+                  : undefined,
+          }
+        : undefined;
+
       // Every amount typed/parsed on this screen (total, subtotal, tax,
       // each line item) is in the user's SELECTED display currency —
       // convert to USD-canonical exactly once, right here, before
@@ -1168,7 +1247,7 @@ export default function ScanScreen() {
         id: receiptId,
         storeName: storeName.trim(),
         date: parsedDate.toISOString(),
-        totalAmount: convertToUsd(amountVal, currencyCode),
+        totalAmount: totalAmountUsd,
         subtotalAmount:
           subtotalVal != null && !isNaN(subtotalVal)
             ? convertToUsd(subtotalVal, currencyCode)
@@ -1183,9 +1262,37 @@ export default function ScanScreen() {
         lineItems: items.map((it) => ({ ...it, amount: convertToUsd(it.amount, currencyCode) })),
         originalCurrency: currencyCode,
         recurring,
+        split,
+        paidBy: splitEnabled ? (paidBy === 'self' ? user?.uid : paidBy) : undefined,
         createdAt: now,
         updatedAt: now,
       });
+
+      // Household activity push (fire-and-forget) — over-budget goes to
+      // every OTHER member (self already sees this on screen); a new
+      // shared expense pings whoever it's split with.
+      const householdId = getCurrentHouseholdId();
+      if (householdId && user?.uid) {
+        getReceiptsByMonth(parsedDate.getFullYear(), parsedDate.getMonth() + 1)
+          .then((monthReceipts) =>
+            notifyHouseholdOfBudgetStatus({ householdId, selfUid: user.uid, monthReceipts }),
+          )
+          .catch(() => {});
+      }
+      if (split?.enabled) {
+        const otherParticipantUids = split.participantIds.filter((pid) => pid !== selfUidForSave);
+        if (otherParticipantUids.length > 0) {
+          const payerLabel = profile
+            ? `${profile.firstName} ${profile.lastName}`.trim()
+            : user?.displayName || 'Someone';
+          void notifyNewSharedExpense({
+            participantUids: otherParticipantUids,
+            payerLabel,
+            amountLabel: formatCurrency(totalAmountUsd, currencyCode),
+            storeName: storeName.trim(),
+          });
+        }
+      }
 
       // Feedback loop: if the user edited items vs. what the parser
       // (regex or AI) returned, save the OCR + corrected items as an
@@ -1253,12 +1360,20 @@ export default function ScanScreen() {
     setRecurringEnabled(false);
     setRecurringFrequency('monthly');
     setRecurringDuration('');
+    setRecurringNextDate('');
+    setRecurringNextDateTouched(false);
     setAiPending(false);
     setAiApplied(false);
     setAiError(null);
     setRawText('');
     setItemModalVisible(false);
     setEditingItemId(null);
+    setSplitEnabled(false);
+    setSplitMethod('equal');
+    setSelectedOtherUids(new Set());
+    setSplitPercents({});
+    setSplitAmounts({});
+    setPaidBy('self');
   };
 
   // Back chevron ("Retake") in the Review Receipt header: discard the
@@ -1845,6 +1960,16 @@ export default function ScanScreen() {
                 })}
               </View>
 
+              <Text style={styles.fieldLabel}>Next auto-add date</Text>
+              <DateField
+                value={recurringNextDate}
+                onChange={(v) => {
+                  setRecurringNextDateTouched(true);
+                  setRecurringNextDate(v);
+                }}
+                placeholder="Select date"
+              />
+
               <Text style={styles.fieldLabel}>For how many months</Text>
               <TextInput
                 style={[styles.input, styles.amountInput]}
@@ -1910,6 +2035,35 @@ export default function ScanScreen() {
             <Text style={styles.addItemText}>Add item</Text>
           </TouchableOpacity>
         </Card>
+
+      {/* Split this expense — settable right here at save time (both
+          scanned and manual entries), no separate add-then-edit pass
+          needed just to turn splitting on. */}
+      <SplitSection
+        otherMembers={otherMembers}
+        enabled={splitEnabled}
+        onEnabledChange={setSplitEnabled}
+        method={splitMethod}
+        onMethodChange={setSplitMethod}
+        selectedOtherUids={selectedOtherUids}
+        onToggleParticipant={(uid) => {
+          setSelectedOtherUids((prev) => {
+            const next = new Set(prev);
+            if (next.has(uid)) next.delete(uid);
+            else next.add(uid);
+            return next;
+          });
+        }}
+        splitPercents={splitPercents}
+        onChangePercent={(key, v) => setSplitPercents((prev) => ({ ...prev, [key]: v }))}
+        splitAmounts={splitAmounts}
+        onChangeAmount={(key, v) => setSplitAmounts((prev) => ({ ...prev, [key]: v }))}
+        paidBy={paidBy}
+        onPaidByChange={setPaidBy}
+        totalAmountUsd={convertToUsd(parseFloat(amount.replace(',', '.')) || 0, currencyCode)}
+        currencyCode={currencyCode}
+        lineItems={items}
+      />
 
       {/* Add/edit line-item modal */}
       <Modal

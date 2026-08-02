@@ -1,17 +1,21 @@
 import React, { useCallback, useState } from 'react';
-import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { EmptyState } from '../components/ui/EmptyState';
+import { useToast } from '../components/ui/Toast';
 import { useStyles, useTheme } from '../constants/theme';
-import { getAllReceipts, getCurrentHouseholdId } from '../lib/database';
+import { getAllReceipts, getAllSettlements, getCurrentHouseholdId, insertSettlement } from '../lib/database';
 import { getHouseholdMembers, HouseholdMember } from '../lib/cloudSync';
 import { getCurrentUser } from '../lib/auth';
+import { useAuth } from '../lib/AuthContext';
 import { getCurrency } from '../lib/secureStorage';
+import { v4 as uuidv4 } from 'uuid';
 import { computeMemberBalances, MemberBalance } from '../lib/balances';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
-import { Receipt } from '../types';
+import { notifySettleUp } from '../lib/notifications';
+import { Receipt, Settlement } from '../types';
 
 function memberLabel(m: HouseholdMember): string {
   return m.displayName?.trim() || m.email || 'Household member';
@@ -27,47 +31,102 @@ function initialFor(label: string): string {
 export default function BalancesScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const toast = useToast();
+  const { profile } = useAuth();
   const styles = useBalancesStyles();
   const [loading, setLoading] = useState(true);
   const [balances, setBalances] = useState<MemberBalance[]>([]);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  const [settlingUid, setSettlingUid] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const uid = getCurrentUser()?.uid;
+    const householdId = getCurrentHouseholdId();
+    const [receipts, settlements, memberList, rawCurrency] = await Promise.all([
+      getAllReceipts(),
+      getAllSettlements(),
+      householdId && uid
+        ? getHouseholdMembers({ householdId, currentUid: uid })
+        : Promise.resolve<HouseholdMember[] | null>(null),
+      getCurrency(),
+    ]);
+    const memberArr = memberList ?? [];
+    setMembers(memberArr);
+    if (uid) {
+      setBalances(computeMemberBalances(receipts as Receipt[], settlements as Settlement[], uid, memberArr));
+    }
+    if (rawCurrency) setCurrency(rawCurrency as CurrencyCode);
+    setLoading(false);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
       (async () => {
-        const uid = getCurrentUser()?.uid;
-        const householdId = getCurrentHouseholdId();
-        const [receipts, memberList, rawCurrency] = await Promise.all([
-          getAllReceipts(),
-          householdId && uid
-            ? getHouseholdMembers({ householdId, currentUid: uid })
-            : Promise.resolve<HouseholdMember[] | null>(null),
-          getCurrency(),
-        ]);
+        await load();
         if (!mounted) return;
-        const memberArr = memberList ?? [];
-        setMembers(memberArr);
-        if (uid) {
-          setBalances(computeMemberBalances(receipts as Receipt[], uid, memberArr));
-        }
-        if (rawCurrency) setCurrency(rawCurrency as CurrencyCode);
-        setLoading(false);
       })();
       return () => {
         mounted = false;
       };
-    }, []),
+    }, [load]),
   );
 
+  // Either side of a balance can settle it — the debtor confirming they
+  // paid, or the person owed confirming they got paid (in cash, e-transfer,
+  // etc. — outside the app). Whoever taps it just records who actually
+  // owed whom, not who happened to press the button.
+  const confirmSettleUp = (memberUid: string, label: string, theyOweYou: boolean, amountUsd: number) => {
+    const fromUid = theyOweYou ? memberUid : (getCurrentUser()?.uid ?? '');
+    const toUid = theyOweYou ? (getCurrentUser()?.uid ?? '') : memberUid;
+    const message = theyOweYou
+      ? `Mark ${formatCurrency(amountUsd, currency)} from ${label} as received? This only clears the balance between you two — it doesn't change any expense totals.`
+      : `Mark ${formatCurrency(amountUsd, currency)} as paid to ${label}? This only clears the balance between you two — it doesn't change any expense totals.`;
+    Alert.alert('Settle up?', message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Settle up', onPress: () => settleUp(memberUid, fromUid, toUid, amountUsd) },
+    ]);
+  };
+
+  const settleUp = async (memberUid: string, fromUid: string, toUid: string, amountUsd: number) => {
+    if (!fromUid || !toUid || settlingUid) return;
+    const selfUid = getCurrentUser()?.uid;
+    setSettlingUid(memberUid);
+    try {
+      await insertSettlement({
+        id: uuidv4(),
+        fromUid,
+        toUid,
+        amountUsd,
+        createdAt: new Date().toISOString(),
+      });
+      await load();
+      toast.show({ kind: 'success', message: 'Settled up' });
+      const actorLabel = profile ? `${profile.firstName} ${profile.lastName}`.trim() : 'Someone';
+      void notifySettleUp({
+        toUid: memberUid,
+        actorLabel,
+        amountLabel: formatCurrency(amountUsd, currency),
+        actorIsPayer: fromUid === selfUid,
+      });
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't settle up" });
+    } finally {
+      setSettlingUid(null);
+    }
+  };
+
   const memberByUid = new Map(members.map((m) => [m.uid, m]));
-  const nonZero = balances.filter((b) => Math.abs(b.netUsd) > 0.005);
+  // Keep a row for anyone with ANY shared-expense history, even once
+  // fully settled — settling shouldn't make the pair vanish, just show
+  // $0.00. Members never split with at all still don't clutter the list.
+  const withHistory = balances.filter((b) => b.receiptIds.length > 0);
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <ModalHeader title="Balances" onBack={() => router.back()} />
-      {!loading && nonZero.length === 0 ? (
+      {!loading && withHistory.length === 0 ? (
         <EmptyState
           icon="swap-horizontal-outline"
           title="All settled up"
@@ -75,40 +134,53 @@ export default function BalancesScreen() {
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
-          {nonZero.map((b) => {
+          {withHistory.map((b) => {
             const m = memberByUid.get(b.memberUid);
             const label = m ? memberLabel(m) : 'Household member';
+            const isSettled = Math.abs(b.netUsd) <= 0.005;
             const theyOweYou = b.netUsd > 0;
+            const statusColor = isSettled
+              ? theme.colors.textMuted
+              : theyOweYou
+                ? theme.colors.success
+                : theme.colors.error;
             return (
-              <TouchableOpacity
-                key={b.memberUid}
-                activeOpacity={0.7}
-                style={styles.row}
-                onPress={() => router.push(`/shared-expenses/${b.memberUid}`)}
-              >
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarInitials}>{initialFor(label)}</Text>
-                </View>
-                <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
-                  <Text style={styles.name} numberOfLines={1}>{label}</Text>
-                  <Text
-                    style={[
-                      styles.direction,
-                      { color: theyOweYou ? theme.colors.success : theme.colors.error },
-                    ]}
-                  >
-                    {theyOweYou ? 'Owes you' : 'You owe'}
-                  </Text>
-                </View>
-                <Text
-                  style={[
-                    styles.amount,
-                    { color: theyOweYou ? theme.colors.success : theme.colors.error },
-                  ]}
+              <View key={b.memberUid} style={styles.card}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={styles.row}
+                  onPress={() => router.push(`/shared-expenses/${b.memberUid}`)}
                 >
-                  {formatCurrency(Math.abs(b.netUsd), currency)}
-                </Text>
-              </TouchableOpacity>
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarInitials}>{initialFor(label)}</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
+                    <Text style={styles.name} numberOfLines={1}>{label}</Text>
+                    <Text style={[styles.direction, { color: statusColor }]}>
+                      {isSettled ? 'Settled up' : theyOweYou ? 'Owes you' : 'You owe'}
+                    </Text>
+                  </View>
+                  <Text style={[styles.amount, { color: statusColor }]}>
+                    {formatCurrency(Math.abs(b.netUsd), currency)}
+                  </Text>
+                </TouchableOpacity>
+                {!isSettled && (
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    disabled={settlingUid === b.memberUid}
+                    style={[styles.settleBtn, settlingUid === b.memberUid && styles.settleBtnDisabled]}
+                    onPress={() => confirmSettleUp(b.memberUid, label, theyOweYou, Math.abs(b.netUsd))}
+                  >
+                    <Text style={styles.settleBtnText}>
+                      {settlingUid === b.memberUid
+                        ? 'Settling…'
+                        : theyOweYou
+                          ? 'Mark as received'
+                          : 'Settle up'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             );
           })}
         </ScrollView>
@@ -125,16 +197,36 @@ function useBalancesStyles() {
       paddingTop: theme.spacing.lg,
       paddingBottom: theme.spacing.xl,
     },
-    row: {
-      flexDirection: 'row',
-      alignItems: 'center',
+    card: {
       backgroundColor: theme.colors.surface,
       borderRadius: theme.radius.lg,
       borderWidth: 1,
       borderColor: theme.colors.border,
+      marginBottom: theme.spacing.sm,
+      overflow: 'hidden',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.md,
-      marginBottom: theme.spacing.sm,
+    },
+    settleBtn: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
+    settleBtnDisabled: {
+      opacity: 0.5,
+    },
+    settleBtnText: {
+      // accent, not primary — primary is dark navy and invisible on the
+      // dark-mode surface this button sits on (see HANDOVER.md).
+      color: theme.colors.accent,
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.display.bold,
     },
     avatar: {
       width: 40,

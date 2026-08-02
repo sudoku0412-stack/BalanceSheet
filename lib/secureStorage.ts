@@ -97,6 +97,33 @@ export async function setBudgetAlertsEnabled(enabled: boolean): Promise<void> {
   await SecureStore.setItemAsync(Keys.budgetAlertsEnabled, enabled ? '1' : '0');
 }
 
+export type BudgetsSnapshot = {
+  byCategory: Record<string, number>;
+  alertsEnabled: boolean;
+};
+
+/** This device's current budget settings, stamped onto an invite doc
+ *  so a newly-added household member starts with the SAME budget
+ *  alert amounts as whoever added them (see lib/cloudSync.ts). */
+export async function getBudgetsSnapshot(): Promise<BudgetsSnapshot> {
+  const [byCategory, alertsEnabled] = await Promise.all([
+    getCategoryBudgets(),
+    getBudgetAlertsEnabled(),
+  ]);
+  return { byCategory, alertsEnabled };
+}
+
+/** Overwrites this device's budgets with a snapshot pulled from an
+ *  invite — called once, right after accepting, so both members start
+ *  in sync. Only ever runs on an empty/default local config (a brand
+ *  new member), so it can't clobber budgets someone already set. */
+export async function applyBudgetsSnapshot(snapshot: BudgetsSnapshot): Promise<void> {
+  for (const [category, amount] of Object.entries(snapshot.byCategory)) {
+    await setCategoryBudget(category, amount);
+  }
+  await setBudgetAlertsEnabled(snapshot.alertsEnabled);
+}
+
 export async function getCurrency(): Promise<string | null> {
   return await SecureStore.getItemAsync(Keys.currency);
 }

@@ -53,8 +53,30 @@ export async function signInAsGuest(): Promise<AuthUser> {
   return cred.user;
 }
 
+/**
+ * Sends the reset email as a deep link back into THIS app (app/reset-
+ * password.tsx handles the oobCode) instead of Firebase's own hosted
+ * web page — handleCodeInApp:true + android/iOS settings makes it a
+ * Universal/App Link the OS opens directly in the app when installed.
+ * Android genuinely deep-links straight in (assetlinks.json is live).
+ * iOS falls back to firebase-hosting/reset-password/index.html — no
+ * apple-app-site-association file exists yet (needs a paid Apple
+ * Developer account, not set up — see HANDOVER.md), so iOS opens
+ * Safari first; that page offers a manual "Open in app" link via the
+ * receipt-scanner:// custom scheme, which works without AASA.
+ */
 export async function sendPasswordReset(email: string): Promise<void> {
-  await auth().sendPasswordResetEmail(email.trim());
+  await auth().sendPasswordResetEmail(email.trim(), {
+    url: 'https://balancesheet-android.web.app/reset-password',
+    handleCodeInApp: true,
+    android: {
+      packageName: 'com.kaushikmajumder.receiptscanner',
+      installApp: false,
+    },
+    iOS: {
+      bundleId: 'com.kaushikmajumder.receiptscanner',
+    },
+  });
 }
 
 export async function signInWithPhone(phoneNumber: string): Promise<ConfirmationResult> {

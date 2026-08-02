@@ -38,10 +38,10 @@ module.exports = ({ config }) => {
     android: {
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon.png',
-        // Teal that matches the icon's gradient average. The foreground
-        // PNG already fills edge-to-edge with the teal→blue gradient, so
-        // this only shows if a device mask crops past the foreground.
-        backgroundColor: '#019B99',
+        // Navy matching the new logo's own background. The foreground
+        // PNG already fills edge-to-edge, so this only shows if a
+        // device mask crops past the foreground.
+        backgroundColor: '#3F5691',
       },
       permissions: [
         'android.permission.CAMERA',
@@ -67,6 +67,13 @@ module.exports = ({ config }) => {
               host: 'balancesheet-android.web.app',
               pathPrefix: '/invite',
             },
+            // Password-reset deep link (lib/auth.ts's sendPasswordReset)
+            // — same App Link setup as /invite above.
+            {
+              scheme: 'https',
+              host: 'balancesheet-android.web.app',
+              pathPrefix: '/reset-password',
+            },
           ],
           category: ['BROWSABLE', 'DEFAULT'],
         },
@@ -79,6 +86,13 @@ module.exports = ({ config }) => {
       '@react-native-firebase/auth',
       ['expo-camera', { cameraPermission: 'Allow ReceiptScanner to access your camera.' }],
       ['expo-image-picker', { photosPermission: 'Allow ReceiptScanner to access your photos.' }],
+      '@react-native-community/datetimepicker',
+      // Sets up the iOS aps-environment entitlement needed for remote
+      // push (household activity alerts) — local-only notifications
+      // worked without this, but real push via Expo's push service
+      // needs it. Also needs `eas credentials` run once to upload an
+      // APNs key from the Apple Developer account for iOS builds.
+      'expo-notifications',
       [
         'expo-build-properties',
         {

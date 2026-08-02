@@ -1,5 +1,7 @@
-import { Receipt } from '../types';
+import { Receipt, Settlement } from '../types';
 import {
+  applyBudgetsSnapshot,
+  BudgetsSnapshot,
   getCloudMigrationDone,
   setCloudMigrationDone,
 } from './secureStorage';
@@ -277,6 +279,7 @@ interface CloudReceipt {
   photoUrl?: string | null;
   notes?: string | null;
   paidBy?: string | null;
+  isRecurringOccurrence?: boolean;
   lineItems?: Array<{
     id: string;
     name: string;
@@ -378,6 +381,67 @@ export async function syncPhoneToCloud(
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[cloudSync] syncPhoneToCloud failed:', (e as Error)?.message);
+  }
+}
+
+// ─── push tokens (household activity notifications) ─────────────────────
+
+/** Mirrors this device's Expo push token onto users/{uid}, same
+ *  fire-and-forget pattern as syncPhoneToCloud. Overwritten on every
+ *  fresh registration (lib/notifications.ts), so a reinstalled app or
+ *  rotated token naturally replaces the stale one. */
+export async function syncPushTokenToCloud(uid: string, token: string | null): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore) return;
+  try {
+    await firestore()
+      .collection('users')
+      .doc(uid)
+      .set(
+        { pushToken: token, updatedAt: firestore.FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncPushTokenToCloud failed:', (e as Error)?.message);
+  }
+}
+
+export async function getPushTokensForUids(uids: string[]): Promise<string[]> {
+  const firestore = loadFirestore();
+  if (!firestore || uids.length === 0) return [];
+  try {
+    const db = firestore();
+    const snaps = await Promise.all(uids.map((uid) => db.collection('users').doc(uid).get()));
+    return snaps
+      .map((s) => s.data()?.pushToken as string | undefined)
+      .filter((t): t is string => !!t);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] getPushTokensForUids failed:', (e as Error)?.message);
+    return [];
+  }
+}
+
+/** Every OTHER household member's push token — reads users/{uid} for
+ *  everyone in the household doc's memberUids except excludeUid. Uses
+ *  the same "any member can read any member's users/{uid} doc" rule
+ *  already in place for displayName/email (see firestore.rules). */
+export async function getHouseholdMemberPushTokens(
+  householdId: string,
+  excludeUid: string,
+): Promise<string[]> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return [];
+  try {
+    const householdSnap = await firestore().collection('households').doc(householdId).get();
+    const memberUids = (householdSnap.data()?.memberUids as string[] | undefined) ?? [];
+    const others = memberUids.filter((uid) => uid !== excludeUid);
+    return getPushTokensForUids(others);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] getHouseholdMemberPushTokens failed:', (e as Error)?.message);
+    return [];
   }
 }
 
@@ -493,6 +557,158 @@ export async function syncReceiptDeletionToCloud(
   }
 }
 
+// ─── settlements ("settle up") ──────────────────────────────────────────────
+
+/** Shadow-write a settlement to Firestore, same fire-and-forget pattern
+ *  as syncReceiptToCloud. Settlements are immutable — this is always a
+ *  fresh doc, never an update. */
+export async function syncSettlementToCloud(
+  settlement: Settlement,
+  householdId: string,
+): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return;
+  try {
+    const db = firestore();
+    await db
+      .collection('households')
+      .doc(householdId)
+      .collection('settlements')
+      .doc(settlement.id)
+      .set({
+        fromUid: settlement.fromUid,
+        toUid: settlement.toUid,
+        amountUsd: settlement.amountUsd,
+        createdAt: settlement.createdAt,
+      });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncSettlementToCloud failed:', (e as Error)?.message);
+  }
+}
+
+/** Mirrors subscribeToHouseholdReceipts — listens for new settlement
+ *  docs (added by ANY household member, on any device) and applies them
+ *  locally. No 'removed' handling: settlements are never deleted. */
+export function subscribeToHouseholdSettlements(
+  householdId: string,
+  uid: string,
+): (() => void) | null {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId || !uid) return null;
+  try {
+    const db = firestore();
+    const col = db.collection('households').doc(householdId).collection('settlements');
+    const unsub = col.onSnapshot(
+      async (snapshot) => {
+        if (!snapshot) return;
+        for (const change of snapshot.docChanges()) {
+          if (change.type === 'removed') continue;
+          try {
+            if (change.doc.metadata.hasPendingWrites) continue;
+            const data = change.doc.data();
+            // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+            const { upsertSettlementFromCloud } = require('./database') as {
+              upsertSettlementFromCloud: (cloud: Settlement, uid: string) => Promise<void>;
+            };
+            await upsertSettlementFromCloud(
+              {
+                id: change.doc.id,
+                fromUid: data.fromUid as string,
+                toUid: data.toUid as string,
+                amountUsd: data.amountUsd as number,
+                createdAt: data.createdAt as string,
+              },
+              uid,
+            );
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('[cloudSync] settlement snapshot apply failed:', (e as Error)?.message);
+          }
+        }
+      },
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloudSync] settlements listener errored:', err?.message);
+      },
+    );
+    return unsub;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] subscribeToHouseholdSettlements failed:', (e as Error)?.message);
+    return null;
+  }
+}
+
+// ─── household-wide budget sync ─────────────────────────────────────────────
+//
+// Budget amounts/alerts-toggle live in SecureStore (device-local — see
+// lib/secureStorage.ts), with no cloud copy at all until now. That meant
+// inviteUserToHousehold/addHouseholdMemberByPhone's `budgets` snapshot
+// (stamped onto the invite doc, applied once on accept) only ever
+// reached BRAND NEW members — anyone already in the household before
+// that one-time copy never got it. Mirroring the budgets onto the
+// household doc itself + a live listener fixes that generally: any
+// member changing a budget pushes it here, and every other member
+// (new or long-standing) picks it up on their next snapshot.
+
+export async function syncBudgetsToCloud(
+  householdId: string,
+  budgets: BudgetsSnapshot,
+): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return;
+  try {
+    await firestore()
+      .collection('households')
+      .doc(householdId)
+      .set(
+        { budgets, updatedAt: firestore.FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncBudgetsToCloud failed:', (e as Error)?.message);
+  }
+}
+
+/** Listens for budget changes on the household doc (from ANY member's
+ *  device) and applies them locally. Skips this device's own pending
+ *  write, same guard as the receipts/settlements listeners. */
+export function subscribeToHouseholdBudgets(
+  householdId: string,
+): (() => void) | null {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return null;
+  try {
+    const db = firestore();
+    const ref = db.collection('households').doc(householdId);
+    const unsub = ref.onSnapshot(
+      async (snapshot) => {
+        if (!snapshot || !snapshot.exists) return;
+        if (snapshot.metadata.hasPendingWrites) return;
+        const budgets = snapshot.data()?.budgets as BudgetsSnapshot | undefined;
+        if (!budgets) return;
+        try {
+          await applyBudgetsSnapshot(budgets);
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[cloudSync] applying household budgets failed:', (e as Error)?.message);
+        }
+      },
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloudSync] household budgets listener errored:', err?.message);
+      },
+    );
+    return unsub;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] subscribeToHouseholdBudgets failed:', (e as Error)?.message);
+    return null;
+  }
+}
+
 // ─── photo upload ─────────────────────────────────────────────────────────
 
 /**
@@ -540,6 +756,7 @@ export type PendingInvite = {
   invitedByUid: string;
   invitedByName: string | null;
   invitedByEmail: string | null;
+  budgets: BudgetsSnapshot | null;
   createdAt: string;
   expiresAt: string;
 };
@@ -621,6 +838,9 @@ export async function inviteUserToHousehold(args: {
   invitedByUid: string;
   invitedByEmail: string | null;
   invitedByName: string | null;
+  /** Inviter's current budget alert settings — stamped onto the invite
+   *  so the invitee starts with the SAME amounts once they accept. */
+  budgets?: BudgetsSnapshot;
 }): Promise<{ ok: true } | { ok: false; reason: string }> {
   const firestore = loadFirestore();
   if (!firestore) return { ok: false, reason: 'cloud module not loaded' };
@@ -648,6 +868,7 @@ export async function inviteUserToHousehold(args: {
       invitedByUid: args.invitedByUid,
       invitedByEmail: args.invitedByEmail,
       invitedByName: args.invitedByName,
+      budgets: args.budgets ?? null,
       createdAt: now,
       expiresAt,
       status: 'pending',
@@ -690,6 +911,7 @@ export async function getPendingInviteForEmail(
       invitedByUid: d.invitedByUid as string,
       invitedByName: (d.invitedByName as string | null) ?? null,
       invitedByEmail: (d.invitedByEmail as string | null) ?? null,
+      budgets: (d.budgets as BudgetsSnapshot | null) ?? null,
       createdAt:
         d.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
       expiresAt: expiresAt.toISOString(),
@@ -745,6 +967,15 @@ export async function acceptInvite(args: {
       );
       tx.delete(inviteRef);
     });
+    if (args.invite.budgets) {
+      try {
+        await applyBudgetsSnapshot(args.invite.budgets);
+      } catch {
+        // Best-effort — joining the household already succeeded; a
+        // failed budget copy just means the new member keeps whatever
+        // (likely empty) budgets they had before.
+      }
+    }
     return { ok: true, newHouseholdId: newHid };
   } catch (e) {
     return { ok: false, reason: (e as Error)?.message ?? 'unknown' };
@@ -863,6 +1094,10 @@ export async function addHouseholdMemberByPhone(args: {
   householdId: string;
   invitedByUid: string;
   invitedByName: string | null;
+  /** Inviter's current budget alert settings — same idea as
+   *  inviteUserToHousehold's `budgets`, applied on the invitee's device
+   *  once acceptPhoneInviteIfAny joins them. */
+  budgets?: BudgetsSnapshot;
 }): Promise<
   | { ok: true; matched: true; displayName: string | null }
   | { ok: true; matched: false }
@@ -883,6 +1118,7 @@ export async function addHouseholdMemberByPhone(args: {
       householdName,
       invitedByUid: args.invitedByUid,
       invitedByName: args.invitedByName,
+      budgets: args.budgets ?? null,
       createdAt: now,
       expiresAt,
       status: 'pending',
@@ -931,6 +1167,14 @@ export async function acceptPhoneInviteIfAny(
       tx.set(userRef, { householdId, updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
       tx.delete(inviteRef);
     });
+    const budgets = (d.budgets as BudgetsSnapshot | null) ?? null;
+    if (budgets) {
+      try {
+        await applyBudgetsSnapshot(budgets);
+      } catch {
+        // Best-effort — joining already succeeded.
+      }
+    }
     return { joined: true, householdId };
   } catch (e) {
     // eslint-disable-next-line no-console
@@ -1304,6 +1548,7 @@ function serializeReceipt(
     split: r.split ?? null,
     recurring: r.recurring ?? null,
     paidBy: r.paidBy ?? null,
+    isRecurringOccurrence: r.isRecurringOccurrence ?? false,
     lineItems: (r.lineItems ?? []).map((it) => ({
       id: it.id,
       name: it.name,

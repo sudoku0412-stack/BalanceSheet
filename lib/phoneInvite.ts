@@ -1,4 +1,5 @@
 import { addHouseholdMemberByPhone } from './cloudSync';
+import type { BudgetsSnapshot } from './secureStorage';
 
 /**
  * "Add household member by phone" flow. Matching/invite bookkeeping is
@@ -26,6 +27,7 @@ export async function addByPhone(args: {
   householdName: string | null;
   invitedByUid: string;
   invitedByName: string | null;
+  budgets?: BudgetsSnapshot;
 }): Promise<AddByPhoneResult> {
   const result = await addHouseholdMemberByPhone(args);
   if (!result.ok) return result;

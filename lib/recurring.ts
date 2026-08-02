@@ -5,6 +5,20 @@ import { Receipt } from '../types';
 
 const YMD = 'yyyy-MM-dd';
 
+/** Pseudo-category key for the "Recurring" budget row (Settings +
+ *  Home) — not a real Receipt.category, a separate axis covering every
+ *  receipt with an active recurring schedule OR generated from one,
+ *  regardless of that receipt's own category. */
+export const RECURRING_BUDGET_KEY = 'Recurring';
+
+/** True for the original template (has an active `recurring` schedule)
+ *  and every occurrence processRecurringReceipts generated from it
+ *  (flagged via `isRecurringOccurrence` since the clone itself doesn't
+ *  carry the schedule forward — only the template does). */
+export function isRecurringExpense(receipt: Receipt): boolean {
+  return Boolean(receipt.recurring) || Boolean(receipt.isRecurringOccurrence);
+}
+
 function today(): string {
   return format(new Date(), YMD);
 }
@@ -64,6 +78,7 @@ export async function processRecurringReceipts(): Promise<number> {
         date: nextDueDate,
         lineItems: template.lineItems?.map((it) => ({ ...it, id: uuidv4() })),
         recurring: undefined,
+        isRecurringOccurrence: true,
         photoUrl: undefined,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

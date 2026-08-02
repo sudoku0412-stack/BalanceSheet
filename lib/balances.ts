@@ -1,4 +1,4 @@
-import { Receipt } from '../types';
+import { Receipt, Settlement } from '../types';
 import { HouseholdMember } from './cloudSync';
 
 /**
@@ -83,6 +83,37 @@ export function computeReceiptNet(
   return 0; // paid by a third person — doesn't affect this pair
 }
 
+/** Net USD contribution of ONE settlement to the self<->memberUid
+ *  balance — same sign convention as computeReceiptNet (positive =
+ *  memberUid owes self). Paying reduces what the payer owes, so a
+ *  self->member payment nets +amount (self owes less); a member->self
+ *  payment nets -amount (member owes less). 0 if the settlement doesn't
+ *  involve this exact pair. */
+export function computeSettlementNet(
+  settlement: Settlement,
+  selfUid: string,
+  memberUid: string,
+): number {
+  if (settlement.fromUid === selfUid && settlement.toUid === memberUid) return settlement.amountUsd;
+  if (settlement.fromUid === memberUid && settlement.toUid === selfUid) return -settlement.amountUsd;
+  return 0;
+}
+
+/** Every settlement between self and memberUid, for the shared-expenses
+ *  drill-down (shown alongside receipts so its total stays in sync with
+ *  the Balances screen). */
+export function getSettlementsForMemberPair(
+  settlements: Settlement[],
+  selfUid: string,
+  memberUid: string,
+): Settlement[] {
+  return settlements.filter(
+    (s) =>
+      (s.fromUid === selfUid && s.toUid === memberUid) ||
+      (s.fromUid === memberUid && s.toUid === selfUid),
+  );
+}
+
 export type MemberBalance = {
   memberUid: string;
   /** Positive = they owe you. Negative = you owe them. USD-canonical —
@@ -94,12 +125,15 @@ export type MemberBalance = {
 
 /** Running net balance between the signed-in user and every OTHER
  *  household member, summed across every split-enabled receipt both
- *  are participants in. `paidBy` (defaults to the creator at save time,
- *  see types/index.ts) determines direction; receipts saved before
- *  `paidBy` existed fall back to "you paid" so old split receipts still
- *  count instead of silently dropping out of the ledger. */
+ *  are participants in, then offset by any "settle up" payments between
+ *  the pair. `paidBy` (defaults to the creator at save time, see
+ *  types/index.ts) determines direction; receipts saved before `paidBy`
+ *  existed fall back to "you paid" so old split receipts still count
+ *  instead of silently dropping out of the ledger. Settlements never
+ *  touch a receipt's own totalAmount/reports — purely a balance offset. */
 export function computeMemberBalances(
   receipts: Receipt[],
+  settlements: Settlement[],
   selfUid: string,
   members: HouseholdMember[],
 ): MemberBalance[] {
@@ -115,6 +149,12 @@ export function computeMemberBalances(
       if (net === 0) continue;
       bal.netUsd += net;
       bal.receiptIds.push(receipt.id);
+    }
+  }
+
+  for (const settlement of settlements) {
+    for (const [memberUid, bal] of balances) {
+      bal.netUsd += computeSettlementNet(settlement, selfUid, memberUid);
     }
   }
 

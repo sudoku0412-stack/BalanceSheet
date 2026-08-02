@@ -20,6 +20,7 @@ import { ALL_CATEGORIES } from '../constants/categories';
 import { useAuth } from '../lib/AuthContext';
 import {
   getBudgetAlertsEnabled,
+  getBudgetsSnapshot,
   getCategoryBudgets,
   getCurrency,
   setBudgetAlertsEnabled as persistBudgetAlertsEnabled,
@@ -27,16 +28,18 @@ import {
   setCurrency as persistCurrency,
 } from '../lib/secureStorage';
 import { getAllReceipts, getCurrentHouseholdId, setCurrentHouseholdId } from '../lib/database';
-import { requestNotificationPermission } from '../lib/notifications';
+import { registerForPushNotificationsAsync, requestNotificationPermission } from '../lib/notifications';
 import {
   getHouseholdMembers,
   inviteUserToHousehold,
   isCloudSyncAvailable,
   leaveCurrentHousehold,
+  syncBudgetsToCloud,
+  syncPushTokenToCloud,
   type HouseholdMember,
 } from '../lib/cloudSync';
 import { receiptsToCsv } from '../lib/reports';
-import { getCloudSyncDiagnostics, subscribeCloudSyncDiagnostics } from '../lib/cloudSync';
+import { RECURRING_BUDGET_KEY } from '../lib/recurring';
 import { pickContactWithPhone, isContactPickerAvailable } from '../lib/contactPicker';
 import { addByPhone } from '../lib/phoneInvite';
 import {
@@ -350,14 +353,6 @@ export default function SettingsScreen() {
   const [budgetAlertsEnabled, setBudgetAlertsEnabledState] = useState(true);
   const [exportingAll, setExportingAll] = useState(false);
   const [currency, setCurrencyState] = useState<CurrencyCode>('USD');
-  // TEMPORARY debug readout — cloud sync has no user-facing error
-  // surface at all (fire-and-forget by design), so when a household
-  // member reports a receipt not syncing to the other person's device,
-  // there's no way to tell "cloud write silently failed" from "cloud
-  // write succeeded, something else is wrong" without this. Remove
-  // once the split cross-device sync issue is confirmed resolved.
-  const [syncDiag, setSyncDiag] = useState(getCloudSyncDiagnostics());
-  useEffect(() => subscribeCloudSyncDiagnostics(() => setSyncDiag(getCloudSyncDiagnostics())), []);
 
   // Household membership (Phase 3 split feature). Loaded from Firestore
   // via getHouseholdMembers — null while loading, [] if cloud sync isn't
@@ -402,6 +397,7 @@ export default function SettingsScreen() {
         invitedByUid: user.uid,
         invitedByEmail: user.email ?? null,
         invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
+        budgets: await getBudgetsSnapshot(),
       });
       if (res.ok) {
         toast.show({ kind: 'success', message: 'Invite sent' });
@@ -437,6 +433,7 @@ export default function SettingsScreen() {
         householdName: null,
         invitedByUid: user.uid,
         invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
+        budgets: await getBudgetsSnapshot(),
       });
       if (!result.ok) {
         toast.show({ kind: 'error', message: result.reason || "Couldn't add by phone" });
@@ -547,13 +544,25 @@ export default function SettingsScreen() {
     );
   };
 
+  // Mirrors the just-changed budgets onto the household doc so every
+  // OTHER member — new or already in the household — converges to the
+  // same amounts via subscribeToHouseholdBudgets (lib/AuthContext.tsx),
+  // not just brand-new invitees getting a one-time copy at join time.
+  const pushBudgetsToCloud = (byCategory: Record<string, number>, alertsEnabled: boolean) => {
+    const householdId = getCurrentHouseholdId();
+    if (!householdId) return;
+    void syncBudgetsToCloud(householdId, { byCategory, alertsEnabled });
+  };
+
   const updateCategoryBudget = (cat: string, value: string) => {
     setBudgetInputs((prev) => ({ ...prev, [cat]: value }));
     const parsed = parseFloat(value);
     if (!Number.isNaN(parsed) && parsed >= 0) {
       const amountUsd = convertToUsd(parsed, currency);
-      setCategoryBudgetsUsd((prev) => ({ ...prev, [cat]: amountUsd }));
+      const nextBudgets = { ...categoryBudgetsUsd, [cat]: amountUsd };
+      setCategoryBudgetsUsd(nextBudgets);
       setCategoryBudget(cat, amountUsd);
+      pushBudgetsToCloud(nextBudgets, budgetAlertsEnabled);
     }
   };
 
@@ -563,6 +572,7 @@ export default function SettingsScreen() {
     // permission handshake — turning it OFF never prompts for anything.
     setBudgetAlertsEnabledState(enabled);
     persistBudgetAlertsEnabled(enabled);
+    pushBudgetsToCloud(categoryBudgetsUsd, enabled);
     if (enabled) {
       const granted = await requestNotificationPermission();
       if (!granted) {
@@ -571,7 +581,14 @@ export default function SettingsScreen() {
           message:
             "Notifications are turned off for BalanceSheet — enable them in your device Settings to actually receive budget alerts.",
         });
+        return;
       }
+      // Register right away instead of waiting for the next sign-in —
+      // other household members' devices push THIS token as soon as
+      // their own activity (over-budget, a shared expense, settling
+      // up) happens, so it shouldn't sit unset until next app launch.
+      const token = await registerForPushNotificationsAsync();
+      if (token && user?.uid) void syncPushTokenToCloud(user.uid, token);
     }
   };
 
@@ -681,17 +698,6 @@ export default function SettingsScreen() {
             >
               <Text style={styles.leaveHouseholdText}>Edit profile</Text>
             </Pressable>
-          </View>
-        </Section>
-
-        <Section title="Sync status (debug)">
-          <View style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}>
-            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.xs, fontFamily: theme.fonts.body.regular }}>
-              Household: {syncDiag.householdId ?? 'none'}{'\n'}
-              Last receipt sync: {syncDiag.lastReceiptSync
-                ? `${syncDiag.lastReceiptSync.ok ? 'OK' : 'FAILED'} · ${syncDiag.lastReceiptSync.receiptId ?? ''} · ${syncDiag.lastReceiptSync.at}${syncDiag.lastReceiptSync.message ? ` · ${syncDiag.lastReceiptSync.message}` : ''}`
-                : 'none yet'}
-            </Text>
           </View>
         </Section>
 
@@ -855,8 +861,44 @@ export default function SettingsScreen() {
               </View>
             </View>
           ))}
+          {/* Not a receipt category — a separate axis covering ALL
+              recurring expenses regardless of their own category, so a
+              "how much am I auto-committed to every month" limit can be
+              tracked apart from any one category's limit. */}
+          <View style={styles.budgetRow}>
+            <View style={[styles.categoryDot, { backgroundColor: theme.colors.accent }]} />
+            <Text style={styles.categoryName} numberOfLines={1}>
+              {RECURRING_BUDGET_KEY}
+            </Text>
+            <View style={styles.budgetInputBox}>
+              <Text style={styles.budgetCurrencyPrefix}>{CURRENCY_SYMBOLS[currency]}</Text>
+              <TextInput
+                value={budgetInputs[RECURRING_BUDGET_KEY] ?? ''}
+                onChangeText={(v) => updateCategoryBudget(RECURRING_BUDGET_KEY, v)}
+                placeholder="0"
+                placeholderTextColor={theme.colors.textMuted}
+                keyboardType="numeric"
+                style={styles.budgetInput}
+              />
+            </View>
+          </View>
+          <Pressable
+            onPress={() => router.push('/recurring' as never)}
+            style={styles.leaveHouseholdBtn}
+            hitSlop={4}
+          >
+            <Text style={styles.leaveHouseholdText}>View recurring schedule</Text>
+          </Pressable>
           <View style={styles.alertRow}>
-            <Text style={styles.alertLabel}>Budget alerts</Text>
+            {/* Now the single on/off switch for every push notification
+                this app sends — budget alerts, a new shared expense,
+                and settle-up confirmations — not just budgets. Kept
+                the original storage key (bs.budgets.alertsEnabled) to
+                avoid a migration; only the label changed. */}
+            <View style={{ flex: 1, marginRight: theme.spacing.sm }}>
+              <Text style={styles.alertLabel}>Notifications</Text>
+              <Text style={styles.inviteHint}>Budget alerts, shared expenses, settle-ups</Text>
+            </View>
             <Switch
               value={budgetAlertsEnabled}
               onValueChange={toggleBudgetAlerts}

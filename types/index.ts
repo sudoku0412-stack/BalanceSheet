@@ -93,8 +93,31 @@ export interface Receipt {
      *  at creation time from the user's chosen duration. */
     endDate: string;
   };
+  /** True for a receipt materialized by lib/recurring.ts's
+   *  processRecurringReceipts from an active recurring template —
+   *  distinct from `recurring` itself (only the ORIGINAL template
+   *  carries the schedule forward; generated occurrences are plain
+   *  receipts except for this flag). Used to track the "Recurring"
+   *  pseudo-category budget in Settings/Home regardless of the
+   *  receipt's own category. */
+  isRecurringOccurrence?: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+/** A payment recorded to reduce a balance between two household members
+ *  — Splitwise-style "settle up". Purely a ledger entry: it's never a
+ *  Receipt, never touches `totalAmount`/reports, and only nets out the
+ *  fromUid<->toUid pair in lib/balances.ts. All amounts USD-canonical,
+ *  same as Receipt. */
+export interface Settlement {
+  id: string;
+  /** Who paid — settling what THEY owe. */
+  fromUid: string;
+  /** Who received the payment. */
+  toUid: string;
+  amountUsd: number;
+  createdAt: string;
 }
 
 export interface ParsedReceipt {

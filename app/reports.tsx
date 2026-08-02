@@ -1,12 +1,14 @@
 import React, { useCallback, useState } from 'react';
 import {
   Alert,
+  Pressable,
   RefreshControl,
   ScrollView,
   Text,
   View,
 } from 'react-native';
-import { endOfMonth, format, startOfMonth } from 'date-fns';
+import { addMonths, endOfMonth, format, isSameMonth, startOfMonth } from 'date-fns';
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
@@ -93,9 +95,11 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     }
   }, []);
 
-  // Reports screen is scoped to the current calendar month per the
-  // design spec — no range picker.
-  const now = new Date();
+  // Reports is month-scoped, but browsable — monthOffset=0 is the
+  // current calendar month, negative goes back. Can't go past the
+  // current month (no future data to show).
+  const [monthOffset, setMonthOffset] = useState(0);
+  const now = addMonths(new Date(), monthOffset);
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
   const monthReceipts = filterReceiptsInRange(receipts, monthStart, monthEnd);
@@ -208,7 +212,28 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   return (
     <SafeAreaView style={styles.root} edges={embedded ? ['bottom'] : ['top', 'bottom']}>
       {!embedded && <ModalHeader title="Reports" />}
-      <Text style={styles.subhead}>{format(now, 'MMMM yyyy')}</Text>
+      <View style={styles.monthNavRow}>
+        <Pressable
+          onPress={() => setMonthOffset((v) => v - 1)}
+          hitSlop={8}
+          style={styles.monthNavBtn}
+        >
+          <Ionicons name="chevron-back" size={20} color={theme.colors.textPrimary} />
+        </Pressable>
+        <Text style={styles.subhead}>{format(now, 'MMMM yyyy')}</Text>
+        <Pressable
+          onPress={() => setMonthOffset((v) => v + 1)}
+          disabled={isSameMonth(now, new Date())}
+          hitSlop={8}
+          style={styles.monthNavBtn}
+        >
+          <Ionicons
+            name="chevron-forward"
+            size={20}
+            color={isSameMonth(now, new Date()) ? theme.colors.textMuted : theme.colors.textPrimary}
+          />
+        </Pressable>
+      </View>
 
       {loading ? (
         <View style={styles.content}>
@@ -414,6 +439,15 @@ function useReportsStyles() {
     fontFamily: theme.fonts.body.regular,
     textAlign: 'center',
     paddingTop: theme.spacing.xs,
+  },
+  monthNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: theme.spacing.md,
+  },
+  monthNavBtn: {
+    padding: theme.spacing.xs,
   },
   content: {
     padding: theme.spacing.md,

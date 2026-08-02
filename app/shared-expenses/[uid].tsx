@@ -6,19 +6,26 @@ import { format } from 'date-fns';
 import { ModalHeader } from '../../components/ui/ModalHeader';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { useStyles, useTheme } from '../../constants/theme';
-import { getAllReceipts, getCurrentHouseholdId } from '../../lib/database';
+import { getAllReceipts, getAllSettlements, getCurrentHouseholdId } from '../../lib/database';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { getCurrentUser } from '../../lib/auth';
 import { getCurrency } from '../../lib/secureStorage';
-import { computeReceiptNet, getReceiptsForMemberPair } from '../../lib/balances';
+import {
+  computeReceiptNet,
+  computeSettlementNet,
+  getReceiptsForMemberPair,
+  getSettlementsForMemberPair,
+} from '../../lib/balances';
 import { CurrencyCode, formatCurrency } from '../../lib/currency';
-import { Receipt } from '../../types';
+import { Receipt, Settlement } from '../../types';
 
 function memberLabel(m: HouseholdMember | undefined): string {
   return m?.displayName?.trim() || m?.email || 'Household member';
 }
 
-type Row = { receipt: Receipt; net: number };
+type Row =
+  | { kind: 'receipt'; date: string; receipt: Receipt; net: number }
+  | { kind: 'settlement'; date: string; settlement: Settlement; net: number };
 
 /** Shows ONLY the receipts split with this one household member — the
  *  filtered drill-down from the Balances screen's per-person row,
@@ -43,8 +50,9 @@ export default function SharedExpensesScreen() {
       (async () => {
         const uid = getCurrentUser()?.uid ?? null;
         const householdId = getCurrentHouseholdId();
-        const [all, memberList, rawCurrency] = await Promise.all([
+        const [all, settlements, memberList, rawCurrency] = await Promise.all([
           getAllReceipts(),
+          getAllSettlements(),
           householdId && uid
             ? getHouseholdMembers({ householdId, currentUid: uid })
             : Promise.resolve<HouseholdMember[] | null>(null),
@@ -53,10 +61,27 @@ export default function SharedExpensesScreen() {
         if (!mounted) return;
         setMember((memberList ?? []).find((m) => m.uid === memberUid));
         if (uid) {
-          const shared = getReceiptsForMemberPair(all as Receipt[], uid, memberUid)
-            .map((receipt) => ({ receipt, net: computeReceiptNet(receipt, uid, memberUid) }))
-            .filter((row) => Math.abs(row.net) > 0.005)
-            .sort((a, b) => new Date(b.receipt.date).getTime() - new Date(a.receipt.date).getTime());
+          const receiptRows: Row[] = getReceiptsForMemberPair(all as Receipt[], uid, memberUid)
+            .map((receipt) => ({
+              kind: 'receipt' as const,
+              date: receipt.date,
+              receipt,
+              net: computeReceiptNet(receipt, uid, memberUid),
+            }))
+            .filter((row) => Math.abs(row.net) > 0.005);
+          const settlementRows: Row[] = getSettlementsForMemberPair(
+            settlements as Settlement[],
+            uid,
+            memberUid,
+          ).map((settlement) => ({
+            kind: 'settlement' as const,
+            date: settlement.createdAt,
+            settlement,
+            net: computeSettlementNet(settlement, uid, memberUid),
+          }));
+          const shared = [...receiptRows, ...settlementRows].sort(
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+          );
           setRows(shared);
         }
         if (rawCurrency) setCurrency(rawCurrency as CurrencyCode);
@@ -99,8 +124,38 @@ export default function SharedExpensesScreen() {
             </View>
           )}
           <View style={styles.card}>
-            {rows.map(({ receipt: r, net }, idx) => {
+            {rows.map((row, idx) => {
+              const { net } = row;
               const oweYou = net > 0;
+              if (row.kind === 'settlement') {
+                const paidByYou = row.settlement.fromUid === getCurrentUser()?.uid;
+                return (
+                  <View
+                    key={row.settlement.id}
+                    style={[styles.row, idx < rows.length - 1 && styles.rowDivider]}
+                  >
+                    <View style={[styles.avatar, { backgroundColor: theme.colors.textMuted }]}>
+                      <Text style={styles.avatarText}>✓</Text>
+                    </View>
+                    <View style={styles.rowInfo}>
+                      <Text style={styles.rowStoreName} numberOfLines={1}>Settled up</Text>
+                      <Text style={styles.rowMeta} numberOfLines={1}>
+                        {format(new Date(row.date), 'MMM d')} ·{' '}
+                        {paidByYou ? `You paid ${label}` : `${label} paid you`}
+                      </Text>
+                    </View>
+                    <Text
+                      style={[
+                        styles.rowAmount,
+                        { color: oweYou ? theme.colors.success : theme.colors.error },
+                      ]}
+                    >
+                      {formatCurrency(Math.abs(net), currency)}
+                    </Text>
+                  </View>
+                );
+              }
+              const r = row.receipt;
               return (
                 <TouchableOpacity
                   key={r.id}

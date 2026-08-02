@@ -26,10 +26,14 @@ import {
   ensureHouseholdForUser,
   getPendingInviteForEmail,
   migrateLocalReceiptsToCloud,
+  subscribeToHouseholdBudgets,
   subscribeToHouseholdReceipts,
+  subscribeToHouseholdSettlements,
+  syncPushTokenToCloud,
 } from './cloudSync';
 import { getOnboardingSeen, setOnboardingSeen as persistOnboardingSeen, resetAllSecureStorage } from './secureStorage';
 import { processRecurringReceipts } from './recurring';
+import { registerForPushNotificationsAsync } from './notifications';
 
 type AuthState = {
   initializing: boolean;
@@ -118,10 +122,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Phase 3: track the active receipts listener so we can tear it down
   // on sign-out / household change before re-subscribing.
   const receiptsUnsubRef = useRef<(() => void) | null>(null);
+  // Same for the settlements listener ("settle up" ledger).
+  const settlementsUnsubRef = useRef<(() => void) | null>(null);
+  // Same for the household budgets listener (Settings' category/recurring
+  // budget amounts + alerts toggle, mirrored onto the household doc).
+  const budgetsUnsubRef = useRef<(() => void) | null>(null);
   const tearDownReceiptsListener = useCallback(() => {
     if (receiptsUnsubRef.current) {
       receiptsUnsubRef.current();
       receiptsUnsubRef.current = null;
+    }
+    if (settlementsUnsubRef.current) {
+      settlementsUnsubRef.current();
+      settlementsUnsubRef.current = null;
+    }
+    if (budgetsUnsubRef.current) {
+      budgetsUnsubRef.current();
+      budgetsUnsubRef.current = null;
     }
   }, []);
 
@@ -172,6 +189,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       u.uid,
                     );
                     if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
+                    const unsubSettlements = subscribeToHouseholdSettlements(
+                      res.newHouseholdId,
+                      u.uid,
+                    );
+                    if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
+                    const unsubBudgets = subscribeToHouseholdBudgets(res.newHouseholdId);
+                    if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
                     Alert.alert('Joined household', `You're now part of ${inviterLabel}'s household.`);
                   } catch {
                     // Cloud sync is optional-by-design throughout this
@@ -212,6 +236,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         tearDownReceiptsListener();
         const unsubReceipts = subscribeToHouseholdReceipts(result.householdId, u.uid);
         if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
+        const unsubSettlements = subscribeToHouseholdSettlements(result.householdId, u.uid);
+        if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
+        const unsubBudgets = subscribeToHouseholdBudgets(result.householdId);
+        if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
       } catch {
         // Best-effort — a failed check just leaves the invite pending
         // for the next sign-in.
@@ -260,6 +288,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
           const unsubReceipts = subscribeToHouseholdReceipts(hid, u.uid);
           if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
+          const unsubSettlements = subscribeToHouseholdSettlements(hid, u.uid);
+          if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
+          const unsubBudgets = subscribeToHouseholdBudgets(hid);
+          if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
+
+          // Refresh this device's push token on every sign-in — only
+          // does anything if notification permission is ALREADY
+          // granted (never prompts here; the explicit ask lives in
+          // Settings' "Budget alerts" toggle). Keeps the token current
+          // across reinstalls/rotations without needing its own UI.
+          void registerForPushNotificationsAsync().then((token) => {
+            if (token) void syncPushTokenToCloud(u.uid, token);
+          });
 
           // A signed-in user with a real household may have a pending
           // invite waiting for their email (e.g. a household-mate

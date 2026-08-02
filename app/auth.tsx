@@ -17,6 +17,7 @@ import { useToast } from '../components/ui/Toast';
 import { Theme, useStyles, useTheme } from '../constants/theme';
 import { useAuth } from '../lib/AuthContext';
 import {
+  sendPasswordReset,
   signInAsGuest,
   signInWithEmail,
   signInWithGoogle,
@@ -173,6 +174,7 @@ function TabButton({
 function EmailForm({ mode }: { mode: Tab }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  const toast = useToast();
   const { ensureProfile } = useAuth();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -180,6 +182,24 @@ function EmailForm({ mode }: { mode: Tab }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetSending, setResetSending] = useState(false);
+
+  const submitReset = async () => {
+    setError(null);
+    if (!email.trim()) {
+      setError('Enter your email above first, then tap "Forgot password?".');
+      return;
+    }
+    try {
+      setResetSending(true);
+      await sendPasswordReset(email);
+      toast.show({ kind: 'success', message: `Password reset link sent to ${email.trim()}` });
+    } catch (e: any) {
+      setError(humanizeAuthError(e));
+    } finally {
+      setResetSending(false);
+    }
+  };
 
   const submit = async () => {
     setError(null);
@@ -245,6 +265,13 @@ function EmailForm({ mode }: { mode: Tab }) {
           autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
         />
       </FadeInUp>
+      {mode === 'login' && (
+        <Pressable onPress={submitReset} disabled={resetSending} hitSlop={8}>
+          <Text style={styles.forgotPasswordText}>
+            {resetSending ? 'Sending…' : 'Forgot password?'}
+          </Text>
+        </Pressable>
+      )}
       {mode === 'signup' && (
         <FadeInUp delay={180}>
           <Field
@@ -509,6 +536,14 @@ const makeStyles = (t: Theme) => ({
     color: t.colors.error,
     fontFamily: t.fonts.body.medium,
     fontSize: t.font.sm,
+    marginBottom: t.spacing.sm,
+  },
+  forgotPasswordText: {
+    color: t.colors.accent,
+    fontFamily: t.fonts.body.medium,
+    fontSize: t.font.sm,
+    textAlign: 'right' as const,
+    marginTop: t.spacing.xs,
     marginBottom: t.spacing.sm,
   },
 });

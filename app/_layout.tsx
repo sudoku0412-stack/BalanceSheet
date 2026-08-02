@@ -84,7 +84,7 @@ function ThemedStatusBar() {
 // `target` resolves to `(tabs)` and the user is on one of these, leave
 // them alone — the guard's job is to force users to the auth gate, not
 // to drag them back to /(tabs) every time they open a modal.
-const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'edit-profile', 'reports', 'balances', 'shared-expenses']);
+const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'edit-profile', 'reports', 'balances', 'shared-expenses', 'recurring']);
 
 function RootStack() {
   const theme = useTheme();
@@ -120,6 +120,15 @@ function RootStack() {
     if (target === 'auth' && current === 'onboarding') {
       return;
     }
+    // A password-reset email deep-links a SIGNED-OUT user straight into
+    // /reset-password (see lib/auth.ts's sendPasswordReset). pickTarget
+    // resolves to 'auth' for anyone signed out, so without this the
+    // guard would bounce them to /auth before they ever see the "set
+    // new password" form — same flash-and-bounce as the onboarding case
+    // above.
+    if (target === 'auth' && current === 'reset-password') {
+      return;
+    }
     router.replace(targetToHref(target) as never);
   }, [initializing, user, onboardingSeen, segments]);
 
@@ -151,6 +160,7 @@ function RootStack() {
     >
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="reset-password" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="settings"
@@ -183,6 +193,12 @@ function RootStack() {
       />
       <Stack.Screen
         name="balances"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="recurring"
         options={{
           headerShown: false,
         }}

@@ -90,6 +90,17 @@ service cloud.firestore {
           if request.auth != null
           && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.memberUids;
       }
+
+      // "Settle up" ledger entries — same household-membership gate as
+      // receipts. Entries are immutable in the app (no update/delete
+      // path), but the rule allows write broadly like receipts' does;
+      // enforcement of immutability is a client-side convention, not a
+      // security boundary here.
+      match /settlements/{sid} {
+        allow read, write:
+          if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.memberUids;
+      }
     }
 
     // Phase 3 — invites. Top-level collection keyed by lowercased

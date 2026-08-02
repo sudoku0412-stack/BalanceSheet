@@ -2,7 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { format, isToday, isYesterday, subMonths } from 'date-fns';
+import { addMonths, format, isSameMonth, isToday, isYesterday, subMonths } from 'date-fns';
 import { getReceiptsByMonth } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 import { checkBudgetsAndNotify } from '../../lib/notifications';
@@ -11,6 +11,7 @@ import { Receipt, MonthlyStats } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { computeStats } from '../../lib/dashboardStats';
+import { RECURRING_BUDGET_KEY, isRecurringExpense } from '../../lib/recurring';
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -102,6 +103,20 @@ export default function DashboardScreen() {
       backgroundColor: 'rgba(255,255,255,0.12)',
     },
     trendPillText: { fontFamily: t.fonts.display.bold, fontSize: 10 },
+    monthNavRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: t.spacing.xs,
+      marginTop: 4,
+    },
+    monthNavBtn: {
+      padding: 4,
+    },
+    monthNavLabel: {
+      color: 'rgba(255,255,255,0.85)',
+      fontFamily: t.fonts.display.bold,
+      fontSize: 13,
+    },
 
     actionRow: {
       flexDirection: 'row',
@@ -243,12 +258,16 @@ export default function DashboardScreen() {
   const [lastMonthTotal, setLastMonthTotal] = useState<number | null>(null);
   const [budgets, setBudgets] = useState<Record<string, number>>({});
   const [refreshing, setRefreshing] = useState(false);
+  // 0 = current calendar month, negative = further back. Lets the
+  // dashboard browse older months instead of only ever showing "now".
+  const [monthOffset, setMonthOffset] = useState(0);
+  const viewedMonth = addMonths(new Date(), monthOffset);
+  const isCurrentMonth = isSameMonth(viewedMonth, new Date());
 
   const load = useCallback(async () => {
-    const now = new Date();
-    const prevMonth = subMonths(now, 1);
+    const prevMonth = subMonths(viewedMonth, 1);
     const [data, prevData, budgetMap, currencyCode] = await Promise.all([
-      getReceiptsByMonth(now.getFullYear(), now.getMonth() + 1),
+      getReceiptsByMonth(viewedMonth.getFullYear(), viewedMonth.getMonth() + 1),
       getReceiptsByMonth(prevMonth.getFullYear(), prevMonth.getMonth() + 1),
       getCategoryBudgets(),
       getCurrency(),
@@ -258,7 +277,7 @@ export default function DashboardScreen() {
     setLastMonthTotal(prevData.reduce((s, r) => s + r.totalAmount, 0));
     setBudgets(budgetMap);
     setCurrency((currencyCode as CurrencyCode | null) ?? 'USD');
-  }, []);
+  }, [monthOffset]);
 
   useFocusEffect(
     useCallback(() => {
@@ -294,6 +313,12 @@ export default function DashboardScreen() {
   for (const r of receipts) {
     categorySpendForBudgets[r.category] =
       (categorySpendForBudgets[r.category] ?? 0) + r.totalAmount;
+    // "Recurring" is a separate axis, not a real category — a receipt
+    // still counts toward its own category's budget too.
+    if (isRecurringExpense(r)) {
+      categorySpendForBudgets[RECURRING_BUDGET_KEY] =
+        (categorySpendForBudgets[RECURRING_BUDGET_KEY] ?? 0) + r.totalAmount;
+    }
   }
   const budgetRows = Object.entries(categorySpendForBudgets)
     .filter(([category]) => (budgets[category] ?? 0) > 0)
@@ -327,9 +352,32 @@ export default function DashboardScreen() {
         <Ionicons name="receipt" size={120} color="#fff" style={styles.heroDecorWatermark} />
         <Text style={styles.heroLabel}>{greeting()}</Text>
         <Text style={styles.heroAmount}>{formatCurrency(stats.totalSpent, currency)}</Text>
+        <View style={styles.monthNavRow}>
+          <TouchableOpacity
+            onPress={() => setMonthOffset((v) => v - 1)}
+            hitSlop={8}
+            style={styles.monthNavBtn}
+          >
+            <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.85)" />
+          </TouchableOpacity>
+          <Text style={styles.monthNavLabel}>{format(viewedMonth, 'MMMM yyyy')}</Text>
+          <TouchableOpacity
+            onPress={() => setMonthOffset((v) => v + 1)}
+            disabled={isCurrentMonth}
+            hitSlop={8}
+            style={styles.monthNavBtn}
+          >
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={isCurrentMonth ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.85)'}
+            />
+          </TouchableOpacity>
+        </View>
         <View style={styles.heroMetaRow}>
           <Text style={styles.heroMetaText}>
-            {stats.receiptCount} expense{stats.receiptCount === 1 ? '' : 's'} this month
+            {stats.receiptCount} expense{stats.receiptCount === 1 ? '' : 's'}{' '}
+            {isCurrentMonth ? 'this month' : 'that month'}
           </Text>
           {trendPct != null && (
             <View style={styles.trendPill}>
@@ -355,8 +403,11 @@ export default function DashboardScreen() {
         >
           <Text style={styles.actionBtnText}>+ Add manually</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/reports' as never)}>
-          <Text style={styles.actionBtnText}>Reports</Text>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/recurring' as never)}>
+          <Text style={styles.actionBtnText}>Recurring</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/balances' as never)}>
+          <Text style={styles.actionBtnText}>Balances</Text>
         </TouchableOpacity>
       </View>
 
@@ -372,7 +423,10 @@ export default function DashboardScreen() {
           <View style={styles.budgetCard}>
             {budgetRows.map((b, i) => {
               const meta = statusMeta[b.status];
-              const catColor = theme.colors.category[b.category as keyof typeof theme.colors.category];
+              const catColor =
+                b.category === RECURRING_BUDGET_KEY
+                  ? theme.colors.accent
+                  : theme.colors.category[b.category as keyof typeof theme.colors.category];
               const ratio = b.limit > 0 ? Math.min(b.spent / b.limit, 1) : 0;
               return (
                 <View key={b.category} style={[styles.budgetRow, i === 0 && styles.budgetRowFirst]}>
