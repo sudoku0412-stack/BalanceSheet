@@ -165,6 +165,14 @@ export async function initDatabase(): Promise<void> {
     // Currency this receipt was actually entered in. See
     // Receipt['originalCurrency'] in types/index.ts.
     `ALTER TABLE receipts             ADD COLUMN original_currency TEXT`,
+    // Optional verified phone number (E.164), added anytime from Settings.
+    // See Profile['phone']/['phoneVerified'] in lib/profile.ts.
+    `ALTER TABLE profiles             ADD COLUMN phone            TEXT`,
+    `ALTER TABLE profiles             ADD COLUMN phone_verified   INTEGER`,
+    // Who fronted the money for a split receipt (household member uid).
+    // Defaults to the receipt's own creator when unset. See
+    // Receipt['paidBy'] in types/index.ts.
+    `ALTER TABLE receipts             ADD COLUMN paid_by          TEXT`,
   ]) {
     try {
       await db.execAsync(sql);
@@ -492,6 +500,8 @@ export interface ProfileRow {
   uid: string;
   first_name: string;
   last_name: string;
+  phone: string | null;
+  phone_verified: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -499,7 +509,7 @@ export interface ProfileRow {
 export async function getProfileRow(uid: string): Promise<ProfileRow | null> {
   return (
     (await db.getFirstAsync<ProfileRow>(
-      `SELECT uid, first_name, last_name, created_at, updated_at FROM profiles WHERE uid=?`,
+      `SELECT uid, first_name, last_name, phone, phone_verified, created_at, updated_at FROM profiles WHERE uid=?`,
       [uid],
     )) ?? null
   );
@@ -507,13 +517,23 @@ export async function getProfileRow(uid: string): Promise<ProfileRow | null> {
 
 export async function upsertProfileRow(row: ProfileRow): Promise<void> {
   await db.runAsync(
-    `INSERT INTO profiles (uid, first_name, last_name, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?)
+    `INSERT INTO profiles (uid, first_name, last_name, phone, phone_verified, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(uid) DO UPDATE SET
-       first_name = excluded.first_name,
-       last_name  = excluded.last_name,
-       updated_at = excluded.updated_at`,
-    [row.uid, row.first_name, row.last_name, row.created_at, row.updated_at],
+       first_name     = excluded.first_name,
+       last_name      = excluded.last_name,
+       phone          = excluded.phone,
+       phone_verified = excluded.phone_verified,
+       updated_at     = excluded.updated_at`,
+    [
+      row.uid,
+      row.first_name,
+      row.last_name,
+      row.phone,
+      row.phone_verified,
+      row.created_at,
+      row.updated_at,
+    ],
   );
 }
 
@@ -533,8 +553,8 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          split_json, recurring_json, original_currency, created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          split_json, recurring_json, original_currency, paid_by, created_at, updated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         receipt.id,
         receipt.storeName,
@@ -551,6 +571,7 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
         serializeSplit(receipt.split),
         serializeRecurring(receipt.recurring),
         receipt.originalCurrency ?? null,
+        receipt.paidBy ?? uid,
         receipt.createdAt,
         receipt.updatedAt,
         uid,
@@ -576,12 +597,22 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
 export async function updateReceipt(receipt: Receipt): Promise<void> {
   const uid = requireUserId('updateReceipt');
   const hid = currentHouseholdId;
+  // Stamp ONE fresh timestamp used for both the local row and the
+  // cloud shadow-write below — callers (e.g. app/edit/[id].tsx's
+  // handleSave) spread the OLD loaded `receipt` object without bumping
+  // `updatedAt` themselves, so `receipt.updatedAt` here is stale. Cloud
+  // sync used to serialize that stale value straight to Firestore,
+  // which combined with upsertReceiptFromCloud's "skip if local is
+  // already at least as fresh" guard meant another household member's
+  // device could silently ignore a real, newer edit — exactly what
+  // made a re-saved split still not show up cross-device.
+  const now = new Date().toISOString();
   await db.withTransactionAsync(async () => {
     await db.runAsync(
       `UPDATE receipts
        SET store_name=?, date=?, total_amount=?, subtotal_amount=?, tax_amount=?,
            category=?, category_tags=?, notes=?, split_json=?, recurring_json=?,
-           original_currency=?, updated_at=?
+           original_currency=?, paid_by=?, updated_at=?
        WHERE id=? AND user_id=?`,
       [
         receipt.storeName,
@@ -595,7 +626,8 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
         serializeSplit(receipt.split),
         serializeRecurring(receipt.recurring),
         receipt.originalCurrency ?? null,
-        new Date().toISOString(),
+        receipt.paidBy ?? uid,
+        now,
         receipt.id,
         uid,
       ],
@@ -624,8 +656,10 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
   // Mirror the updated state to Firestore. We resync the WHOLE
   // receipt (not a delta) so the cloud doc always matches what's on
   // the device — simpler reasoning, and the doc payload is tiny.
+  // Pass `now`, not the caller's possibly-stale `receipt.updatedAt` —
+  // see the comment above.
   if (hid) {
-    void syncReceiptToCloud(receipt, hid);
+    void syncReceiptToCloud({ ...receipt, updatedAt: now }, hid);
   }
 }
 
@@ -809,6 +843,7 @@ interface RawRow {
   split_json: string | null;
   recurring_json: string | null;
   original_currency: string | null;
+  paid_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -830,6 +865,7 @@ function rowToReceipt(row: RawRow): Receipt {
     originalCurrency: (row.original_currency as Receipt['originalCurrency']) ?? undefined,
     split: parseSplit(row.split_json),
     recurring: parseRecurring(row.recurring_json),
+    paidBy: row.paid_by ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -876,6 +912,7 @@ type CloudReceiptShape = {
   notes?: string | null;
   split?: Receipt['split'];
   recurring?: Receipt['recurring'];
+  paidBy?: string | null;
   lineItems?: Array<{
     id: string;
     name: string;
@@ -895,6 +932,26 @@ export async function upsertReceiptFromCloud(
   // currentUserId — e.g. it might still be processing a snapshot batch
   // mid-sign-out. The uid is stamped from whichever household member
   // wrote the doc, which is fine because every member shares the row.
+
+  // Guard against a STALE cloud snapshot clobbering a newer local edit.
+  // syncReceiptToCloud (in cloudSync.ts) is fire-and-forget — if the app
+  // gets killed (e.g. for a rebuild) right after a local save but
+  // before that write reaches Firestore, the cloud doc is left behind
+  // with the OLD data. subscribeToHouseholdReceipts does a full resync
+  // on every fresh app launch, and without this check that stale
+  // snapshot would silently overwrite the correct local row — this is
+  // almost certainly why toggling "Split this expense" appeared to
+  // reset after rebuilding: the split write hadn't reached the cloud
+  // yet when the app was killed for the rebuild. Skip the whole upsert
+  // if the local row is already at least as fresh.
+  const existing = await db.getFirstAsync<{ updated_at: string }>(
+    `SELECT updated_at FROM receipts WHERE id=?`,
+    [cloud.id],
+  );
+  if (existing && existing.updated_at >= cloud.updatedAt) {
+    return;
+  }
+
   const tagsJson = cloud.categoryTags
     ? JSON.stringify(cloud.categoryTags)
     : null;
@@ -903,8 +960,8 @@ export async function upsertReceiptFromCloud(
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          split_json, recurring_json, created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          split_json, recurring_json, paid_by, created_at, updated_at, user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          store_name      = excluded.store_name,
          date            = excluded.date,
@@ -919,6 +976,7 @@ export async function upsertReceiptFromCloud(
          notes           = excluded.notes,
          split_json      = excluded.split_json,
          recurring_json  = excluded.recurring_json,
+         paid_by         = excluded.paid_by,
          updated_at      = excluded.updated_at,
          user_id         = excluded.user_id`,
       [
@@ -936,6 +994,7 @@ export async function upsertReceiptFromCloud(
         cloud.notes ?? null,
         serializeSplit(cloud.split),
         serializeRecurring(cloud.recurring),
+        cloud.paidBy ?? null,
         cloud.createdAt,
         cloud.updatedAt,
         uid,

@@ -16,7 +16,8 @@
       "bundleIdentifier": "com.yourname.receiptscanner",
       "infoPlist": {
         "NSCameraUsageDescription": "ReceiptScanner needs camera access to scan receipts.",
-        "NSPhotoLibraryUsageDescription": "ReceiptScanner needs photo library access to import receipts."
+        "NSPhotoLibraryUsageDescription": "ReceiptScanner needs photo library access to import receipts.",
+        "NSContactsUsageDescription": "ReceiptScanner needs contacts access so you can pick who to add to your household."
       }
     },
     "android": {
@@ -28,7 +29,8 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CONTACTS"
       ],
       "package": "com.yourname.receiptscanner"
     },
@@ -51,6 +53,12 @@
         {
           "icon": "./assets/icon.png",
           "color": "#0C0F24"
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Allow ReceiptScanner to access your contacts so you can pick who to add to your household."
         }
       ]
     ],

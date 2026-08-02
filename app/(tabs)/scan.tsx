@@ -44,7 +44,7 @@ import {
 import { parseReceiptWithCloudflare } from '../../lib/cloudflareReceiptParse';
 import { getGeminiApiKey, getCurrency } from '../../lib/secureStorage';
 import { CURRENCIES, CURRENCY_SYMBOLS, CurrencyCode, convertToUsd } from '../../lib/currency';
-import { computeRecurringEndDate } from '../../lib/recurring';
+import { advance as advanceRecurringDate, computeRecurringEndDate } from '../../lib/recurring';
 import { ParsedReceipt, Category, LineItem, Receipt } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES } from '../../constants/categories';
@@ -872,7 +872,12 @@ export default function ScanScreen() {
       name: trimmedName,
       amount: amt,
       category: itemCategory,
-      splitWith: sharedByEveryone ? undefined : Array.from(itemSplit),
+      // 'self' -> real-uid substitution — otherwise a different
+      // household member opening this receipt later can't correctly
+      // resolve who this item is shared with (see lib/balances.ts).
+      splitWith: sharedByEveryone
+        ? undefined
+        : Array.from(itemSplit).map((id) => (id === 'self' ? user?.uid ?? 'self' : id)),
     };
     setItems((prev) =>
       editingItemId
@@ -1130,14 +1135,15 @@ export default function ScanScreen() {
         'Other';
       const finalTags = categoryTags.length ? categoryTags : [primaryCategory];
 
-      // Recurring config: the FIRST occurrence is this receipt itself —
-      // nextDueDate starts at its own date, and lib/recurring.ts's
-      // processor generates future occurrences from here.
+      // Recurring config: the FIRST occurrence is this receipt itself, so
+      // nextDueDate starts one period AHEAD of its own date — otherwise
+      // lib/recurring.ts's processor sees this same date as already due
+      // on the very next run and materializes an immediate duplicate.
       const receiptDateYmd = format(parsedDate, 'yyyy-MM-dd');
       const recurring: Receipt['recurring'] | undefined = recurringEnabled
         ? {
             frequency: recurringFrequency,
-            nextDueDate: receiptDateYmd,
+            nextDueDate: advanceRecurringDate(receiptDateYmd, recurringFrequency),
             endDate: computeRecurringEndDate(receiptDateYmd, recurringDurationVal),
           }
         : undefined;

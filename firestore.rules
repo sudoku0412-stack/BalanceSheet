@@ -1,0 +1,152 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // A user can write only their own profile doc. Read is also allowed
+    // for any OTHER member of the same household — getHouseholdMembers
+    // (lib/cloudSync.ts) needs each member's displayName/email, and
+    // Phase C's balances feature needs it too, to show who's who in the
+    // member list / balance rows / shared-expenses screen. This was
+    // previously self-only and silently broken for any household with
+    // a real second member (untested until Phase B's phone-invite work
+    // — most households were solo before that).
+    match /users/{uid} {
+      function inSameHousehold() {
+        return resource.data.householdId != null
+          && request.auth.uid in get(/databases/$(database)/documents/households/$(resource.data.householdId)).data.memberUids;
+      }
+      allow read: if request.auth != null && (request.auth.uid == uid || inSameHousehold());
+      allow write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // A household doc is readable + writable by anyone whose uid is in the
+    // doc's memberUids array. The app keeps memberUids in sync with the
+    // members/{uid} subcollection on every membership change.
+    match /households/{hid} {
+      function isMember() {
+        return request.auth != null
+          && request.auth.uid in resource.data.memberUids;
+      }
+      function isCreating() {
+        // Allow the initial create call from ensureHouseholdForUser when
+        // the current user puts themselves in memberUids. After creation
+        // the isMember rule above takes over.
+        return request.auth != null
+          && request.auth.uid in request.resource.data.memberUids;
+      }
+      function hasPendingInviteForThisHousehold() {
+        // The invitee's email is the doc id of the invite. We use
+        // .lower() to mirror the lowercased email we wrote on the
+        // app side; Firebase Auth preserves whatever case the user
+        // signed up with on the auth token, so we have to normalise.
+        return request.auth != null
+          && request.auth.token.email != null
+          && exists(/databases/$(database)/documents/invites/$(request.auth.token.email.lower()))
+          && get(/databases/$(database)/documents/invites/$(request.auth.token.email.lower())).data.householdId == hid;
+      }
+      function hasPendingPhoneInviteForThisHousehold() {
+        // Same idea as the email version above, but keyed by the
+        // invitee's own verified phone number — Firebase Auth populates
+        // request.auth.token.phone_number once a phone credential has
+        // been linked to the account (lib/phoneVerification.ts).
+        return request.auth != null
+          && request.auth.token.phone_number != null
+          && exists(/databases/$(database)/documents/phoneInvites/$(request.auth.token.phone_number))
+          && get(/databases/$(database)/documents/phoneInvites/$(request.auth.token.phone_number)).data.householdId == hid;
+      }
+
+      // Members can read freely. Invitees holding a pending invite for
+      // THIS household (by email OR verified phone) can also read —
+      // both acceptInvite and acceptPhoneInviteIfAny's transactions do
+      // a tx.get(householdRef) before adding the new member, and that
+      // read would otherwise be denied because the invitee isn't a
+      // member yet.
+      allow read: if isMember() || hasPendingInviteForThisHousehold() || hasPendingPhoneInviteForThisHousehold();
+      allow create: if isCreating();
+      // Members can freely update. Non-members may ONLY add themselves
+      // to memberUids when they hold a pending invite (email or phone)
+      // for this household — that's the accept-invite path. The
+      // hasAll() check forbids them from removing anyone else; their
+      // auth.uid in the new array forbids them from adding someone else.
+      allow update: if isMember()
+        || (
+          (hasPendingInviteForThisHousehold() || hasPendingPhoneInviteForThisHousehold())
+          && request.resource.data.memberUids.hasAll(resource.data.memberUids)
+          && request.auth.uid in request.resource.data.memberUids
+        );
+      allow delete: if isMember();
+
+      // Members subcollection — only existing household members can manage.
+      match /members/{memberUid} {
+        allow read, write:
+          if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.memberUids;
+      }
+
+      // Receipts subcollection — same household-membership gate.
+      match /receipts/{rid} {
+        allow read, write:
+          if request.auth != null
+          && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.memberUids;
+      }
+    }
+
+    // Phase 3 — invites. Top-level collection keyed by lowercased
+    // email. Public read so an unauthenticated invitee can fetch their
+    // pending invite by email when they tap the email link. Writes
+    // are restricted: only the inviter can create/update (with their
+    // own uid stamped on the doc), and either side can delete (the
+    // invitee deletes-on-accept inside acceptInvite's transaction).
+    match /invites/{emailKey} {
+      // Public read: unauthenticated invitee can fetch the invite by
+      // email when tapping the link. Exposes invitedByName/householdName
+      // to anyone who guesses the email — acceptable for personal use.
+      allow read: if true;
+
+      // Same rule for create AND update — a re-invite is just an update.
+      // The `request.resource.data.invitedByUid == request.auth.uid`
+      // check prevents impersonation (you can only create invites that
+      // say YOU sent them).
+      allow create, update: if request.auth != null
+        && request.resource.data.invitedByUid == request.auth.uid;
+
+      // Either the inviter or the invitee can delete (accept = delete).
+      allow delete: if request.auth != null
+        && (resource.data.invitedByUid == request.auth.uid
+            || resource.data.email == request.auth.token.email.lower());
+    }
+
+    // Phone-invite phase — tiny pointer doc mapping a verified phone
+    // number to its owner's uid. Written by a user ONLY for their own
+    // number (lib/phoneVerification.ts, right after linking); read by
+    // anyone authenticated so a contact's number can be matched to an
+    // existing account (lib/cloudSync.ts's lookupUserByPhone) without
+    // opening broad query access to /users.
+    match /phoneIndex/{phone} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == request.resource.data.uid;
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.uid;
+    }
+
+    // Phone-invite phase — mirrors /invites/{emailKey} above, keyed by
+    // E.164 phone instead of email. No public (unauthenticated) read —
+    // unlike email invites, this app has no web landing page for phone
+    // invites; the invitee is always already signed in (possibly brand
+    // new) by the time their own client reads/deletes this doc.
+    match /phoneInvites/{phone} {
+      allow read: if request.auth != null;
+
+      allow create, update: if request.auth != null
+        && request.resource.data.invitedByUid == request.auth.uid;
+
+      // Either the inviter or the invitee (matched by their own verified
+      // phone number, once linked) can delete (accept = delete).
+      allow delete: if request.auth != null
+        && (resource.data.invitedByUid == request.auth.uid
+            || resource.data.phone == request.auth.token.phone_number);
+    }
+  }
+}

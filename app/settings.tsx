@@ -3,6 +3,7 @@ import {
   Alert,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Switch,
   Text,
@@ -10,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import { useStyles, useTheme } from '../constants/theme';
 import { Button } from '../components/ui/Button';
@@ -34,6 +36,17 @@ import {
   type HouseholdMember,
 } from '../lib/cloudSync';
 import { receiptsToCsv } from '../lib/reports';
+import { normalizePhoneE164 } from '../lib/phone';
+import { getCloudSyncDiagnostics, subscribeCloudSyncDiagnostics } from '../lib/cloudSync';
+import {
+  startPhoneVerification,
+  confirmPhoneVerification,
+  removePhoneVerification,
+  isPhoneAlreadyInUseError,
+} from '../lib/phoneVerification';
+import type { ConfirmationResult } from '../lib/auth';
+import { pickContactWithPhone, isContactPickerAvailable } from '../lib/contactPicker';
+import { addByPhone } from '../lib/phoneInvite';
 import {
   CURRENCIES,
   CURRENCY_SYMBOLS,
@@ -332,7 +345,8 @@ function useSettingsStyles() {
 export default function SettingsScreen() {
   const theme = useTheme();
   const styles = useSettingsStyles();
-  const { user, profile, signOut } = useAuth();
+  const router = useRouter();
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const toast = useToast();
 
   // Per-category budget amounts (canonical USD) and the "notify near
@@ -344,6 +358,14 @@ export default function SettingsScreen() {
   const [budgetAlertsEnabled, setBudgetAlertsEnabledState] = useState(true);
   const [exportingAll, setExportingAll] = useState(false);
   const [currency, setCurrencyState] = useState<CurrencyCode>('USD');
+  // TEMPORARY debug readout — cloud sync has no user-facing error
+  // surface at all (fire-and-forget by design), so when a household
+  // member reports a receipt not syncing to the other person's device,
+  // there's no way to tell "cloud write silently failed" from "cloud
+  // write succeeded, something else is wrong" without this. Remove
+  // once the split cross-device sync issue is confirmed resolved.
+  const [syncDiag, setSyncDiag] = useState(getCloudSyncDiagnostics());
+  useEffect(() => subscribeCloudSyncDiagnostics(() => setSyncDiag(getCloudSyncDiagnostics())), []);
 
   // Household membership (Phase 3 split feature). Loaded from Firestore
   // via getHouseholdMembers — null while loading, [] if cloud sync isn't
@@ -351,6 +373,7 @@ export default function SettingsScreen() {
   const [members, setMembers] = useState<HouseholdMember[] | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitingSending, setInviteSending] = useState(false);
+  const [addingByPhone, setAddingByPhone] = useState(false);
   const [leavingHousehold, setLeavingHousehold] = useState(false);
   // Local-only echo of the last invite this device successfully sent —
   // NOT a query of pending invites (Firestore only tracks one pending
@@ -359,6 +382,16 @@ export default function SettingsScreen() {
   // since sending an invite never changes `members` (the invitee only
   // joins once THEY sign in and accept).
   const [lastInvitedEmail, setLastInvitedEmail] = useState<string | null>(null);
+
+  // Optional phone number verification (add-anytime, not required at
+  // signup). `phoneConfirmation` holds the Firebase ConfirmationResult
+  // between "code sent" and "code entered" — null means no OTP in flight.
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneCodeInput, setPhoneCodeInput] = useState('');
+  const [phoneConfirmation, setPhoneConfirmation] = useState<ConfirmationResult | null>(null);
+  const [sendingPhoneCode, setSendingPhoneCode] = useState(false);
+  const [verifyingPhoneCode, setVerifyingPhoneCode] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
 
   const loadMembers = React.useCallback(async () => {
     const householdId = getCurrentHouseholdId();
@@ -402,6 +435,50 @@ export default function SettingsScreen() {
     }
   };
 
+  const addMemberByPhone = async () => {
+    const householdId = getCurrentHouseholdId();
+    if (!householdId || !user?.uid || addingByPhone) return;
+    if (!isContactPickerAvailable()) {
+      toast.show({
+        kind: 'error',
+        message: "This app needs an update before phone invites work — try again after updating.",
+      });
+      return;
+    }
+    setAddingByPhone(true);
+    try {
+      const contact = await pickContactWithPhone();
+      if (!contact) return; // cancelled, or no usable phone number
+      const result = await addByPhone({
+        phoneE164: contact.phoneE164,
+        householdId,
+        householdName: null,
+        invitedByUid: user.uid,
+        invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
+      });
+      if (!result.ok) {
+        toast.show({ kind: 'error', message: result.reason || "Couldn't add by phone" });
+      } else if (result.matched) {
+        await loadMembers();
+        toast.show({ kind: 'success', message: `${result.displayName || contact.name} added` });
+      } else {
+        // No existing account matched this number — hand off to the
+        // OS's own share sheet so the user sends the invite text
+        // themselves (iMessage/SMS/WhatsApp/etc), free, no Twilio.
+        try {
+          await Share.share({ message: result.inviteText });
+        } catch {
+          // User backed out of the share sheet — the invite doc is
+          // already saved regardless, so it's not a failure.
+        }
+      }
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't add by phone" });
+    } finally {
+      setAddingByPhone(false);
+    }
+  };
+
   const confirmLeaveHousehold = () => {
     Alert.alert('Leave household?', 'You will move to your own solo household. Other members keep the shared receipts.', [
       { text: 'Cancel', style: 'cancel' },
@@ -431,6 +508,63 @@ export default function SettingsScreen() {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't leave household" });
     } finally {
       setLeavingHousehold(false);
+    }
+  };
+
+  const sendPhoneCode = async () => {
+    const e164 = normalizePhoneE164(phoneInput.trim());
+    if (!e164) {
+      setPhoneError('Enter a valid phone number, e.g. +1 416 555 1234.');
+      return;
+    }
+    setPhoneError(null);
+    setSendingPhoneCode(true);
+    try {
+      const confirmation = await startPhoneVerification(e164);
+      setPhoneConfirmation(confirmation);
+    } catch (e) {
+      if (isPhoneAlreadyInUseError(e)) {
+        setPhoneError('That number is already linked to a different account.');
+      } else {
+        setPhoneError((e as Error)?.message ?? "Couldn't send verification code.");
+      }
+    } finally {
+      setSendingPhoneCode(false);
+    }
+  };
+
+  const confirmPhoneCodeInput = async () => {
+    if (!phoneConfirmation || !phoneCodeInput.trim()) return;
+    setPhoneError(null);
+    setVerifyingPhoneCode(true);
+    try {
+      const result = await confirmPhoneVerification(phoneConfirmation, phoneCodeInput.trim());
+      await refreshProfile();
+      setPhoneConfirmation(null);
+      setPhoneInput('');
+      setPhoneCodeInput('');
+      if (result.joinedHouseholdId) {
+        setCurrentHouseholdId(result.joinedHouseholdId);
+        await loadMembers();
+        toast.show({ kind: 'success', message: 'Phone verified — joined a household' });
+      } else {
+        toast.show({ kind: 'success', message: 'Phone number verified' });
+      }
+    } catch (e) {
+      setPhoneError((e as Error)?.message ?? "Couldn't verify code.");
+    } finally {
+      setVerifyingPhoneCode(false);
+    }
+  };
+
+  const removePhoneNumber = async () => {
+    if (!user?.uid) return;
+    try {
+      await removePhoneVerification(user.uid, profile?.phone ?? null);
+      await refreshProfile();
+      toast.show({ kind: 'success', message: 'Phone number removed' });
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't remove phone number" });
     }
   };
 
@@ -579,7 +713,14 @@ export default function SettingsScreen() {
   // Initials shown on the navy avatar circle — e.g. "John Doe" -> "JD".
   const initials = profile
     ? `${profile.firstName?.trim()?.[0] ?? ''}${profile.lastName?.trim()?.[0] ?? ''}`.toUpperCase()
-    : '';
+    : (user?.displayName ?? '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join('')
+        .toUpperCase();
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -593,12 +734,87 @@ export default function SettingsScreen() {
             </View>
             <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
               <Text style={styles.profileName} numberOfLines={1}>
-                {profile ? `${profile.firstName} ${profile.lastName}` : 'Signed in'}
+                {profile
+                  ? `${profile.firstName} ${profile.lastName}`.trim()
+                  : user?.displayName || 'Signed in'}
               </Text>
               <Text style={styles.profileMeta} numberOfLines={1}>
                 {user?.email ?? ''}
               </Text>
             </View>
+          </View>
+        </Section>
+
+        <Section title="Phone number">
+          {profile?.phone && profile.phoneVerified ? (
+            <View style={styles.inviteRow}>
+              <Text style={[styles.profileMeta, { flex: 1 }]}>{profile.phone}</Text>
+              <Pressable onPress={removePhoneNumber} style={styles.leaveHouseholdBtn} hitSlop={4}>
+                <Text style={styles.leaveHouseholdText}>Remove</Text>
+              </Pressable>
+            </View>
+          ) : phoneConfirmation ? (
+            <View style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}>
+              <View style={styles.inviteRow}>
+                <TextInput
+                  value={phoneCodeInput}
+                  onChangeText={setPhoneCodeInput}
+                  placeholder="Enter code"
+                  placeholderTextColor={theme.colors.textMuted}
+                  keyboardType="number-pad"
+                  style={styles.inviteInput}
+                />
+                <Pressable
+                  onPress={confirmPhoneCodeInput}
+                  disabled={verifyingPhoneCode || !phoneCodeInput.trim()}
+                  style={[
+                    styles.inviteSendBtn,
+                    (verifyingPhoneCode || !phoneCodeInput.trim()) && styles.inviteSendBtnDisabled,
+                  ]}
+                >
+                  <Text style={styles.inviteSendText}>{verifyingPhoneCode ? 'Verifying…' : 'Verify'}</Text>
+                </Pressable>
+              </View>
+              {phoneError && <Text style={styles.cloudSyncWarning}>{phoneError}</Text>}
+            </View>
+          ) : (
+            <View style={{ paddingHorizontal: 0, paddingVertical: theme.spacing.sm }}>
+              <View style={styles.inviteRow}>
+                <TextInput
+                  value={phoneInput}
+                  onChangeText={setPhoneInput}
+                  placeholder="+1 416 555 1234"
+                  placeholderTextColor={theme.colors.textMuted}
+                  keyboardType="phone-pad"
+                  style={styles.inviteInput}
+                />
+                <Pressable
+                  onPress={sendPhoneCode}
+                  disabled={sendingPhoneCode || !phoneInput.trim()}
+                  style={[
+                    styles.inviteSendBtn,
+                    (sendingPhoneCode || !phoneInput.trim()) && styles.inviteSendBtnDisabled,
+                  ]}
+                >
+                  <Text style={styles.inviteSendText}>{sendingPhoneCode ? 'Sending…' : 'Send code'}</Text>
+                </Pressable>
+              </View>
+              {phoneError && <Text style={styles.cloudSyncWarning}>{phoneError}</Text>}
+              <Text style={styles.inviteHint}>
+                Optional — lets others add you to a household by phone number.
+              </Text>
+            </View>
+          )}
+        </Section>
+
+        <Section title="Sync status (debug)">
+          <View style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}>
+            <Text style={{ color: theme.colors.textMuted, fontSize: theme.font.xs, fontFamily: theme.fonts.body.regular }}>
+              Household: {syncDiag.householdId ?? 'none'}{'\n'}
+              Last receipt sync: {syncDiag.lastReceiptSync
+                ? `${syncDiag.lastReceiptSync.ok ? 'OK' : 'FAILED'} · ${syncDiag.lastReceiptSync.receiptId ?? ''} · ${syncDiag.lastReceiptSync.at}${syncDiag.lastReceiptSync.message ? ` · ${syncDiag.lastReceiptSync.message}` : ''}`
+                : 'none yet'}
+            </Text>
           </View>
         </Section>
 
@@ -612,21 +828,36 @@ export default function SettingsScreen() {
             </Text>
           )}
           {(members ?? [{ uid: user?.uid ?? 'you', email: user?.email ?? null, displayName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null, role: 'owner' as const, isYou: true }]).map(
-            (m) => (
-              <View key={m.uid} style={styles.memberRow}>
-                <View style={styles.memberAvatar}>
-                  <Text style={styles.memberAvatarInitials}>{memberInitials(m)}</Text>
-                </View>
-                <Text style={styles.memberName} numberOfLines={1}>
-                  {m.displayName || m.email || 'Household member'}
-                </Text>
-                <View style={styles.memberRoleBadge}>
-                  <Text style={styles.memberRoleText}>
-                    {m.isYou ? 'You' : m.role === 'owner' ? 'Owner' : 'Member'}
+            (m) => {
+              const row = (
+                <>
+                  <View style={styles.memberAvatar}>
+                    <Text style={styles.memberAvatarInitials}>{memberInitials(m)}</Text>
+                  </View>
+                  <Text style={styles.memberName} numberOfLines={1}>
+                    {m.displayName || m.email || 'Household member'}
                   </Text>
+                  <View style={styles.memberRoleBadge}>
+                    <Text style={styles.memberRoleText}>
+                      {m.isYou ? 'You' : m.role === 'owner' ? 'Owner' : 'Member'}
+                    </Text>
+                  </View>
+                </>
+              );
+              return m.isYou ? (
+                <View key={m.uid} style={styles.memberRow}>
+                  {row}
                 </View>
-              </View>
-            ),
+              ) : (
+                <Pressable
+                  key={m.uid}
+                  style={styles.memberRow}
+                  onPress={() => router.push(`/shared-expenses/${m.uid}`)}
+                >
+                  {row}
+                </Pressable>
+              );
+            },
           )}
 
           <View style={styles.inviteRow}>
@@ -656,6 +887,31 @@ export default function SettingsScreen() {
               they sign in with that email and accept.
             </Text>
           )}
+
+          <Pressable
+            onPress={addMemberByPhone}
+            disabled={addingByPhone}
+            style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}
+          >
+            <Text
+              style={{
+                color: addingByPhone ? theme.colors.textMuted : theme.colors.accent,
+                fontSize: theme.font.sm,
+                fontFamily: theme.fonts.display.bold,
+              }}
+            >
+              {addingByPhone ? 'Adding…' : 'Add by phone contact'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push('/balances')}
+            style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}
+          >
+            <Text style={{ color: theme.colors.accent, fontSize: theme.font.sm, fontFamily: theme.fonts.display.bold }}>
+              See who owes what — Balances
+            </Text>
+          </Pressable>
 
           {members && members.length > 1 ? (
             <Pressable

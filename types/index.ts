@@ -74,6 +74,14 @@ export interface Receipt {
     /** Per-participant % (method='percent') or $ amount (method='amount'). Keyed by participantId. */
     values?: Record<string, number>;
   };
+  /** Who actually fronted the money for this receipt — a real Firebase
+   *  uid (never the 'self' placeholder split.participantIds uses, since
+   *  this needs to resolve to the same person from every household
+   *  member's device for lib/balances.ts to compute correctly). Defaults
+   *  to the creator's uid at save time; overridable via the split UI.
+   *  Absent on receipts saved before this field existed — lib/balances.ts
+   *  falls back to "creator paid" for those. */
+  paidBy?: string;
   /** Auto-repeat config. When set, `lib/recurring.ts`'s processor
    *  clones this receipt onto new dated rows on a schedule until
    *  `endDate`, then stops. Absent means this expense is one-off. */

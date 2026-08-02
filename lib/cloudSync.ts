@@ -276,6 +276,7 @@ interface CloudReceipt {
   imageUri?: string | null;
   photoUrl?: string | null;
   notes?: string | null;
+  paidBy?: string | null;
   lineItems?: Array<{
     id: string;
     name: string;
@@ -346,6 +347,37 @@ export function subscribeToHouseholdReceipts(
     // eslint-disable-next-line no-console
     console.warn('[cloudSync] subscribeToHouseholdReceipts failed:', (e as Error)?.message);
     return null;
+  }
+}
+
+/**
+ * Mirror the verified phone number onto users/{uid} so Phase B's
+ * phone-lookup Cloud Function has something to match against. Best-
+ * effort/fire-and-forget like the receipt shadow-write below — local
+ * SQLite (via lib/profile.ts's setProfilePhone) is already durable.
+ */
+export async function syncPhoneToCloud(
+  uid: string,
+  phone: string | null,
+  verified: boolean,
+): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore) return;
+  try {
+    await firestore()
+      .collection('users')
+      .doc(uid)
+      .set(
+        {
+          phone,
+          phoneVerified: verified,
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncPhoneToCloud failed:', (e as Error)?.message);
   }
 }
 
@@ -719,6 +751,194 @@ export async function acceptInvite(args: {
   }
 }
 
+// ─── phone-based invites ───────────────────────────────────────────────────
+//
+// Deliberately NOT a Cloud Function — this app doesn't have (and the
+// owner isn't paying for) the Firebase Blaze plan Cloud Functions
+// require. Everything here runs client-side against Firestore directly:
+//   - `phoneIndex/{e164}` is a tiny pointer doc ({ uid }) written by a
+//     user themselves when they verify their own phone (see
+//     lib/phoneVerification.ts) — readable by any authenticated user
+//     via a direct doc-id get, so matching a contact's number doesn't
+//     require opening broad query access to the `users` collection.
+//   - Actually SENDING the SMS (when no match exists) still needs a
+//     secret-holding backend — that's the ONE piece that lives outside
+//     Firestore, in a Cloudflare Worker (scripts/sms-invite-worker.ts,
+//     free tier, no Blaze needed). See lib/phoneInvite.ts for the call.
+//
+// Consent model: no accept TAP is ever shown to the invitee, for
+// matched existing users OR fresh signups — an explicit user decision,
+// not the recommended default (invite-then-accept). It does mean adding
+// someone by phone number, alone, is enough to eventually give them
+// visibility into the household's shared receipts. Mechanically, the
+// actual join is always a SELF-write performed by the invitee's own
+// client (AuthContext.tsx's checkPendingPhoneInvite, or right after
+// verifying a number in lib/phoneVerification.ts) — never the inviter
+// writing into the invitee's account directly, which would need a new,
+// risky Firestore rule (anyone-can-write-anyone's-householdId) and
+// isn't needed for the "no prompt" requirement anyway.
+
+export type PendingPhoneInvite = {
+  phone: string; // E.164
+  householdId: string;
+  householdName: string | null;
+  invitedByUid: string;
+  invitedByName: string | null;
+  createdAt: string;
+  expiresAt: string;
+};
+
+/** Written by lib/phoneVerification.ts right after a phone number is
+ *  verified — the ONLY write to this collection, always by the owning
+ *  uid for their own number. */
+export async function setPhoneIndex(uid: string, phoneE164: string): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore) return;
+  try {
+    await firestore().collection('phoneIndex').doc(phoneE164).set({
+      uid,
+      updatedAt: firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] setPhoneIndex failed:', (e as Error)?.message);
+  }
+}
+
+export async function clearPhoneIndex(phoneE164: string): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore) return;
+  try {
+    await firestore().collection('phoneIndex').doc(phoneE164).delete();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] clearPhoneIndex failed:', (e as Error)?.message);
+  }
+}
+
+/** Does a verified BalanceSheet user already own this phone number?
+ *  Returns just uid/displayName — never email or anything else, since
+ *  this is a contact-discovery surface (see lib/phoneInvite.ts). */
+export async function lookupUserByPhone(
+  phoneE164: string,
+): Promise<{ uid: string; displayName: string | null } | null> {
+  const firestore = loadFirestore();
+  if (!firestore) return null;
+  try {
+    const db = firestore();
+    const indexSnap = await db.collection('phoneIndex').doc(phoneE164).get();
+    if (!indexSnap.exists) return null;
+    const uid = indexSnap.data()?.uid as string | undefined;
+    if (!uid) return null;
+    const userSnap = await db.collection('users').doc(uid).get();
+    return { uid, displayName: (userSnap.data()?.displayName as string | null) ?? null };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] lookupUserByPhone failed:', (e as Error)?.message);
+    return null;
+  }
+}
+
+/**
+ * Add a contact to the household by phone number. Always writes a
+ * pending `phoneInvites/{e164}` doc — the same doc shape whether or not
+ * the number matches an existing user. The actual household join is
+ * always performed by the INVITEE's own client (self-write, via
+ * acceptPhoneInviteIfAny below), never by the inviter reaching into
+ * someone else's account — that would need a Firestore rule letting one
+ * user write another user's `users/{uid}.householdId`, which is both a
+ * real security hole (anyone could hijack anyone else's household
+ * assignment) and unnecessary here.
+ *
+ * "No accept tap" (the user's explicit decision) still holds: a matched
+ * user's own device auto-joins with no prompt, just not at the literal
+ * instant the inviter taps send — it happens the next time their app
+ * checks phoneInvites (see AuthContext.tsx, mirroring the email-invite
+ * pending check, and lib/phoneVerification.ts for freshly-verified
+ * numbers). `matched` in the return value only affects whether the
+ * caller should ALSO fire an SMS (skip it — they already have the app).
+ */
+export async function addHouseholdMemberByPhone(args: {
+  phoneE164: string;
+  householdId: string;
+  invitedByUid: string;
+  invitedByName: string | null;
+}): Promise<
+  | { ok: true; matched: true; displayName: string | null }
+  | { ok: true; matched: false }
+  | { ok: false; reason: string }
+> {
+  const firestore = loadFirestore();
+  if (!firestore) return { ok: false, reason: 'cloud module not loaded' };
+  try {
+    const match = await lookupUserByPhone(args.phoneE164);
+    const db = firestore();
+    const householdSnap = await db.collection('households').doc(args.householdId).get();
+    const householdName = (householdSnap.data()?.name as string | undefined) ?? null;
+    const now = firestore.FieldValue.serverTimestamp();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    await db.collection('phoneInvites').doc(args.phoneE164).set({
+      phone: args.phoneE164,
+      householdId: args.householdId,
+      householdName,
+      invitedByUid: args.invitedByUid,
+      invitedByName: args.invitedByName,
+      createdAt: now,
+      expiresAt,
+      status: 'pending',
+    });
+    return match
+      ? { ok: true, matched: true, displayName: match.displayName }
+      : { ok: true, matched: false };
+  } catch (e) {
+    return { ok: false, reason: (e as Error)?.message ?? 'unknown' };
+  }
+}
+
+/** Checked right after a NEW/existing user verifies a phone number
+ *  (lib/phoneVerification.ts) — if someone had already sent a phone
+ *  invite to this exact number, join that household automatically
+ *  (same instant-join consent model as the matched-existing-user path
+ *  above, just the other direction: the invitee arrives later). */
+export async function acceptPhoneInviteIfAny(
+  uid: string,
+  phoneE164: string,
+): Promise<{ joined: boolean; householdId?: string }> {
+  const firestore = loadFirestore();
+  if (!firestore) return { joined: false };
+  try {
+    const db = firestore();
+    const inviteRef = db.collection('phoneInvites').doc(phoneE164);
+    const snap = await inviteRef.get();
+    if (!snap.exists) return { joined: false };
+    const d = snap.data() ?? {};
+    const expiresAt = d.expiresAt?.toDate ? (d.expiresAt.toDate() as Date) : new Date(d.expiresAt as string);
+    if (Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+      await inviteRef.delete();
+      return { joined: false };
+    }
+    const householdId = d.householdId as string;
+    const householdRef = db.collection('households').doc(householdId);
+    const userRef = db.collection('users').doc(uid);
+    await db.runTransaction(async (tx) => {
+      const householdSnap = await tx.get(householdRef);
+      if (!householdSnap.exists) throw new Error('household no longer exists');
+      tx.update(householdRef, {
+        memberUids: firestore.FieldValue.arrayUnion(uid),
+        memberCount: firestore.FieldValue.increment(1),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      });
+      tx.set(userRef, { householdId, updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
+      tx.delete(inviteRef);
+    });
+    return { joined: true, householdId };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] acceptPhoneInviteIfAny failed:', (e as Error)?.message);
+    return { joined: false };
+  }
+}
+
 export async function declineInvite(args: {
   invite: PendingInvite;
 }): Promise<{ ok: boolean }> {
@@ -1038,6 +1258,29 @@ export async function migrateLocalReceiptsToCloud(args: {
 
 // ─── helpers ──────────────────────────────────────────────────────────────
 
+/**
+ * Firestore rejects a write OUTRIGHT (the whole document, not just the
+ * offending field) if ANY field — including nested ones — is
+ * `undefined`. `Receipt.split.values` is explicitly `undefined` for
+ * the 'equal' method (see app/edit/[id].tsx), so any equal-split
+ * receipt's cloud write was failing silently and completely: the
+ * receipt itself never left this device. Recursively convert
+ * `undefined` to `null` so a nested optional field can never
+ * accidentally take down the entire sync.
+ */
+function stripUndefinedDeep(value: unknown): unknown {
+  if (value === undefined) return null;
+  if (Array.isArray(value)) return value.map(stripUndefinedDeep);
+  if (value !== null && typeof value === 'object' && !(value instanceof Date)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = stripUndefinedDeep(v);
+    }
+    return out;
+  }
+  return value;
+}
+
 function serializeReceipt(
   r: Receipt,
   firestore: FirestoreModule,
@@ -1045,7 +1288,7 @@ function serializeReceipt(
   // Firestore stores everything as plain JSON-able values. Coerce
   // dates to strings (the rest of the app uses ISO strings already)
   // and replace timestamps with server-side ones where helpful.
-  return {
+  const payload = {
     id: r.id,
     storeName: r.storeName,
     date: r.date,
@@ -1060,6 +1303,7 @@ function serializeReceipt(
     notes: r.notes ?? null,
     split: r.split ?? null,
     recurring: r.recurring ?? null,
+    paidBy: r.paidBy ?? null,
     lineItems: (r.lineItems ?? []).map((it) => ({
       id: it.id,
       name: it.name,
@@ -1069,6 +1313,12 @@ function serializeReceipt(
     })),
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+  };
+  return {
+    ...(stripUndefinedDeep(payload) as Record<string, unknown>),
+    // serverTimestamp() is a Firestore sentinel object, not plain JSON —
+    // stripUndefinedDeep would otherwise recurse into and mangle it, so
+    // it's added back AFTER sanitizing, not passed through above.
     syncedAt: firestore.FieldValue.serverTimestamp(),
   };
 }

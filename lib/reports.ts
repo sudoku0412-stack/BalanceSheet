@@ -166,12 +166,22 @@ function getReceiptYearMonth(r: Receipt): { year: number; month: number } {
 function categoryTotalsFor(receipts: Receipt[]): Map<string, number> {
   // Same aggregation policy as lib/dashboardStats.ts: signed item-level
   // sums when items exist, else the receipt's primary category total.
+  //
+  // Line items are pre-tax, but the screen's headline total (see
+  // summarizeMonth/summarizeRange below) sums r.totalAmount, which
+  // includes tax — summing raw item amounts here made the "By category"
+  // breakdown never add up to the headline number. Scale each receipt's
+  // item amounts by (totalAmount / itemSum) so tax/rounding gets
+  // distributed proportionally across its categories and the breakdown
+  // reconciles exactly, while per-category proportions are unchanged.
   const m = new Map<string, number>();
   for (const r of receipts) {
     if (r.lineItems && r.lineItems.length > 0) {
+      const itemSum = r.lineItems.reduce((s, it) => s + it.amount, 0);
+      const scale = itemSum !== 0 ? r.totalAmount / itemSum : 1;
       for (const it of r.lineItems) {
         const cat = (it.category ?? r.category) as string;
-        m.set(cat, (m.get(cat) ?? 0) + it.amount);
+        m.set(cat, (m.get(cat) ?? 0) + it.amount * scale);
       }
     } else {
       const cat = r.category as string;

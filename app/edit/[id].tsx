@@ -40,7 +40,7 @@ import {
   CurrencyCode,
 } from '../../lib/currency';
 import { getCurrency } from '../../lib/secureStorage';
-import { computeRecurringEndDate } from '../../lib/recurring';
+import { advance as advanceRecurringDate, computeRecurringEndDate } from '../../lib/recurring';
 import { Receipt, Category, LineItem } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES } from '../../constants/categories';
@@ -633,6 +633,20 @@ function EditReceiptScreen() {
   // member uid for everyone else — matches Receipt.split.values keys.
   const [splitPercents, setSplitPercents] = useState<Record<string, string>>({});
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
+  // Who fronted the money (Receipt.paidBy) — 'self' in the UI, resolved
+  // to the signed-in user's real uid at save time (lib/balances.ts needs
+  // a real uid, not the 'self' placeholder split.participantIds uses).
+  // Defaults to 'self' (the receipt's own creator) until loaded.
+  const [paidBy, setPaidBy] = useState<string>('self');
+
+  // If the person currently marked as payer gets deselected as a
+  // participant, fall back to "You" rather than persisting a paidBy
+  // that no longer points at anyone in the split.
+  useEffect(() => {
+    if (paidBy !== 'self' && !selectedOtherUids.has(paidBy)) {
+      setPaidBy('self');
+    }
+  }, [paidBy, selectedOtherUids]);
 
   // ── Recurring expense ──
   // Mirrors Receipt.recurring (types/index.ts). Initialized from
@@ -706,21 +720,40 @@ function EditReceiptScreen() {
       if (r.split?.enabled) {
         setSplitEnabled(true);
         setSplitMethod(r.split.method);
-        const others = r.split.participantIds.filter((p) => p !== 'self');
+        // Participant ids may be the literal 'self' placeholder (legacy
+        // receipts, or ones last saved by THIS device) or a real uid
+        // (receipts saved under the newer scheme, or ones created by a
+        // DIFFERENT household member's device) — either way, "self" for
+        // THIS load means whoever is currently signed in.
+        const others = r.split.participantIds.filter(
+          (p) => p !== 'self' && p !== user?.uid,
+        );
         setSelectedOtherUids(new Set(others));
+        // Normalize keys the same way — a real-uid key matching the
+        // current viewer maps back to the 'self' placeholder this UI's
+        // Records are keyed by everywhere else.
+        const normalizeKey = (k: string) => (k === 'self' || k === user?.uid ? 'self' : k);
         if (r.split.method === 'percent') {
           const pct: Record<string, string> = {};
           for (const [k, v] of Object.entries(r.split.values ?? {})) {
-            pct[k] = String(v);
+            pct[normalizeKey(k)] = String(v);
           }
           setSplitPercents(pct);
         } else if (r.split.method === 'amount') {
           const amt: Record<string, string> = {};
           for (const [k, v] of Object.entries(r.split.values ?? {})) {
-            amt[k] = String(v);
+            amt[normalizeKey(k)] = String(v);
           }
           setSplitAmounts(amt);
         }
+      }
+      // r.paidBy is a real uid ('self' is never persisted there) — map
+      // it back to the 'self' UI placeholder when it matches the signed-
+      // in user, so the "You" pill highlights correctly.
+      if (r.paidBy && r.paidBy !== user?.uid) {
+        setPaidBy(r.paidBy);
+      } else {
+        setPaidBy('self');
       }
 
       // Initialize recurring UI state from the persisted recurring
@@ -853,31 +886,49 @@ function EditReceiptScreen() {
           (ALL_CATEGORIES as readonly string[]).includes(t),
         ) as Category | undefined) ?? category;
 
-      // Build the split payload from the current split UI state —
-      // this now actually persists (Receipt.split, types/index.ts).
+      // Build the split payload from the current split UI state — this
+      // now actually persists (Receipt.split, types/index.ts). Store the
+      // signed-in user's REAL uid instead of the 'self' UI placeholder
+      // — 'self' only ever meant "whoever is looking at this screen
+      // right now," which resolves to the WRONG person if a different
+      // household member opens this same receipt on their own device
+      // (their balances would silently show nothing for it — a real bug
+      // this exact substitution fixes). Mirrors how `paidBy` below
+      // already does this.
+      const selfUidForSave = user?.uid ?? 'self';
+      const normalizeForSave = (id: string) => (id === 'self' ? selfUidForSave : id);
       const split: Receipt['split'] = splitEnabled
         ? {
             enabled: true,
             method: splitMethod,
-            participantIds: ['self', ...Array.from(selectedOtherUids)],
+            participantIds: [selfUidForSave, ...Array.from(selectedOtherUids)],
             values:
               splitMethod === 'percent'
                 ? Object.fromEntries(
-                    Object.entries(splitPercents).map(([k, v]) => [k, parseFloat(v) || 0]),
+                    Object.entries(splitPercents).map(([k, v]) => [
+                      normalizeForSave(k),
+                      parseFloat(v) || 0,
+                    ]),
                   )
                 : splitMethod === 'amount'
                   ? Object.fromEntries(
-                      Object.entries(splitAmounts).map(([k, v]) => [k, parseFloat(v) || 0]),
+                      Object.entries(splitAmounts).map(([k, v]) => [
+                        normalizeForSave(k),
+                        parseFloat(v) || 0,
+                      ]),
                     )
                   : undefined,
           }
-        : { enabled: false, method: splitMethod, participantIds: ['self'] };
+        : { enabled: false, method: splitMethod, participantIds: [selfUidForSave] };
 
-      // Build/update the recurring payload. Turning it on fresh here
-      // starts nextDueDate at this receipt's own date; if it was already
-      // recurring, nextDueDate is preserved as-is (only endDate may be
-      // recomputed, and only if a new duration was entered) so occurrences
-      // already generated by lib/recurring.ts don't repeat.
+      // Build/update the recurring payload. Turning it on fresh here starts
+      // nextDueDate one period AHEAD of this receipt's own date (the receipt
+      // itself is occurrence zero — seeding nextDueDate at its own date makes
+      // lib/recurring.ts's processor treat it as already due and materialize
+      // an immediate duplicate on the next run). If it was already recurring,
+      // nextDueDate is preserved as-is (only endDate may be recomputed, and
+      // only if a new duration was entered) so occurrences already generated
+      // by lib/recurring.ts don't repeat.
       const receiptDateYmd = format(parsedDate, 'yyyy-MM-dd');
       const recurring: Receipt['recurring'] | undefined = recurringEnabled
         ? originalRecurring
@@ -890,7 +941,7 @@ function EditReceiptScreen() {
             }
           : {
               frequency: recurringFrequency,
-              nextDueDate: receiptDateYmd,
+              nextDueDate: advanceRecurringDate(receiptDateYmd, recurringFrequency),
               endDate: computeRecurringEndDate(receiptDateYmd, recurringDurationVal),
             }
         : undefined;
@@ -911,6 +962,10 @@ function EditReceiptScreen() {
         split,
         lineItems: items,
         recurring,
+        // paidBy needs a real uid so every household member's device
+        // resolves the same payer — 'self' is only ever a UI placeholder
+        // (see lib/balances.ts).
+        paidBy: paidBy === 'self' ? user?.uid : paidBy,
       });
       notifySuccess();
       router.back();
@@ -1098,7 +1153,15 @@ function EditReceiptScreen() {
     // deliberately customized before — honor it as "touched" so re-saving
     // without changes doesn't silently widen it back to everyone.
     const hasExplicitSplit = !!item.splitWith && item.splitWith.length > 0;
-    setItemSplit(hasExplicitSplit ? new Set(item.splitWith) : new Set(participantIds));
+    // Reverse of the save-time substitution — a real uid matching the
+    // current viewer reads back as the 'self' placeholder the "You"
+    // toggle checks against.
+    const normalizedSplitWith = item.splitWith?.map((id) =>
+      id === user?.uid ? 'self' : id,
+    );
+    setItemSplit(
+      hasExplicitSplit ? new Set(normalizedSplitWith) : new Set(participantIds),
+    );
     setItemSplitTouched(hasExplicitSplit);
     setItemModalVisible(true);
   };
@@ -1146,7 +1209,13 @@ function EditReceiptScreen() {
       name: trimmedName,
       amount: convertToUsd(amt, currencyCode),
       category: itemCategory,
-      splitWith: sharedByEveryone ? undefined : Array.from(itemSplit),
+      // Same 'self' -> real-uid substitution as the receipt-level split
+      // above (handleSave) — otherwise a different household member
+      // opening this receipt can't correctly resolve who this item is
+      // shared with.
+      splitWith: sharedByEveryone
+        ? undefined
+        : Array.from(itemSplit).map((id) => (id === 'self' ? user?.uid ?? 'self' : id)),
     };
     setItems((prev) =>
       editingItemId
@@ -1657,6 +1726,63 @@ function EditReceiptScreen() {
                   Nobody to split with yet — invite someone in Settings → Household
                 </Text>
               </TouchableOpacity>
+            )}
+
+            {/* Who actually paid — only meaningful once someone else is
+                a participant. Defaults to "You" (the creator); persisted
+                as a real uid via Receipt.paidBy so lib/balances.ts can
+                compute a correct running balance from any device. */}
+            {selectedOthers.length > 0 && (
+              <>
+                <Text style={[styles.avatarLabel, { marginTop: 12, marginBottom: 6 }]}>
+                  Paid by
+                </Text>
+                <View style={styles.avatarRow}>
+                  <TouchableOpacity
+                    style={styles.avatarWrap}
+                    onPress={() => setPaidBy('self')}
+                    activeOpacity={0.7}
+                  >
+                    <View
+                      style={[
+                        styles.avatarCircle,
+                        {
+                          borderColor: paidBy === 'self' ? theme.colors.accent : 'transparent',
+                          opacity: paidBy === 'self' ? 1 : 0.35,
+                        },
+                      ]}
+                    >
+                      <Text style={styles.avatarInitial}>Y</Text>
+                    </View>
+                    <Text style={styles.avatarLabel} numberOfLines={1}>You</Text>
+                  </TouchableOpacity>
+                  {selectedOthers.map((m) => {
+                    const label = memberLabel(m);
+                    const active = paidBy === m.uid;
+                    return (
+                      <TouchableOpacity
+                        key={m.uid}
+                        style={styles.avatarWrap}
+                        onPress={() => setPaidBy(m.uid)}
+                        activeOpacity={0.7}
+                      >
+                        <View
+                          style={[
+                            styles.avatarCircle,
+                            {
+                              borderColor: active ? theme.colors.accent : 'transparent',
+                              opacity: active ? 1 : 0.35,
+                            },
+                          ]}
+                        >
+                          <Text style={styles.avatarInitial}>{initialFor(label)}</Text>
+                        </View>
+                        <Text style={styles.avatarLabel} numberOfLines={1}>{label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
             )}
 
             {/* Method switch — 3-way segmented control */}

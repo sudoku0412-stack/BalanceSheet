@@ -128,6 +128,14 @@ module.exports = ({ config }) => {
       emailjsServiceId: process.env.EMAILJS_SERVICE_ID,
       emailjsTemplateId: process.env.EMAILJS_TEMPLATE_ID,
       emailjsPublicKey: process.env.EMAILJS_PUBLIC_KEY,
+      // Cloudflare Worker that sends SMS phone invites via Twilio (the
+      // Twilio secret itself lives only in that worker, never here).
+      // See scripts/sms-invite-worker.ts for the deploy guide. Absent
+      // means "not configured yet" — lib/phoneInvite.ts falls back to
+      // in-app-only invites (still visible to the invitee once they
+      // sign up and verify that phone number) when this is unset.
+      smsWorkerEndpoint: process.env.SMS_WORKER_ENDPOINT,
+      smsWorkerSecret: process.env.SMS_WORKER_SECRET,
     },
   });
 };

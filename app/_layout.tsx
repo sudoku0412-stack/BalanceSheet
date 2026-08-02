@@ -1,7 +1,7 @@
 import 'react-native-get-random-values';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
@@ -25,8 +25,18 @@ import { ToastProvider } from '../components/ui/Toast';
 import { pickTarget, targetToHref } from '../lib/routeGuard';
 
 export default function RootLayout() {
+  // Previously fire-and-forget — the rest of the app (Home's receipt
+  // load, AuthContext's post-sign-in bootstrap) could start reading/
+  // writing the DB before schema migrations in initDatabase() finished,
+  // a latent race that got more likely to actually lose the more
+  // migration statements got added over time (three new columns this
+  // session alone). Gate rendering on it instead, same pattern as the
+  // fontsLoaded check right below.
+  const [dbReady, setDbReady] = useState(false);
   useEffect(() => {
-    initDatabase().catch(console.error);
+    initDatabase()
+      .catch(console.error)
+      .finally(() => setDbReady(true));
   }, []);
 
   const [fontsLoaded] = useFonts({
@@ -42,7 +52,7 @@ export default function RootLayout() {
     RobotoMono_500Medium,
   });
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !dbReady) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0C0F24' }}>
         <ActivityIndicator color="#fff" />
@@ -74,7 +84,7 @@ function ThemedStatusBar() {
 // `target` resolves to `(tabs)` and the user is on one of these, leave
 // them alone — the guard's job is to force users to the auth gate, not
 // to drag them back to /(tabs) every time they open a modal.
-const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'reports']);
+const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'reports', 'balances', 'shared-expenses']);
 
 function RootStack() {
   const theme = useTheme();
@@ -161,6 +171,18 @@ function RootStack() {
       />
       <Stack.Screen
         name="reports"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="balances"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="shared-expenses/[uid]"
         options={{
           headerShown: false,
         }}

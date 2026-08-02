@@ -9,7 +9,11 @@ function today(): string {
   return format(new Date(), YMD);
 }
 
-function advance(dateStr: string, frequency: 'weekly' | 'monthly' | 'yearly'): string {
+/** Exported so callers creating a fresh recurring schedule can seed
+ *  `nextDueDate` one period AHEAD of the receipt's own date — the
+ *  receipt itself is occurrence zero, so the schedule must not treat
+ *  that same date as already due (see scan.tsx / edit/[id].tsx). */
+export function advance(dateStr: string, frequency: 'weekly' | 'monthly' | 'yearly'): string {
   const d = parseISO(dateStr);
   const next =
     frequency === 'weekly' ? addWeeks(d, 1) : frequency === 'monthly' ? addMonths(d, 1) : addYears(d, 1);

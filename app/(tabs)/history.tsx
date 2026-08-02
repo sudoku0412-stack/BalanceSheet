@@ -12,6 +12,8 @@ import { useFocusEffect, useLocalSearchParams, useRouter, useNavigation } from '
 import { Ionicons } from '@expo/vector-icons';
 import { isToday, isYesterday, format } from 'date-fns';
 import { getAllReceipts, searchReceipts } from '../../lib/database';
+import { getCurrency } from '../../lib/secureStorage';
+import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { Receipt, Category } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES } from '../../constants/categories';
@@ -202,6 +204,7 @@ export default function HistoryScreen() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<Filter>(FILTER_ALL);
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const params = useLocalSearchParams<{ category?: string }>();
 
   // This screen renders its own "Expenses" headline + add button per the
@@ -226,8 +229,9 @@ export default function HistoryScreen() {
   const [initialLoading, setInitialLoading] = useState(true);
 
   const load = useCallback(async () => {
-    const data = await getAllReceipts();
+    const [data, currencyCode] = await Promise.all([getAllReceipts(), getCurrency()]);
     setReceipts(data);
+    setCurrency((currencyCode as CurrencyCode | null) ?? 'USD');
   }, []);
 
   const onRefresh = useCallback(async () => {
@@ -417,7 +421,7 @@ export default function HistoryScreen() {
                         </Text>
                       </View>
                       <Text style={styles.rowAmount}>
-                        ${r.totalAmount.toFixed(2)}
+                        {formatCurrency(r.totalAmount, currency)}
                       </Text>
                     </TouchableOpacity>
                   );

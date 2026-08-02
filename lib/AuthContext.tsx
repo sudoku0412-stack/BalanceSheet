@@ -18,6 +18,7 @@ import {
 } from './database';
 import {
   acceptInvite,
+  acceptPhoneInviteIfAny,
   declineInvite,
   deleteCloudUserData,
   ensureHouseholdForUser,
@@ -108,6 +109,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // session rather than on every token-refresh echo of the auth listener
   // (onAuthStateChanged can re-fire for the same uid many times).
   const invitePromptedForUidRef = useRef<string | null>(null);
+  // Same one-per-session guard for the phone-invite auto-accept check.
+  const phoneInviteCheckedForUidRef = useRef<string | null>(null);
   // Same one-per-session guard for the recurring-expense processor.
   const recurringProcessedForUidRef = useRef<string | null>(null);
 
@@ -167,6 +170,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [tearDownReceiptsListener],
   );
 
+  // A signed-in user's verified phone number may have been invited to a
+  // household (by an existing member adding a contact, or by SMS before
+  // they even signed up — lib/cloudSync.ts's addHouseholdMemberByPhone
+  // always writes a phoneInvites/{e164} doc regardless of match). Per
+  // the user's explicit decision, this auto-joins with NO confirm
+  // prompt (unlike checkPendingInvite's email flow above) — the join
+  // itself is a self-write the invitee's own client performs, so it
+  // stays within the existing security-rule model instead of needing a
+  // new rule for one user writing another's account.
+  const checkPendingPhoneInvite = useCallback(
+    async (u: AuthUser) => {
+      if (phoneInviteCheckedForUidRef.current === u.uid) return;
+      phoneInviteCheckedForUidRef.current = u.uid;
+      try {
+        const p = await getProfile(u.uid);
+        if (!p?.phone || !p.phoneVerified) return;
+        const result = await acceptPhoneInviteIfAny(u.uid, p.phone);
+        if (!result.joined || !result.householdId) return;
+        setCurrentHouseholdId(result.householdId);
+        tearDownReceiptsListener();
+        const unsubReceipts = subscribeToHouseholdReceipts(result.householdId, u.uid);
+        if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
+      } catch {
+        // Best-effort — a failed check just leaves the invite pending
+        // for the next sign-in.
+      }
+    },
+    [tearDownReceiptsListener],
+  );
+
   useEffect(() => {
     const unsub = onAuthStateChanged(async (u) => {
       setUser(u);
@@ -213,14 +246,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // invited them before they ever signed up). Surface it once
           // per session.
           checkPendingInvite(u);
+          void checkPendingPhoneInvite(u);
         }
       } else {
         setCurrentHouseholdId(null);
         invitePromptedForUidRef.current = null;
+        phoneInviteCheckedForUidRef.current = null;
       }
     });
     return unsub;
-  }, [checkPendingInvite, tearDownReceiptsListener]);
+  }, [checkPendingInvite, checkPendingPhoneInvite, tearDownReceiptsListener]);
 
   const refreshProfile = useCallback(async () => {
     if (!user) {
