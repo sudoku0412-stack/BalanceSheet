@@ -1,0 +1,94 @@
+name: Release build + submit
+
+# Every push to main → cloud EAS build (Android + iOS, production profile)
+# → auto-submit to Play Console (internal track) + App Store Connect
+# (TestFlight). Uses EAS's own macOS/Linux cloud builders (not this
+# runner) since iOS can't build on ubuntu-latest.
+#
+# Submission still lands wherever the store leaves it: Android internal
+# track needs no review, but iOS App Store review will keep stalling on
+# whatever's blocking "Add for Review" in App Store Connect (see
+# HANDOVER.md) — this job gets a build INTO TestFlight/App Store Connect,
+# it does not bypass Apple's own review gate.
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+
+concurrency:
+  group: release-build
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build + submit (Android + iOS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli@latest
+
+      - name: Stage gitignored files EAS needs for build + submit
+        env:
+          GOOGLE_SERVICES_JSON_CONTENT: ${{ secrets.GOOGLE_SERVICES_JSON_CONTENT }}
+          GOOGLE_SERVICES_PLIST_CONTENT: ${{ secrets.GOOGLE_SERVICES_PLIST_CONTENT }}
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
+        run: |
+          missing=0
+          for name in GOOGLE_SERVICES_JSON_CONTENT GOOGLE_SERVICES_PLIST_CONTENT PLAY_SERVICE_ACCOUNT_JSON ASC_API_KEY_P8; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repo secret $name — Settings → Secrets and variables → Actions."
+              missing=1
+            fi
+          done
+          [ "$missing" = "1" ] && exit 1
+
+          printf '%s' "$GOOGLE_SERVICES_JSON_CONTENT" > google-services.json
+          printf '%s' "$GOOGLE_SERVICES_PLIST_CONTENT" > GoogleService-Info.plist
+          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > play-service-account.json
+          printf '%s' "$ASC_API_KEY_P8" > appstore-connect-api-key.p8
+          node -e "JSON.parse(require('fs').readFileSync('google-services.json','utf8'))"
+          node -e "JSON.parse(require('fs').readFileSync('play-service-account.json','utf8'))"
+
+      - name: EAS cloud build + auto-submit (Android + iOS)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas build \
+            --profile production \
+            --platform all \
+            --non-interactive \
+            --no-wait=false \
+            --auto-submit
+
+      - name: Build summary
+        if: always()
+        run: |
+          {
+            echo "## Release build + submit"
+            echo ""
+            echo "- Commit: \`${{ github.sha }}\`"
+            echo "- Status: \`${{ job.status }}\`"
+            echo "- Android → Play Console internal track"
+            echo "- iOS → App Store Connect / TestFlight (App Store review still gated on manual items in HANDOVER.md)"
+            echo ""
+            echo "Full logs: EAS dashboard → https://expo.dev"
+          } >> "$GITHUB_STEP_SUMMARY"
