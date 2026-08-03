@@ -18,7 +18,8 @@
         "NSCameraUsageDescription": "ReceiptScanner needs camera access to scan receipts.",
         "NSPhotoLibraryUsageDescription": "ReceiptScanner needs photo library access to import receipts.",
         "NSContactsUsageDescription": "ReceiptScanner needs contacts access so you can pick who to add to your household."
-      }
+      },
+      "buildNumber": "5"
     },
     "android": {
       "adaptiveIcon": {
@@ -32,7 +33,8 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_CONTACTS"
       ],
-      "package": "com.yourname.receiptscanner"
+      "package": "com.yourname.receiptscanner",
+      "versionCode": 4
     },
     "plugins": [
       "expo-router",
