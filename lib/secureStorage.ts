@@ -81,8 +81,18 @@ export async function setAiClassifyEnabled(enabled: boolean): Promise<void> {
  * Budgets are namespaced per household (multi-household support) —
  * each household has its own category limits/alerts toggle, mirroring
  * the `:${uid}` suffix pattern already used for `cloudMigrationDone`.
+ *
+ * Self-healing: if the namespaced key has never been written, this
+ * reads are read straight through `migrateLegacyBudgetsToHousehold`
+ * first — this makes the migration a normal side effect of the very
+ * first read instead of something a caller has to remember to await
+ * before reading. Depending solely on AuthContext's fire-and-forget
+ * sign-in call was a race: reading budgets before that call resolved
+ * (or if it silently failed) surfaced the namespaced key as
+ * permanently empty, which read as "my budgets got wiped."
  */
 export async function getCategoryBudgets(householdId: string): Promise<Record<string, number>> {
+  await migrateLegacyBudgetsToHousehold(householdId);
   const v = await SecureStore.getItemAsync(`${Keys.categoryBudgets}:${householdId}`);
   if (!v) return {};
   try {
@@ -103,6 +113,7 @@ export async function setCategoryBudget(
 }
 
 export async function getBudgetAlertsEnabled(householdId: string): Promise<boolean> {
+  await migrateLegacyBudgetsToHousehold(householdId);
   const v = await SecureStore.getItemAsync(`${Keys.budgetAlertsEnabled}:${householdId}`);
   return v !== '0'; // default on
 }
