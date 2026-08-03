@@ -8,7 +8,7 @@ const Keys = {
   // One-shot Phase-2 marker — once we've successfully uploaded all
   // existing local receipts to Firestore for this user we set this so
   // the migration doesn't re-run on every launch. Stored per-user via
-  // the suffix `:${uid}` so different users on the same device each
+  // the suffix `.${uid}` so different users on the same device each
   // do their own one-time backfill.
   cloudMigrationDone: 'bs.cloud.migrationDone',
   categoryBudgets: 'bs.budgets.byCategory',
@@ -18,7 +18,7 @@ const Keys = {
   // Multi-household support: one-time per-household marker so the
   // legacy flat budgets key (below) gets copied into its
   // household-namespaced key exactly once. Mirrors cloudMigrationDone's
-  // `:${uid}` suffix pattern.
+  // `.${uid}` suffix pattern.
   legacyBudgetsMigrated: 'bs.budgets.legacyMigrated',
 } as const;
 
@@ -32,12 +32,12 @@ export async function setOnboardingSeen(): Promise<void> {
 }
 
 export async function getCloudMigrationDone(uid: string): Promise<boolean> {
-  const v = await SecureStore.getItemAsync(`${Keys.cloudMigrationDone}:${uid}`);
+  const v = await SecureStore.getItemAsync(`${Keys.cloudMigrationDone}.${uid}`);
   return v === '1';
 }
 
 export async function setCloudMigrationDone(uid: string): Promise<void> {
-  await SecureStore.setItemAsync(`${Keys.cloudMigrationDone}:${uid}`, '1');
+  await SecureStore.setItemAsync(`${Keys.cloudMigrationDone}.${uid}`, '1');
 }
 
 export async function getAnthropicApiKey(): Promise<string | null> {
@@ -80,7 +80,7 @@ export async function setAiClassifyEnabled(enabled: boolean): Promise<void> {
 /**
  * Budgets are namespaced per household (multi-household support) —
  * each household has its own category limits/alerts toggle, mirroring
- * the `:${uid}` suffix pattern already used for `cloudMigrationDone`.
+ * the `.${uid}` suffix pattern already used for `cloudMigrationDone`.
  *
  * Self-healing: if the namespaced key has never been written, this
  * reads are read straight through `migrateLegacyBudgetsToHousehold`
@@ -93,7 +93,7 @@ export async function setAiClassifyEnabled(enabled: boolean): Promise<void> {
  */
 export async function getCategoryBudgets(householdId: string): Promise<Record<string, number>> {
   await migrateLegacyBudgetsToHousehold(householdId);
-  const v = await SecureStore.getItemAsync(`${Keys.categoryBudgets}:${householdId}`);
+  const v = await SecureStore.getItemAsync(`${Keys.categoryBudgets}.${householdId}`);
   if (!v) return {};
   try {
     return JSON.parse(v) as Record<string, number>;
@@ -109,17 +109,17 @@ export async function setCategoryBudget(
 ): Promise<void> {
   const current = await getCategoryBudgets(householdId);
   const next = { ...current, [category]: amount };
-  await SecureStore.setItemAsync(`${Keys.categoryBudgets}:${householdId}`, JSON.stringify(next));
+  await SecureStore.setItemAsync(`${Keys.categoryBudgets}.${householdId}`, JSON.stringify(next));
 }
 
 export async function getBudgetAlertsEnabled(householdId: string): Promise<boolean> {
   await migrateLegacyBudgetsToHousehold(householdId);
-  const v = await SecureStore.getItemAsync(`${Keys.budgetAlertsEnabled}:${householdId}`);
+  const v = await SecureStore.getItemAsync(`${Keys.budgetAlertsEnabled}.${householdId}`);
   return v !== '0'; // default on
 }
 
 export async function setBudgetAlertsEnabled(householdId: string, enabled: boolean): Promise<void> {
-  await SecureStore.setItemAsync(`${Keys.budgetAlertsEnabled}:${householdId}`, enabled ? '1' : '0');
+  await SecureStore.setItemAsync(`${Keys.budgetAlertsEnabled}.${householdId}`, enabled ? '1' : '0');
 }
 
 export type BudgetsSnapshot = {
@@ -162,16 +162,16 @@ export async function applyBudgetsSnapshot(
  * call on every sign-in.
  */
 export async function migrateLegacyBudgetsToHousehold(householdId: string): Promise<void> {
-  const marker = `${Keys.legacyBudgetsMigrated}:${householdId}`;
+  const marker = `${Keys.legacyBudgetsMigrated}.${householdId}`;
   const already = await SecureStore.getItemAsync(marker);
   if (already === '1') return;
   const legacyBudgets = await SecureStore.getItemAsync(Keys.categoryBudgets);
   const legacyAlerts = await SecureStore.getItemAsync(Keys.budgetAlertsEnabled);
   if (legacyBudgets) {
-    await SecureStore.setItemAsync(`${Keys.categoryBudgets}:${householdId}`, legacyBudgets);
+    await SecureStore.setItemAsync(`${Keys.categoryBudgets}.${householdId}`, legacyBudgets);
   }
   if (legacyAlerts) {
-    await SecureStore.setItemAsync(`${Keys.budgetAlertsEnabled}:${householdId}`, legacyAlerts);
+    await SecureStore.setItemAsync(`${Keys.budgetAlertsEnabled}.${householdId}`, legacyAlerts);
   }
   await SecureStore.setItemAsync(marker, '1');
 }
