@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import { useStyles, useTheme } from '../constants/theme';
 import { Button } from '../components/ui/Button';
@@ -27,13 +27,13 @@ import {
   setCategoryBudget,
   setCurrency as persistCurrency,
 } from '../lib/secureStorage';
-import { getAllReceipts, getCurrentHouseholdId, setCurrentHouseholdId } from '../lib/database';
+import { getAllReceipts, getCurrentHouseholdId } from '../lib/database';
 import { registerForPushNotificationsAsync, requestNotificationPermission } from '../lib/notifications';
 import {
   getHouseholdMembers,
   inviteUserToHousehold,
   isCloudSyncAvailable,
-  leaveCurrentHousehold,
+  leaveHousehold,
   syncBudgetsToCloud,
   syncPushTokenToCloud,
   type HouseholdMember,
@@ -341,7 +341,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const styles = useSettingsStyles();
   const router = useRouter();
-  const { user, profile, signOut, refreshProfile } = useAuth();
+  const { user, profile, signOut, refreshProfile, setActiveHousehold } = useAuth();
   const toast = useToast();
 
   // Per-category budget amounts (canonical USD) and the "notify near
@@ -397,7 +397,7 @@ export default function SettingsScreen() {
         invitedByUid: user.uid,
         invitedByEmail: user.email ?? null,
         invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
-        budgets: await getBudgetsSnapshot(),
+        budgets: await getBudgetsSnapshot(householdId),
       });
       if (res.ok) {
         toast.show({ kind: 'success', message: 'Invite sent' });
@@ -433,7 +433,7 @@ export default function SettingsScreen() {
         householdName: null,
         invitedByUid: user.uid,
         invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
-        budgets: await getBudgetsSnapshot(),
+        budgets: await getBudgetsSnapshot(householdId),
       });
       if (!result.ok) {
         toast.show({ kind: 'error', message: result.reason || "Couldn't add by phone" });
@@ -461,23 +461,23 @@ export default function SettingsScreen() {
   const confirmLeaveHousehold = () => {
     Alert.alert('Leave household?', 'You will move to your own solo household. Other members keep the shared receipts.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Leave', style: 'destructive', onPress: () => leaveHousehold() },
+      { text: 'Leave', style: 'destructive', onPress: () => doLeaveHousehold() },
     ]);
   };
 
-  const leaveHousehold = async () => {
+  const doLeaveHousehold = async () => {
     const householdId = getCurrentHouseholdId();
     if (!householdId || !user?.uid || leavingHousehold) return;
     setLeavingHousehold(true);
     try {
-      const res = await leaveCurrentHousehold({
+      const res = await leaveHousehold({
         uid: user.uid,
-        currentHouseholdId: householdId,
+        householdId,
         email: user.email ?? null,
         displayName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
       });
       if (res.ok) {
-        setCurrentHouseholdId(res.newSoloHouseholdId);
+        await setActiveHousehold(res.nextActiveHouseholdId);
         toast.show({ kind: 'success', message: 'You left the household' });
         await loadMembers();
       } else {
@@ -498,35 +498,43 @@ export default function SettingsScreen() {
     return '·';
   };
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const [budgets, alertsEnabled, storedCurrency] = await Promise.all([
-        getCategoryBudgets(),
-        getBudgetAlertsEnabled(),
-        getCurrency(),
-      ]);
-      if (!mounted) return;
-      const nextCurrency: CurrencyCode =
-        storedCurrency && (CURRENCIES as string[]).includes(storedCurrency)
-          ? (storedCurrency as CurrencyCode)
-          : 'USD';
-      setCategoryBudgetsUsd(budgets);
-      setBudgetInputs(
-        Object.fromEntries(
-          Object.entries(budgets).map(([cat, amountUsd]) => [
-            cat,
-            formatBudgetInput(convertFromUsd(amountUsd, nextCurrency), nextCurrency),
-          ]),
-        ),
-      );
-      setBudgetAlertsEnabledState(alertsEnabled);
-      setCurrencyState(nextCurrency);
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  // Re-runs on every focus (not just mount) so returning from the
+  // Households switcher screen reloads THIS household's budgets —
+  // Settings is a tab and doesn't remount on navigation.
+  useFocusEffect(
+    useCallback(() => {
+      let mounted = true;
+      (async () => {
+        const householdId = getCurrentHouseholdId();
+        if (!householdId) return;
+        const [budgets, alertsEnabled, storedCurrency] = await Promise.all([
+          getCategoryBudgets(householdId),
+          getBudgetAlertsEnabled(householdId),
+          getCurrency(),
+        ]);
+        if (!mounted) return;
+        const nextCurrency: CurrencyCode =
+          storedCurrency && (CURRENCIES as string[]).includes(storedCurrency)
+            ? (storedCurrency as CurrencyCode)
+            : 'USD';
+        setCategoryBudgetsUsd(budgets);
+        setBudgetInputs(
+          Object.fromEntries(
+            Object.entries(budgets).map(([cat, amountUsd]) => [
+              cat,
+              formatBudgetInput(convertFromUsd(amountUsd, nextCurrency), nextCurrency),
+            ]),
+          ),
+        );
+        setBudgetAlertsEnabledState(alertsEnabled);
+        setCurrencyState(nextCurrency);
+        await loadMembers();
+      })();
+      return () => {
+        mounted = false;
+      };
+    }, [loadMembers]),
+  );
 
   const selectCurrency = (code: CurrencyCode) => {
     if (code === currency) return;
@@ -557,11 +565,12 @@ export default function SettingsScreen() {
   const updateCategoryBudget = (cat: string, value: string) => {
     setBudgetInputs((prev) => ({ ...prev, [cat]: value }));
     const parsed = parseFloat(value);
-    if (!Number.isNaN(parsed) && parsed >= 0) {
+    const householdId = getCurrentHouseholdId();
+    if (!Number.isNaN(parsed) && parsed >= 0 && householdId) {
       const amountUsd = convertToUsd(parsed, currency);
       const nextBudgets = { ...categoryBudgetsUsd, [cat]: amountUsd };
       setCategoryBudgetsUsd(nextBudgets);
-      setCategoryBudget(cat, amountUsd);
+      setCategoryBudget(householdId, cat, amountUsd);
       pushBudgetsToCloud(nextBudgets, budgetAlertsEnabled);
     }
   };
@@ -570,8 +579,9 @@ export default function SettingsScreen() {
     // The toggle itself just represents "I want alerts" and is always
     // persisted as chosen. Turning it ON additionally kicks off the OS
     // permission handshake — turning it OFF never prompts for anything.
+    const householdId = getCurrentHouseholdId();
     setBudgetAlertsEnabledState(enabled);
-    persistBudgetAlertsEnabled(enabled);
+    if (householdId) persistBudgetAlertsEnabled(householdId, enabled);
     pushBudgetsToCloud(categoryBudgetsUsd, enabled);
     if (enabled) {
       const granted = await requestNotificationPermission();
@@ -793,6 +803,15 @@ export default function SettingsScreen() {
           >
             <Text style={{ color: theme.colors.accent, fontSize: theme.font.sm, fontFamily: theme.fonts.display.bold }}>
               See who owes what — Balances
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => router.push('/households')}
+            style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}
+          >
+            <Text style={{ color: theme.colors.accent, fontSize: theme.font.sm, fontFamily: theme.fonts.display.bold }}>
+              Switch or create household
             </Text>
           </Pressable>
 

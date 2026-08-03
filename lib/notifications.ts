@@ -7,7 +7,7 @@ import {
   getLastBudgetAlertDate,
   setLastBudgetAlertDate,
 } from './secureStorage';
-import { getReceiptsByMonth } from './database';
+import { getCurrentHouseholdId, getReceiptsByMonth } from './database';
 import { getHouseholdMemberPushTokens, getPushTokensForUids } from './cloudSync';
 
 Notifications.setNotificationHandler({
@@ -156,15 +156,17 @@ function computeBudgetStatusSummary(
  * spam the user.
  */
 export async function checkBudgetsAndNotify(): Promise<void> {
+  const householdId = getCurrentHouseholdId();
+  if (!householdId) return;
   const [alertsEnabled, permissionGranted, lastAlertDate] = await Promise.all([
-    getBudgetAlertsEnabled(),
+    getBudgetAlertsEnabled(householdId),
     getNotificationPermissionGranted(),
     getLastBudgetAlertDate(),
   ]);
   if (!alertsEnabled || !permissionGranted) return;
   if (lastAlertDate === todayYmd()) return;
 
-  const budgets = await getCategoryBudgets();
+  const budgets = await getCategoryBudgets(householdId);
   const now = new Date();
   const receipts = await getReceiptsByMonth(now.getFullYear(), now.getMonth() + 1);
   const summary = computeBudgetStatusSummary(receipts, budgets);
@@ -193,9 +195,9 @@ export async function notifyHouseholdOfBudgetStatus(args: {
   monthReceipts: Receipt[];
 }): Promise<void> {
   if (!args.householdId) return;
-  const alertsEnabled = await getBudgetAlertsEnabled();
+  const alertsEnabled = await getBudgetAlertsEnabled(args.householdId);
   if (!alertsEnabled) return;
-  const budgets = await getCategoryBudgets();
+  const budgets = await getCategoryBudgets(args.householdId);
   const summary = computeBudgetStatusSummary(args.monthReceipts, budgets);
   if (!summary) return;
   const tokens = await getHouseholdMemberPushTokens(args.householdId, args.selfUid);

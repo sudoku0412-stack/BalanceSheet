@@ -316,16 +316,16 @@ export function subscribeToHouseholdReceipts(
             if (change.type === 'removed') {
               // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
               const { deleteReceiptLocally } = require('./database') as {
-                deleteReceiptLocally: (id: string, uid: string) => Promise<void>;
+                deleteReceiptLocally: (id: string, uid: string, householdId: string) => Promise<void>;
               };
-              await deleteReceiptLocally(change.doc.id, uid);
+              await deleteReceiptLocally(change.doc.id, uid, householdId);
             } else {
               const data = change.doc.data() as CloudReceipt;
               // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
               const { upsertReceiptFromCloud } = require('./database') as {
-                upsertReceiptFromCloud: (cloud: CloudReceipt, uid: string) => Promise<void>;
+                upsertReceiptFromCloud: (cloud: CloudReceipt, uid: string, householdId: string) => Promise<void>;
               };
-              await upsertReceiptFromCloud(data, uid);
+              await upsertReceiptFromCloud(data, uid, householdId);
             }
           } catch (e) {
             // eslint-disable-next-line no-console
@@ -609,7 +609,7 @@ export function subscribeToHouseholdSettlements(
             const data = change.doc.data();
             // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
             const { upsertSettlementFromCloud } = require('./database') as {
-              upsertSettlementFromCloud: (cloud: Settlement, uid: string) => Promise<void>;
+              upsertSettlementFromCloud: (cloud: Settlement, uid: string, householdId: string) => Promise<void>;
             };
             await upsertSettlementFromCloud(
               {
@@ -620,6 +620,7 @@ export function subscribeToHouseholdSettlements(
                 createdAt: data.createdAt as string,
               },
               uid,
+              householdId,
             );
           } catch (e) {
             // eslint-disable-next-line no-console
@@ -690,7 +691,7 @@ export function subscribeToHouseholdBudgets(
         const budgets = snapshot.data()?.budgets as BudgetsSnapshot | undefined;
         if (!budgets) return;
         try {
-          await applyBudgetsSnapshot(budgets);
+          await applyBudgetsSnapshot(householdId, budgets);
         } catch (e) {
           // eslint-disable-next-line no-console
           console.warn('[cloudSync] applying household budgets failed:', (e as Error)?.message);
@@ -824,6 +825,181 @@ export async function getHouseholdMembers(args: {
   }
 }
 
+// ─── multi-household membership ───────────────────────────────────────────
+//
+// `users/{uid}.householdId` now means "currently ACTIVE household," not
+// "the user's only household." The actual set of households a user
+// belongs to lives in `users/{uid}/memberships/{hid}` — a join table,
+// self-write only (see firestore.rules). Existing single-household
+// users are transparently promoted to "member of 1 household" the
+// first time they open an app build that calls
+// ensureMembershipForCurrentHousehold (from AuthContext, right after
+// ensureHouseholdForUser resolves). No batch migration, no forced
+// re-login — every write here is additive and idempotent.
+
+export type HouseholdMembership = {
+  householdId: string;
+  name: string | null;
+  role: 'owner' | 'member';
+  memberCount: number;
+  isDefault: boolean;
+};
+
+/** Idempotent: creates `users/{uid}/memberships/{hid}` if it doesn't
+ *  already exist, looking up the household doc to determine owner vs.
+ *  member. Called on every sign-in for the user's currently
+ *  bootstrapped household — safe to call repeatedly. This is what
+ *  transparently promotes every pre-existing single-household user to
+ *  "member of 1 household" the first time they open an updated build. */
+export async function ensureMembershipForCurrentHousehold(
+  uid: string,
+  householdId: string,
+): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return;
+  try {
+    const db = firestore();
+    const ref = db.collection('users').doc(uid).collection('memberships').doc(householdId);
+    const snap = await ref.get();
+    if (snap.exists) return;
+    const householdSnap = await db.collection('households').doc(householdId).get();
+    const isOwner = (householdSnap.data()?.ownerUid as string | undefined) === uid;
+    await ref.set({
+      householdId,
+      role: isOwner ? 'owner' : 'member',
+      joinedAt: firestore.FieldValue.serverTimestamp(),
+      isDefault: true,
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] ensureMembershipForCurrentHousehold failed:', (e as Error)?.message);
+  }
+}
+
+/** Persists the user's currently-ACTIVE household id — a plain merge
+ *  write onto `users/{uid}.householdId`, used by the switcher
+ *  (AuthContext's setActiveHousehold) when a user manually switches
+ *  between households they already belong to. Best-effort: local
+ *  switching (lib/database.ts's currentHouseholdId) already happened
+ *  by the time this is called, so a failure here just means the NEXT
+ *  sign-in re-resolves to the old active household until retried. */
+export async function persistActiveHouseholdId(uid: string, householdId: string): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore) return;
+  try {
+    await firestore()
+      .collection('users')
+      .doc(uid)
+      .set({ householdId, updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] persistActiveHouseholdId failed:', (e as Error)?.message);
+  }
+}
+
+/** Every household the user belongs to, joined with each household
+ *  doc's name/memberCount for the Households switcher screen. */
+export async function getUserMemberships(uid: string): Promise<HouseholdMembership[]> {
+  const firestore = loadFirestore();
+  if (!firestore) return [];
+  try {
+    const db = firestore();
+    const snap = await db.collection('users').doc(uid).collection('memberships').get();
+    const out: HouseholdMembership[] = [];
+    for (const doc of snap.docs) {
+      const d = doc.data();
+      const hid = (d.householdId as string) ?? doc.id;
+      try {
+        const hSnap = await db.collection('households').doc(hid).get();
+        const hData = hSnap.data() ?? {};
+        out.push({
+          householdId: hid,
+          name: (hData.name as string | null) ?? null,
+          role: (d.role as 'owner' | 'member') ?? 'member',
+          memberCount: (hData.memberCount as number) ?? 1,
+          isDefault: !!d.isDefault,
+        });
+      } catch {
+        out.push({
+          householdId: hid,
+          name: null,
+          role: (d.role as 'owner' | 'member') ?? 'member',
+          memberCount: 1,
+          isDefault: !!d.isDefault,
+        });
+      }
+    }
+    return out;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] getUserMemberships failed:', (e as Error)?.message);
+    return [];
+  }
+}
+
+/** Creates a brand-new, empty household owned by `uid` and adds the
+ *  matching membership doc. Does NOT touch any of the user's existing
+ *  memberships or their active householdId — the caller decides
+ *  whether/when to switch to it (see AuthContext's setActiveHousehold). */
+export async function createHousehold(args: {
+  uid: string;
+  name: string;
+}): Promise<{ ok: true; householdId: string } | { ok: false; reason: string }> {
+  const firestore = loadFirestore();
+  if (!firestore) return { ok: false, reason: 'cloud module not loaded' };
+  const name = args.name.trim();
+  if (!name) return { ok: false, reason: 'name required' };
+  try {
+    const db = firestore();
+    const hidRef = db.collection('households').doc();
+    const hid = hidRef.id;
+    const now = firestore.FieldValue.serverTimestamp();
+    await hidRef.set({
+      ownerUid: args.uid,
+      memberUids: [args.uid],
+      memberCount: 1,
+      name,
+      createdAt: now,
+      updatedAt: now,
+    });
+    await db.collection('users').doc(args.uid).collection('memberships').doc(hid).set({
+      householdId: hid,
+      role: 'owner',
+      joinedAt: now,
+      isDefault: false,
+    });
+    return { ok: true, householdId: hid };
+  } catch (e) {
+    return { ok: false, reason: (e as Error)?.message ?? 'unknown' };
+  }
+}
+
+/** Owner-only rename — used both for a brand-new household and for
+ *  naming a legacy (pre-multi-household) household that was never
+ *  given one. */
+export async function renameHousehold(args: {
+  householdId: string;
+  name: string;
+  uid: string;
+}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const firestore = loadFirestore();
+  if (!firestore) return { ok: false, reason: 'cloud module not loaded' };
+  const name = args.name.trim();
+  if (!name) return { ok: false, reason: 'name required' };
+  try {
+    await firestore()
+      .collection('households')
+      .doc(args.householdId)
+      .set(
+        { name, updatedAt: firestore.FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: (e as Error)?.message ?? 'unknown' };
+  }
+}
+
 /**
  * Send an invite for the given email to join the current user's
  * household. Writes `invites/{lowercased-email}`; the invitee picks it
@@ -922,14 +1098,15 @@ export async function getPendingInviteForEmail(
 }
 
 /**
- * Accept a pending invite. Moves the current user into the new
- * household: updates their users/{uid} doc, appends their uid to the
- * new household's memberUids, then deletes the invite. The user's
- * EXISTING local receipts are NOT moved to the new household — leaving
- * them in the user's original solo household, accessible if they
- * later "Leave household" back to it. For a future iteration, we'll
- * add an option to merge solo-household receipts into the new shared
- * one at accept time.
+ * Accept a pending invite. Adds a new membership for the current user
+ * (additive — existing memberships are untouched) and switches their
+ * active household to the new one (matches the pre-multi-household
+ * UX of an accept immediately putting you in the new household). The
+ * user's EXISTING local receipts are NOT moved to the new household —
+ * they stay attached to whichever household they were created under,
+ * still visible by switching back. For a future iteration, we'll add
+ * an option to merge solo-household receipts into the new shared one
+ * at accept time.
  */
 export async function acceptInvite(args: {
   invite: PendingInvite;
@@ -943,6 +1120,7 @@ export async function acceptInvite(args: {
     const userRef = db.collection('users').doc(args.uid);
     const householdRef = db.collection('households').doc(newHid);
     const inviteRef = db.collection('invites').doc(args.invite.email);
+    const membershipRef = userRef.collection('memberships').doc(newHid);
 
     // Transaction so an interrupted accept doesn't leave the user
     // half-joined. memberUids uses arrayUnion to be idempotent if the
@@ -965,11 +1143,17 @@ export async function acceptInvite(args: {
         },
         { merge: true },
       );
+      tx.set(membershipRef, {
+        householdId: newHid,
+        role: 'member',
+        joinedAt: firestore.FieldValue.serverTimestamp(),
+        isDefault: false,
+      });
       tx.delete(inviteRef);
     });
     if (args.invite.budgets) {
       try {
-        await applyBudgetsSnapshot(args.invite.budgets);
+        await applyBudgetsSnapshot(newHid, args.invite.budgets);
       } catch {
         // Best-effort — joining the household already succeeded; a
         // failed budget copy just means the new member keeps whatever
@@ -1156,6 +1340,7 @@ export async function acceptPhoneInviteIfAny(
     const householdId = d.householdId as string;
     const householdRef = db.collection('households').doc(householdId);
     const userRef = db.collection('users').doc(uid);
+    const membershipRef = userRef.collection('memberships').doc(householdId);
     await db.runTransaction(async (tx) => {
       const householdSnap = await tx.get(householdRef);
       if (!householdSnap.exists) throw new Error('household no longer exists');
@@ -1165,12 +1350,18 @@ export async function acceptPhoneInviteIfAny(
         updatedAt: firestore.FieldValue.serverTimestamp(),
       });
       tx.set(userRef, { householdId, updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
+      tx.set(membershipRef, {
+        householdId,
+        role: 'member',
+        joinedAt: firestore.FieldValue.serverTimestamp(),
+        isDefault: false,
+      });
       tx.delete(inviteRef);
     });
     const budgets = (d.budgets as BudgetsSnapshot | null) ?? null;
     if (budgets) {
       try {
-        await applyBudgetsSnapshot(budgets);
+        await applyBudgetsSnapshot(householdId, budgets);
       } catch {
         // Best-effort — joining already succeeded.
       }
@@ -1198,42 +1389,68 @@ export async function declineInvite(args: {
 }
 
 /**
- * Remove the current user from their household. If the household has
- * other members, they keep the receipts; the leaver ends up in a fresh
- * solo household and continues using the app normally.
+ * Remove the current user from ONE specific household (explicit
+ * target — the user may belong to several now, so there's no longer a
+ * single implicit "current" one to leave). If other members remain in
+ * it, they keep the receipts; this user's membership doc is deleted.
  *
- * If the leaver is the LAST member, the household is left intact (no
- * data loss) but orphaned — no security rule allows anyone else to
- * read it. A future iteration could delete it explicitly.
+ * Returns which household should become active next:
+ *   - another of the user's remaining memberships (their `isDefault`
+ *     one if they have one, else whichever else remains), or
+ *   - a freshly-fabricated solo household, if this was their last
+ *     membership — identical fallback to the old single-household
+ *     behavior, just now only triggered when there's truly nothing
+ *     left to fall back to.
+ *
+ * The caller (AuthContext's setActiveHousehold) is responsible for
+ * actually switching local/active state to the returned household id
+ * — this function only mutates Firestore.
+ *
+ * If the leaver was the household's LAST member, the household doc is
+ * left intact (no data loss) but orphaned — no security rule allows
+ * anyone else to read it. A future iteration could delete it explicitly.
  */
-export async function leaveCurrentHousehold(args: {
+export async function leaveHousehold(args: {
   uid: string;
-  currentHouseholdId: string;
+  householdId: string;
   email: string | null;
   displayName: string | null;
-}): Promise<{ ok: true; newSoloHouseholdId: string } | { ok: false; reason: string }> {
+}): Promise<{ ok: true; nextActiveHouseholdId: string } | { ok: false; reason: string }> {
   const firestore = loadFirestore();
   if (!firestore) return { ok: false, reason: 'cloud module not loaded' };
   try {
     const db = firestore();
-    const oldRef = db.collection('households').doc(args.currentHouseholdId);
+    const oldRef = db.collection('households').doc(args.householdId);
     const userRef = db.collection('users').doc(args.uid);
+    const membershipRef = userRef.collection('memberships').doc(args.householdId);
 
-    // Step 1 — remove uid from the old household and decrement count.
+    // Step 1 — remove uid from the old household, decrement count, and
+    // delete this user's membership doc for it.
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(oldRef);
-      if (!snap.exists) return;
-      tx.update(oldRef, {
-        memberUids: firestore.FieldValue.arrayRemove(args.uid),
-        memberCount: firestore.FieldValue.increment(-1),
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      });
+      if (snap.exists) {
+        tx.update(oldRef, {
+          memberUids: firestore.FieldValue.arrayRemove(args.uid),
+          memberCount: firestore.FieldValue.increment(-1),
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+        });
+      }
+      tx.delete(membershipRef);
     });
 
-    // Step 2 — create a fresh solo household for this user, mirroring
-    // what ensureHouseholdForUser does on first sign-in. We can't
-    // reuse that function because it short-circuits if the user doc
-    // already has a householdId.
+    // Step 2 — do any other memberships remain? Prefer the one flagged
+    // isDefault, else whichever else is left.
+    const remaining = await getUserMemberships(args.uid);
+    const stillOther = remaining.filter((m) => m.householdId !== args.householdId);
+    if (stillOther.length > 0) {
+      const next = stillOther.find((m) => m.isDefault) ?? stillOther[0];
+      return { ok: true, nextActiveHouseholdId: next.householdId };
+    }
+
+    // Step 3 — last membership gone: fabricate a fresh solo household,
+    // mirroring what ensureHouseholdForUser does on first sign-in (that
+    // function short-circuits if the user doc already has a
+    // householdId, so it can't be reused here).
     const newRef = db.collection('households').doc();
     const newHid = newRef.id;
     const now = firestore.FieldValue.serverTimestamp();
@@ -1248,15 +1465,20 @@ export async function leaveCurrentHousehold(args: {
     batch.set(
       userRef,
       {
-        householdId: newHid,
         email: args.email,
         displayName: args.displayName,
         updatedAt: now,
       },
       { merge: true },
     );
+    batch.set(userRef.collection('memberships').doc(newHid), {
+      householdId: newHid,
+      role: 'owner',
+      joinedAt: now,
+      isDefault: true,
+    });
     await batch.commit();
-    return { ok: true, newSoloHouseholdId: newHid };
+    return { ok: true, nextActiveHouseholdId: newHid };
   } catch (e) {
     return { ok: false, reason: (e as Error)?.message ?? 'unknown' };
   }

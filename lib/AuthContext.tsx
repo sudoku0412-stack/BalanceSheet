@@ -12,6 +12,7 @@ import {
 } from './auth';
 import { Profile, getProfile, deleteProfile, saveProfile } from './profile';
 import {
+  bootstrapHouseholdId,
   deleteAllReceipts,
   getAllReceipts,
   getCurrentHouseholdId,
@@ -24,14 +25,23 @@ import {
   declineInvite,
   deleteCloudUserData,
   ensureHouseholdForUser,
+  ensureMembershipForCurrentHousehold,
   getPendingInviteForEmail,
+  getUserMemberships,
   migrateLocalReceiptsToCloud,
+  persistActiveHouseholdId,
   subscribeToHouseholdBudgets,
   subscribeToHouseholdReceipts,
   subscribeToHouseholdSettlements,
   syncPushTokenToCloud,
+  type HouseholdMembership,
 } from './cloudSync';
-import { getOnboardingSeen, setOnboardingSeen as persistOnboardingSeen, resetAllSecureStorage } from './secureStorage';
+import {
+  getOnboardingSeen,
+  migrateLegacyBudgetsToHousehold,
+  setOnboardingSeen as persistOnboardingSeen,
+  resetAllSecureStorage,
+} from './secureStorage';
 import { processRecurringReceipts } from './recurring';
 import { registerForPushNotificationsAsync } from './notifications';
 
@@ -50,6 +60,20 @@ type AuthState = {
   refreshUser: () => void;
   signOut: () => Promise<void>;
   deleteAccount: () => Promise<void>;
+  /** Every household the signed-in user belongs to (multi-household
+   *  support). Refreshed after sign-in and after any switch/create/leave. */
+  memberships: HouseholdMembership[];
+  /** Switches the active household: tears down the old Firestore
+   *  listeners, backfills local rows for the new household, persists
+   *  the choice to `users/{uid}.householdId`, and resubscribes. Blocked
+   *  by the caller (Households screen) while `editInProgress` is true. */
+  setActiveHousehold: (householdId: string) => Promise<void>;
+  refreshMemberships: () => Promise<void>;
+  /** Set by scan/edit screens while an unsaved receipt is in progress,
+   *  so the Households switcher can block switching mid-edit — saving
+   *  under the wrong household would otherwise be silently possible. */
+  editInProgress: boolean;
+  setEditInProgress: (inProgress: boolean) => void;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -60,6 +84,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfileState] = useState<Profile | null>(null);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [onboardingSeen, setOnboardingSeenState] = useState(false);
+  const [memberships, setMemberships] = useState<HouseholdMembership[]>([]);
+  const [editInProgress, setEditInProgress] = useState(false);
 
   useEffect(() => {
     const webClientId =
@@ -142,6 +168,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const refreshMemberships = useCallback(async (uid?: string) => {
+    const targetUid = uid ?? user?.uid;
+    if (!targetUid) {
+      setMemberships([]);
+      return;
+    }
+    const list = await getUserMemberships(targetUid);
+    setMemberships(list);
+  }, [user?.uid]);
+
+  /** The single place that switches "the active household," used by
+   *  sign-in bootstrap, invite/phone-invite accept, and the Households
+   *  screen's manual switcher. Tears down old listeners, backfills this
+   *  user's rows for the new household locally, persists the choice to
+   *  Firestore, then resubscribes.
+   *
+   *  Takes an explicit uid (rather than reading `user` state) because
+   *  it's called from the sign-in effect in the SAME tick as
+   *  `setUser(u)` — React state hasn't re-rendered yet at that point,
+   *  so a closure over `user?.uid` would still see the PREVIOUS user
+   *  (null, on a fresh sign-in) and silently no-op the very first
+   *  bootstrap. */
+  const runHouseholdSwitch = useCallback(
+    async (uid: string, householdId: string) => {
+      tearDownReceiptsListener();
+      await bootstrapHouseholdId(uid, householdId);
+      await Promise.all([
+        persistActiveHouseholdId(uid, householdId),
+        migrateLegacyBudgetsToHousehold(householdId),
+        ensureMembershipForCurrentHousehold(uid, householdId),
+      ]);
+      const unsubReceipts = subscribeToHouseholdReceipts(householdId, uid);
+      if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
+      const unsubSettlements = subscribeToHouseholdSettlements(householdId, uid);
+      if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
+      const unsubBudgets = subscribeToHouseholdBudgets(householdId);
+      if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
+      await refreshMemberships(uid);
+    },
+    [tearDownReceiptsListener, refreshMemberships],
+  );
+
+  /** Public, state-aware wrapper for the Households screen and other
+   *  consumers of useAuth() that only have the CURRENT signed-in user
+   *  in scope (not a fresh uid from an auth-state callback). */
+  const setActiveHousehold = useCallback(
+    async (householdId: string) => {
+      if (!user?.uid) return;
+      await runHouseholdSwitch(user.uid, householdId);
+    },
+    [user?.uid, runHouseholdSwitch],
+  );
+
   // Guards the pending-invite check below so it fires once per signed-in
   // session rather than on every token-refresh echo of the auth listener
   // (onAuthStateChanged can re-fire for the same uid many times).
@@ -182,20 +261,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   try {
                     const res = await acceptInvite({ invite, uid: u.uid });
                     if (!res.ok) return;
-                    setCurrentHouseholdId(res.newHouseholdId);
-                    tearDownReceiptsListener();
-                    const unsubReceipts = subscribeToHouseholdReceipts(
-                      res.newHouseholdId,
-                      u.uid,
-                    );
-                    if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
-                    const unsubSettlements = subscribeToHouseholdSettlements(
-                      res.newHouseholdId,
-                      u.uid,
-                    );
-                    if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
-                    const unsubBudgets = subscribeToHouseholdBudgets(res.newHouseholdId);
-                    if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
+                    await runHouseholdSwitch(u.uid, res.newHouseholdId);
                     Alert.alert('Joined household', `You're now part of ${inviterLabel}'s household.`);
                   } catch {
                     // Cloud sync is optional-by-design throughout this
@@ -211,7 +277,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // No pending invite / lookup failed — skip silently.
         });
     },
-    [tearDownReceiptsListener],
+    [runHouseholdSwitch],
   );
 
   // A signed-in user's verified phone number may have been invited to a
@@ -232,20 +298,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!p?.phone || !p.phoneVerified) return;
         const result = await acceptPhoneInviteIfAny(u.uid, p.phone);
         if (!result.joined || !result.householdId) return;
-        setCurrentHouseholdId(result.householdId);
-        tearDownReceiptsListener();
-        const unsubReceipts = subscribeToHouseholdReceipts(result.householdId, u.uid);
-        if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
-        const unsubSettlements = subscribeToHouseholdSettlements(result.householdId, u.uid);
-        if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
-        const unsubBudgets = subscribeToHouseholdBudgets(result.householdId);
-        if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
+        await runHouseholdSwitch(u.uid, result.householdId);
       } catch {
         // Best-effort — a failed check just leaves the invite pending
         // for the next sign-in.
       }
     },
-    [tearDownReceiptsListener],
+    [runHouseholdSwitch],
   );
 
   useEffect(() => {
@@ -279,19 +338,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: u.email,
           displayName: u.displayName,
         });
-        setCurrentHouseholdId(hid);
         if (hid) {
+          await runHouseholdSwitch(u.uid, hid);
           void migrateLocalReceiptsToCloud({
             uid: u.uid,
             householdId: hid,
             loadAllReceipts: getAllReceipts,
           });
-          const unsubReceipts = subscribeToHouseholdReceipts(hid, u.uid);
-          if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
-          const unsubSettlements = subscribeToHouseholdSettlements(hid, u.uid);
-          if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
-          const unsubBudgets = subscribeToHouseholdBudgets(hid);
-          if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
 
           // Refresh this device's push token on every sign-in — only
           // does anything if notification permission is ALREADY
@@ -308,15 +361,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // per session.
           checkPendingInvite(u);
           void checkPendingPhoneInvite(u);
+        } else {
+          setCurrentHouseholdId(null);
+          setMemberships([]);
         }
       } else {
         setCurrentHouseholdId(null);
+        setMemberships([]);
         invitePromptedForUidRef.current = null;
         phoneInviteCheckedForUidRef.current = null;
       }
     });
     return unsub;
-  }, [checkPendingInvite, checkPendingPhoneInvite, tearDownReceiptsListener]);
+  }, [checkPendingInvite, checkPendingPhoneInvite, tearDownReceiptsListener, runHouseholdSwitch]);
 
   const refreshProfile = useCallback(async () => {
     if (!user) {
@@ -390,8 +447,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await deleteCurrentAccount();
         // onAuthStateChanged will fire with null, clearing user + profile.
       },
+      memberships,
+      setActiveHousehold,
+      refreshMemberships: () => refreshMemberships(),
+      editInProgress,
+      setEditInProgress,
     }),
-    [initializing, user, profile, profileLoaded, onboardingSeen, refreshProfile],
+    [
+      initializing,
+      user,
+      profile,
+      profileLoaded,
+      onboardingSeen,
+      refreshProfile,
+      memberships,
+      setActiveHousehold,
+      refreshMemberships,
+      editInProgress,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

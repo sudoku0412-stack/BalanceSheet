@@ -101,6 +101,13 @@ export interface Receipt {
    *  pseudo-category budget in Settings/Home regardless of the
    *  receipt's own category. */
   isRecurringOccurrence?: boolean;
+  /** Which household this receipt belongs to on THIS device's local
+   *  SQLite store (multi-household support). Populated when read out
+   *  of the DB (`rowToReceipt`); not part of the Firestore payload —
+   *  the household is already the partition there
+   *  (`households/{hid}/receipts/{rid}`), so writing it again into the
+   *  doc body would be redundant. */
+  householdId?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -118,6 +125,9 @@ export interface Settlement {
   toUid: string;
   amountUsd: number;
   createdAt: string;
+  /** Same local-only, not-serialized-to-Firestore purpose as
+   *  `Receipt.householdId` above. */
+  householdId?: string;
 }
 
 export interface ParsedReceipt {

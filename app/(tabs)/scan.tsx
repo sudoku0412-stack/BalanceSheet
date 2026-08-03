@@ -745,8 +745,18 @@ export default function ScanScreen() {
   const [rawText, setRawText] = useState('');
 
   // ─── Per-item "Split with" (Review Receipt + Add Expense) ──────────────
-  const { user, profile } = useAuth();
+  const { user, profile, setEditInProgress } = useAuth();
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
+
+  // Gates the household switcher (app/households.tsx) while this screen
+  // has an unsaved receipt in progress — switching mid-edit would
+  // otherwise let a save silently land under the wrong household. Only
+  // true during 'review' (parsed/manual-entry data exists); 'idle' and
+  // 'processing' have nothing unsaved yet.
+  useEffect(() => {
+    setEditInProgress(scanState === 'review');
+    return () => setEditInProgress(false);
+  }, [scanState, setEditInProgress]);
 
   // User's selected display currency. Amount/subtotal/tax/item fields
   // on this screen are entered in THIS currency, not USD — converted

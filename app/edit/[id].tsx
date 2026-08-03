@@ -104,7 +104,17 @@ export default function EditReceiptScreenWrapped() {
 
 function EditReceiptScreen() {
   const theme = useTheme();
-  const { user, profile } = useAuth();
+  const { user, profile, setEditInProgress } = useAuth();
+
+  // Gates the household switcher (app/households.tsx) for the whole
+  // time this screen is open — unlike the Scan tab (always mounted,
+  // only sometimes mid-entry), this route only exists while editing one
+  // specific receipt, so mount/unmount is exactly "unsaved edit in
+  // progress."
+  useEffect(() => {
+    setEditInProgress(true);
+    return () => setEditInProgress(false);
+  }, [setEditInProgress]);
   const styles = useStyles((t) => ({
     screen: {
       flex: 1,

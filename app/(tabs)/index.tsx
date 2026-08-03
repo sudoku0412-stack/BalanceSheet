@@ -3,7 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { addMonths, format, isSameMonth, isToday, isYesterday, subMonths } from 'date-fns';
-import { getReceiptsByMonth } from '../../lib/database';
+import { getCurrentHouseholdId, getReceiptsByMonth } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 import { checkBudgetsAndNotify } from '../../lib/notifications';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
@@ -266,10 +266,11 @@ export default function DashboardScreen() {
 
   const load = useCallback(async () => {
     const prevMonth = subMonths(viewedMonth, 1);
+    const householdId = getCurrentHouseholdId();
     const [data, prevData, budgetMap, currencyCode] = await Promise.all([
       getReceiptsByMonth(viewedMonth.getFullYear(), viewedMonth.getMonth() + 1),
       getReceiptsByMonth(prevMonth.getFullYear(), prevMonth.getMonth() + 1),
-      getCategoryBudgets(),
+      householdId ? getCategoryBudgets(householdId) : Promise.resolve({}),
       getCurrency(),
     ]);
     setReceipts(data);

@@ -15,6 +15,11 @@ const Keys = {
   budgetAlertsEnabled: 'bs.budgets.alertsEnabled',
   currency: 'bs.currency',
   lastBudgetAlertDate: 'bs.budgets.lastAlertDate',
+  // Multi-household support: one-time per-household marker so the
+  // legacy flat budgets key (below) gets copied into its
+  // household-namespaced key exactly once. Mirrors cloudMigrationDone's
+  // `:${uid}` suffix pattern.
+  legacyBudgetsMigrated: 'bs.budgets.legacyMigrated',
 } as const;
 
 export async function getOnboardingSeen(): Promise<boolean> {
@@ -72,8 +77,13 @@ export async function setAiClassifyEnabled(enabled: boolean): Promise<void> {
   }
 }
 
-export async function getCategoryBudgets(): Promise<Record<string, number>> {
-  const v = await SecureStore.getItemAsync(Keys.categoryBudgets);
+/**
+ * Budgets are namespaced per household (multi-household support) —
+ * each household has its own category limits/alerts toggle, mirroring
+ * the `:${uid}` suffix pattern already used for `cloudMigrationDone`.
+ */
+export async function getCategoryBudgets(householdId: string): Promise<Record<string, number>> {
+  const v = await SecureStore.getItemAsync(`${Keys.categoryBudgets}:${householdId}`);
   if (!v) return {};
   try {
     return JSON.parse(v) as Record<string, number>;
@@ -82,19 +92,23 @@ export async function getCategoryBudgets(): Promise<Record<string, number>> {
   }
 }
 
-export async function setCategoryBudget(category: string, amount: number): Promise<void> {
-  const current = await getCategoryBudgets();
+export async function setCategoryBudget(
+  householdId: string,
+  category: string,
+  amount: number,
+): Promise<void> {
+  const current = await getCategoryBudgets(householdId);
   const next = { ...current, [category]: amount };
-  await SecureStore.setItemAsync(Keys.categoryBudgets, JSON.stringify(next));
+  await SecureStore.setItemAsync(`${Keys.categoryBudgets}:${householdId}`, JSON.stringify(next));
 }
 
-export async function getBudgetAlertsEnabled(): Promise<boolean> {
-  const v = await SecureStore.getItemAsync(Keys.budgetAlertsEnabled);
+export async function getBudgetAlertsEnabled(householdId: string): Promise<boolean> {
+  const v = await SecureStore.getItemAsync(`${Keys.budgetAlertsEnabled}:${householdId}`);
   return v !== '0'; // default on
 }
 
-export async function setBudgetAlertsEnabled(enabled: boolean): Promise<void> {
-  await SecureStore.setItemAsync(Keys.budgetAlertsEnabled, enabled ? '1' : '0');
+export async function setBudgetAlertsEnabled(householdId: string, enabled: boolean): Promise<void> {
+  await SecureStore.setItemAsync(`${Keys.budgetAlertsEnabled}:${householdId}`, enabled ? '1' : '0');
 }
 
 export type BudgetsSnapshot = {
@@ -102,26 +116,53 @@ export type BudgetsSnapshot = {
   alertsEnabled: boolean;
 };
 
-/** This device's current budget settings, stamped onto an invite doc
- *  so a newly-added household member starts with the SAME budget
- *  alert amounts as whoever added them (see lib/cloudSync.ts). */
-export async function getBudgetsSnapshot(): Promise<BudgetsSnapshot> {
+/** This device's current budget settings for the given household,
+ *  stamped onto an invite doc so a newly-added household member starts
+ *  with the SAME budget alert amounts as whoever added them (see
+ *  lib/cloudSync.ts). */
+export async function getBudgetsSnapshot(householdId: string): Promise<BudgetsSnapshot> {
   const [byCategory, alertsEnabled] = await Promise.all([
-    getCategoryBudgets(),
-    getBudgetAlertsEnabled(),
+    getCategoryBudgets(householdId),
+    getBudgetAlertsEnabled(householdId),
   ]);
   return { byCategory, alertsEnabled };
 }
 
-/** Overwrites this device's budgets with a snapshot pulled from an
- *  invite — called once, right after accepting, so both members start
- *  in sync. Only ever runs on an empty/default local config (a brand
- *  new member), so it can't clobber budgets someone already set. */
-export async function applyBudgetsSnapshot(snapshot: BudgetsSnapshot): Promise<void> {
+/** Overwrites this device's budgets for the given household with a
+ *  snapshot pulled from an invite or a cloud sync — called right after
+ *  accepting an invite (so both members start in sync) and by
+ *  subscribeToHouseholdBudgets on every remote change. */
+export async function applyBudgetsSnapshot(
+  householdId: string,
+  snapshot: BudgetsSnapshot,
+): Promise<void> {
   for (const [category, amount] of Object.entries(snapshot.byCategory)) {
-    await setCategoryBudget(category, amount);
+    await setCategoryBudget(householdId, category, amount);
   }
-  await setBudgetAlertsEnabled(snapshot.alertsEnabled);
+  await setBudgetAlertsEnabled(householdId, snapshot.alertsEnabled);
+}
+
+/**
+ * One-time copy of the legacy flat (pre-multi-household) budgets key
+ * into `householdId`'s namespaced key. Every pre-existing user has
+ * exactly one household, so this 1:1 copy is always unambiguous. Guarded
+ * by a per-household marker so it never re-runs (and never clobbers
+ * budgets someone has since changed in the new namespaced key). Safe to
+ * call on every sign-in.
+ */
+export async function migrateLegacyBudgetsToHousehold(householdId: string): Promise<void> {
+  const marker = `${Keys.legacyBudgetsMigrated}:${householdId}`;
+  const already = await SecureStore.getItemAsync(marker);
+  if (already === '1') return;
+  const legacyBudgets = await SecureStore.getItemAsync(Keys.categoryBudgets);
+  const legacyAlerts = await SecureStore.getItemAsync(Keys.budgetAlertsEnabled);
+  if (legacyBudgets) {
+    await SecureStore.setItemAsync(`${Keys.categoryBudgets}:${householdId}`, legacyBudgets);
+  }
+  if (legacyAlerts) {
+    await SecureStore.setItemAsync(`${Keys.budgetAlertsEnabled}:${householdId}`, legacyAlerts);
+  }
+  await SecureStore.setItemAsync(marker, '1');
 }
 
 export async function getCurrency(): Promise<string | null> {

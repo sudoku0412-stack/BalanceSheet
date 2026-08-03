@@ -71,6 +71,53 @@ function requireUserId(op: string): string {
   return currentUserId;
 }
 
+function requireHouseholdId(op: string): string {
+  if (!currentHouseholdId) {
+    throw new Error(
+      `No active household (op: ${op}). Sign in / bootstrap a household before calling household-scoped database operations.`,
+    );
+  }
+  return currentHouseholdId;
+}
+
+/**
+ * Stamps any rows for this user that pre-date the household_id column
+ * (household_id IS NULL) with the given household id. Every
+ * pre-multi-household user only ever had one household, so this 1:1
+ * backfill is always correct. Idempotent — only touches NULL rows.
+ * Called once per household id, right after AuthContext resolves the
+ * active hid; safe to call on every launch.
+ */
+async function backfillHouseholdIdForRows(uid: string, hid: string): Promise<void> {
+  try {
+    await db.runAsync(
+      `UPDATE receipts SET household_id = ? WHERE household_id IS NULL AND user_id = ?`,
+      [hid, uid],
+    );
+    await db.runAsync(
+      `UPDATE settlements SET household_id = ? WHERE household_id IS NULL AND user_id = ?`,
+      [hid, uid],
+    );
+  } catch {
+    // Columns may not exist yet on a fresh install where init hasn't
+    // run — fine, there are no rows to backfill either.
+  }
+}
+
+/**
+ * Set the active household and backfill any of this user's pre-existing
+ * rows into it. Distinct from the raw setCurrentHouseholdId setter
+ * (still exported below for the cases — sign-out, listener rewiring —
+ * that don't want the backfill side effect) so callers that ARE
+ * switching to a real bootstrapped household get the migration for
+ * free. Safe/cheap to call every time: the backfill only touches NULL
+ * rows.
+ */
+export async function bootstrapHouseholdId(uid: string, hid: string): Promise<void> {
+  currentHouseholdId = hid;
+  await backfillHouseholdIdForRows(uid, hid);
+}
+
 async function backfillUnscopedRows(uid: string): Promise<void> {
   // Stamps any pre-migration rows (user_id IS NULL) with the current
   // user's uid. On a device that has only ever been used by one user,
@@ -193,6 +240,12 @@ export async function initDatabase(): Promise<void> {
     // an active recurring template. See Receipt['isRecurringOccurrence']
     // in types/index.ts.
     `ALTER TABLE receipts             ADD COLUMN is_recurring_occurrence INTEGER`,
+    // Multi-household support. Nullable on existing rows; backfilled
+    // with the current active household id by bootstrapHouseholdId()
+    // on the first sign-in after this schema migration — see
+    // backfillHouseholdIdForRows above.
+    `ALTER TABLE receipts             ADD COLUMN household_id     TEXT`,
+    `ALTER TABLE settlements          ADD COLUMN household_id     TEXT`,
   ]) {
     try {
       await db.execAsync(sql);
@@ -209,6 +262,10 @@ export async function initDatabase(): Promise<void> {
     await db.execAsync(
       `CREATE INDEX IF NOT EXISTS idx_receipts_user      ON receipts(user_id);
        CREATE INDEX IF NOT EXISTS idx_receipts_user_date ON receipts(user_id, date);
+       CREATE INDEX IF NOT EXISTS idx_receipts_user_household_date
+         ON receipts(user_id, household_id, date);
+       CREATE INDEX IF NOT EXISTS idx_settlements_user_household
+         ON settlements(user_id, household_id);
        CREATE INDEX IF NOT EXISTS idx_corrections_user_store
          ON receipt_corrections(user_id, store_name);`,
     );
@@ -461,13 +518,14 @@ export async function replaceLineItems(
   items: import('../types').LineItem[],
 ): Promise<void> {
   const uid = requireUserId('replaceLineItems');
-  // Verify the receipt belongs to the current user before mutating
-  // its line items. If a stale receipt id leaks from a previous user's
-  // session (e.g. via React state that wasn't cleared), the lookup
-  // returns no row and we leave the data alone.
+  const hidCheck = currentHouseholdId;
+  // Verify the receipt belongs to the current user (and household)
+  // before mutating its line items. If a stale receipt id leaks from a
+  // previous user's session (e.g. via React state that wasn't
+  // cleared), the lookup returns no row and we leave the data alone.
   const ownedRow = await db.getFirstAsync<{ id: string }>(
-    `SELECT id FROM receipts WHERE id = ? AND user_id = ?`,
-    [receiptId, uid],
+    `SELECT id FROM receipts WHERE id = ? AND user_id = ?${householdFilterSql(hidCheck)}`,
+    hidCheck ? [receiptId, uid, hidCheck] : [receiptId, uid],
   );
   if (!ownedRow) return;
   const hid = currentHouseholdId;
@@ -574,8 +632,8 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
           split_json, recurring_json, original_currency, paid_by,
-          is_recurring_occurrence, created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          is_recurring_occurrence, created_at, updated_at, user_id, household_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         receipt.id,
         receipt.storeName,
@@ -597,6 +655,7 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
         receipt.createdAt,
         receipt.updatedAt,
         uid,
+        hid,
       ],
     );
 
@@ -635,7 +694,7 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
        SET store_name=?, date=?, total_amount=?, subtotal_amount=?, tax_amount=?,
            category=?, category_tags=?, notes=?, split_json=?, recurring_json=?,
            original_currency=?, paid_by=?, updated_at=?
-       WHERE id=? AND user_id=?`,
+       WHERE id=? AND user_id=? AND (household_id IS NULL OR household_id=? OR ? IS NULL)`,
       [
         receipt.storeName,
         receipt.date,
@@ -652,6 +711,8 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
         now,
         receipt.id,
         uid,
+        hid,
+        hid,
       ],
     );
 
@@ -751,26 +812,45 @@ function parseTags(raw: string | null, fallbackCategory: string): string[] {
 export async function deleteReceipt(id: string): Promise<void> {
   const uid = requireUserId('deleteReceipt');
   const hid = currentHouseholdId;
-  await db.runAsync(`DELETE FROM receipts WHERE id=? AND user_id=?`, [id, uid]);
+  await db.runAsync(
+    `DELETE FROM receipts WHERE id=? AND user_id=? AND (household_id IS NULL OR household_id=? OR ? IS NULL)`,
+    [id, uid, hid, hid],
+  );
   if (hid) {
     void syncReceiptDeletionToCloud(id, hid);
   }
 }
 
+/** Household filter fragment shared by every receipt/settlement read
+ *  query below. When `hid` is set (the normal case once a household is
+ *  bootstrapped), only rows in that household are visible — this is
+ *  the core multi-household isolation guarantee. When `hid` is null
+ *  (cloud sync unavailable on an old APK, or before bootstrap), the
+ *  filter is skipped entirely, preserving the pre-multi-household
+ *  "just show me my own rows" behavior. Rows that predate the
+ *  household_id column (household_id IS NULL) are also matched once a
+ *  real hid is active, since bootstrapHouseholdId's backfill may not
+ *  have run yet — better to show a legacy row than hide it. */
+function householdFilterSql(hid: string | null): string {
+  return hid ? ` AND (household_id IS NULL OR household_id = ?)` : '';
+}
+
 export async function getAllReceipts(): Promise<Receipt[]> {
   const uid = requireUserId('getAllReceipts');
+  const hid = currentHouseholdId;
   const rows = await db.getAllAsync<RawRow>(
-    `SELECT * FROM receipts WHERE user_id=? ORDER BY date DESC`,
-    [uid],
+    `SELECT * FROM receipts WHERE user_id=?${householdFilterSql(hid)} ORDER BY date DESC`,
+    hid ? [uid, hid] : [uid],
   );
   return await attachLineItems(rows);
 }
 
 export async function getReceiptById(id: string): Promise<Receipt | null> {
   const uid = requireUserId('getReceiptById');
+  const hid = currentHouseholdId;
   const row = await db.getFirstAsync<RawRow>(
-    `SELECT * FROM receipts WHERE id=? AND user_id=?`,
-    [id, uid],
+    `SELECT * FROM receipts WHERE id=? AND user_id=?${householdFilterSql(hid)}`,
+    hid ? [id, uid, hid] : [id, uid],
   );
   if (!row) return null;
   const [withItems] = await attachLineItems([row]);
@@ -779,26 +859,28 @@ export async function getReceiptById(id: string): Promise<Receipt | null> {
 
 export async function getReceiptsByMonth(year: number, month: number): Promise<Receipt[]> {
   const uid = requireUserId('getReceiptsByMonth');
+  const hid = currentHouseholdId;
   const start = new Date(year, month - 1, 1).toISOString();
   const end   = new Date(year, month, 0, 23, 59, 59).toISOString();
   const rows  = await db.getAllAsync<RawRow>(
     `SELECT * FROM receipts
-     WHERE user_id = ? AND date >= ? AND date <= ?
+     WHERE user_id = ? AND date >= ? AND date <= ?${householdFilterSql(hid)}
      ORDER BY date DESC`,
-    [uid, start, end],
+    hid ? [uid, start, end, hid] : [uid, start, end],
   );
   return await attachLineItems(rows);
 }
 
 export async function searchReceipts(query: string): Promise<Receipt[]> {
   const uid = requireUserId('searchReceipts');
+  const hid = currentHouseholdId;
   const q = `%${query.toLowerCase()}%`;
   const rows = await db.getAllAsync<RawRow>(
     `SELECT * FROM receipts
      WHERE user_id = ?
-       AND (lower(store_name) LIKE ? OR lower(category) LIKE ? OR lower(notes) LIKE ?)
+       AND (lower(store_name) LIKE ? OR lower(category) LIKE ? OR lower(notes) LIKE ?)${householdFilterSql(hid)}
      ORDER BY date DESC`,
-    [uid, q, q, q],
+    hid ? [uid, q, q, q, hid] : [uid, q, q, q],
   );
   return await attachLineItems(rows);
 }
@@ -867,6 +949,7 @@ interface RawRow {
   original_currency: string | null;
   paid_by: string | null;
   is_recurring_occurrence: number | null;
+  household_id: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -874,6 +957,7 @@ interface RawRow {
 function rowToReceipt(row: RawRow): Receipt {
   return {
     id: row.id,
+    householdId: row.household_id ?? undefined,
     storeName: row.store_name,
     date: row.date,
     totalAmount: row.total_amount,
@@ -906,9 +990,10 @@ export async function setReceiptPhotoUrl(
   photoUrl: string,
 ): Promise<void> {
   const uid = requireUserId('setReceiptPhotoUrl');
+  const hid = currentHouseholdId;
   await db.runAsync(
-    `UPDATE receipts SET photo_url=? WHERE id=? AND user_id=?`,
-    [photoUrl, receiptId, uid],
+    `UPDATE receipts SET photo_url=? WHERE id=? AND user_id=? AND (household_id IS NULL OR household_id=? OR ? IS NULL)`,
+    [photoUrl, receiptId, uid, hid, hid],
   );
 }
 
@@ -952,6 +1037,7 @@ type CloudReceiptShape = {
 export async function upsertReceiptFromCloud(
   cloud: CloudReceiptShape,
   uid: string,
+  householdId: string,
 ): Promise<void> {
   // We accept uid explicitly because the listener fires regardless of
   // currentUserId — e.g. it might still be processing a snapshot batch
@@ -986,8 +1072,8 @@ export async function upsertReceiptFromCloud(
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
           split_json, recurring_json, paid_by, is_recurring_occurrence,
-          created_at, updated_at, user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          created_at, updated_at, user_id, household_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          store_name      = excluded.store_name,
          date            = excluded.date,
@@ -1005,7 +1091,8 @@ export async function upsertReceiptFromCloud(
          paid_by         = excluded.paid_by,
          is_recurring_occurrence = excluded.is_recurring_occurrence,
          updated_at      = excluded.updated_at,
-         user_id         = excluded.user_id`,
+         user_id         = excluded.user_id,
+         household_id    = excluded.household_id`,
       [
         cloud.id,
         cloud.storeName,
@@ -1026,6 +1113,7 @@ export async function upsertReceiptFromCloud(
         cloud.createdAt,
         cloud.updatedAt,
         uid,
+        householdId,
       ],
     );
     // Wipe + re-insert line items so the local set always matches the
@@ -1044,12 +1132,15 @@ export async function upsertReceiptFromCloud(
 export async function deleteReceiptLocally(
   receiptId: string,
   uid: string,
+  householdId: string,
 ): Promise<void> {
-  // Scope the delete by uid so a malformed listener payload can't wipe
-  // another user's receipt on this same device.
-  await db.runAsync(`DELETE FROM receipts WHERE id=? AND user_id=?`, [
+  // Scope the delete by uid + household so a malformed listener payload
+  // can't wipe another user's (or another household's) receipt on this
+  // same device.
+  await db.runAsync(`DELETE FROM receipts WHERE id=? AND user_id=? AND household_id=?`, [
     receiptId,
     uid,
+    householdId,
   ]);
 }
 
@@ -1061,6 +1152,7 @@ type SettlementRow = {
   to_uid: string;
   amount_usd: number;
   created_at: string;
+  household_id: string | null;
 };
 
 function rowToSettlement(row: SettlementRow): Settlement {
@@ -1070,6 +1162,7 @@ function rowToSettlement(row: SettlementRow): Settlement {
     toUid: row.to_uid,
     amountUsd: row.amount_usd,
     createdAt: row.created_at,
+    householdId: row.household_id ?? undefined,
   };
 }
 
@@ -1080,8 +1173,8 @@ export async function insertSettlement(settlement: Settlement): Promise<void> {
   const uid = requireUserId('insertSettlement');
   const hid = currentHouseholdId;
   await db.runAsync(
-    `INSERT INTO settlements (id, from_uid, to_uid, amount_usd, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`,
-    [settlement.id, settlement.fromUid, settlement.toUid, settlement.amountUsd, settlement.createdAt, uid],
+    `INSERT INTO settlements (id, from_uid, to_uid, amount_usd, created_at, user_id, household_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [settlement.id, settlement.fromUid, settlement.toUid, settlement.amountUsd, settlement.createdAt, uid, hid],
   );
   if (hid) {
     void syncSettlementToCloud(settlement, hid);
@@ -1090,9 +1183,10 @@ export async function insertSettlement(settlement: Settlement): Promise<void> {
 
 export async function getAllSettlements(): Promise<Settlement[]> {
   const uid = requireUserId('getAllSettlements');
+  const hid = currentHouseholdId;
   const rows = await db.getAllAsync<SettlementRow>(
-    `SELECT * FROM settlements WHERE user_id=? ORDER BY created_at DESC`,
-    [uid],
+    `SELECT * FROM settlements WHERE user_id=?${householdFilterSql(hid)} ORDER BY created_at DESC`,
+    hid ? [uid, hid] : [uid],
   );
   return rows.map(rowToSettlement);
 }
@@ -1103,9 +1197,10 @@ export async function getAllSettlements(): Promise<Settlement[]> {
 export async function upsertSettlementFromCloud(
   cloud: Settlement,
   uid: string,
+  householdId: string,
 ): Promise<void> {
   await db.runAsync(
-    `INSERT OR IGNORE INTO settlements (id, from_uid, to_uid, amount_usd, created_at, user_id) VALUES (?, ?, ?, ?, ?, ?)`,
-    [cloud.id, cloud.fromUid, cloud.toUid, cloud.amountUsd, cloud.createdAt, uid],
+    `INSERT OR IGNORE INTO settlements (id, from_uid, to_uid, amount_usd, created_at, user_id, household_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [cloud.id, cloud.fromUid, cloud.toUid, cloud.amountUsd, cloud.createdAt, uid, householdId],
   );
 }
