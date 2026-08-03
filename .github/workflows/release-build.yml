@@ -76,7 +76,6 @@ jobs:
             --profile production \
             --platform all \
             --non-interactive \
-            --no-wait=false \
             --auto-submit
 
       - name: Build summary
