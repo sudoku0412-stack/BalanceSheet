@@ -10,6 +10,7 @@ export type Category =
   | 'Entertainment'
   | 'Travel'
   | 'Healthcare'
+  | 'Electricity'
   | 'Other';
 
 export interface LineItem {

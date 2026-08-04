@@ -63,6 +63,15 @@ export const CATEGORY_KEYWORDS: Record<Category, string[]> = {
     'physical therapy', 'chiropractor', 'dermatologist', 'cardiologist',
     'copay', 'deductible', 'specialist visit',
   ],
+  Electricity: [
+    'electric company', 'electric utility', 'power company', 'power utility',
+    'electricity bill', 'electric bill', 'hydro bill', 'hydro-quebec',
+    'hydro one', 'pg&e', 'con edison', 'con ed', 'duke energy',
+    'national grid', 'dominion energy', 'southern company', 'xcel energy',
+    'entergy', 'pepco', 'eversource', 'centerpoint energy', 'bge',
+    'ameren', 'firstenergy', 'nrg energy', 'direct energy', 'toronto hydro',
+    'bc hydro', 'sask power', 'nova scotia power', 'utility bill',
+  ],
   Other: [],
 };
 
@@ -576,6 +585,7 @@ export const CATEGORY_ICONS: Record<Category, string> = {
   Entertainment: '🎬',
   Travel: '✈️',
   Healthcare: '🏥',
+  Electricity: '⚡',
   Other: '📦',
 };
 
@@ -589,5 +599,6 @@ export const ALL_CATEGORIES: Category[] = [
   'Entertainment',
   'Travel',
   'Healthcare',
+  'Electricity',
   'Other',
 ];

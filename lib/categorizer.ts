@@ -11,7 +11,7 @@ export function detectCategory(storeName: string, text: string): Category {
 
   const scores: Record<Category, number> = {
     Groceries: 0, Electronics: 0, Dining: 0, Pharmacy: 0, Gas: 0,
-    Clothing: 0, Entertainment: 0, Travel: 0, Healthcare: 0, Other: 0,
+    Clothing: 0, Entertainment: 0, Travel: 0, Healthcare: 0, Electricity: 0, Other: 0,
   };
 
   for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS) as [Category, string[]][]) {
@@ -61,7 +61,7 @@ export function categorizeItem(name: string): Category {
 
   const scores: Record<Category, number> = {
     Groceries: 0, Electronics: 0, Dining: 0, Pharmacy: 0, Gas: 0,
-    Clothing: 0, Entertainment: 0, Travel: 0, Healthcare: 0, Other: 0,
+    Clothing: 0, Entertainment: 0, Travel: 0, Healthcare: 0, Electricity: 0, Other: 0,
   };
 
   for (const [category, hints] of Object.entries(ITEM_CATEGORY_HINTS) as [

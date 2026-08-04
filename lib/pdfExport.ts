@@ -115,6 +115,7 @@ const CATEGORY_VISUAL: Record<
   Entertainment: { color: '#06B6D4', tint: '#CFFAFE', icon: '🎬' },
   Travel:        { color: '#84CC16', tint: '#ECFCCB', icon: '✈️' },
   Healthcare:    { color: '#EF4444', tint: '#FEE2E2', icon: '🏥' },
+  Electricity:   { color: '#CA8A04', tint: '#FEF9C3', icon: '⚡' },
   Other:         { color: '#64748B', tint: '#E2E8F0', icon: '📦' },
 };
 const DEFAULT_VISUAL = { color: '#64748B', tint: '#E2E8F0', icon: '🏷️' };
