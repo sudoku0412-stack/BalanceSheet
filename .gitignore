@@ -2,7 +2,6 @@ node_modules/
 .expo/
 dist/
 android/
-ios/
 npm-debug.*
 *.jks
 *.p8
@@ -18,6 +17,10 @@ web-build/
 # Firebase config (do not commit — contains project keys)
 google-services.json
 GoogleService-Info.plist
+
+# Google Play Console service account key (do not commit — grants
+# publishing access to the Play Store listing)
+play-service-account.json
 
 # Firebase CLI local cache (per-machine deploy state, not source)
 .firebase/
