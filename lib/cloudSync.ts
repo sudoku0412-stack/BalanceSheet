@@ -911,6 +911,15 @@ export async function getUserMemberships(uid: string): Promise<HouseholdMembersh
       const hid = (d.householdId as string) ?? doc.id;
       try {
         const hSnap = await db.collection('households').doc(hid).get();
+        if (!hSnap.exists) {
+          // The household was deleted (e.g. its owner deleted it via
+          // Settings) — this membership doc is now a dangling pointer.
+          // Self-heal: drop it from the list and clean up our own
+          // membership doc (self-write, always allowed) so it doesn't
+          // keep showing up as a broken entry on every future refresh.
+          void doc.ref.delete().catch(() => {});
+          continue;
+        }
         const hData = hSnap.data() ?? {};
         out.push({
           householdId: hid,
@@ -1620,6 +1629,94 @@ export async function deleteCloudUserData(args: {
     console.warn('[cloudSync] deleteCloudUserData failed:', (e as Error)?.message);
   }
   return { receiptsDeleted, soloHouseholdDeleted };
+}
+
+/**
+ * Owner-only permanent delete of an entire household: every receipt +
+ * settlement doc and photo under it, then the household doc itself,
+ * then the owner's own membership doc. Caller (Settings) is
+ * responsible for auto-settling any pending balances FIRST — this
+ * function just destroys data, it doesn't check balances.
+ *
+ * Other members' `users/{uid}/memberships/{hid}` docs are intentionally
+ * left dangling — this client has no write access to another user's
+ * memberships subcollection (self-write only, see firestore.rules).
+ * getUserMemberships self-heals this: any member whose membership
+ * points at a now-missing household doc has it filtered out (and
+ * cleaned up) on their next refresh. This mirrors the existing
+ * "leaving your last household leaves it orphaned" tolerance already
+ * in this codebase (see leaveHousehold's doc comment) rather than
+ * introducing a new cross-user write rule just for this.
+ *
+ * Order matters: receipts/settlements/photos must be deleted BEFORE
+ * the household doc, because their security rule looks up the parent
+ * household via get() — deleting the household doc first would make
+ * every subsequent subcollection delete get denied.
+ */
+export async function deleteHousehold(args: {
+  householdId: string;
+  uid: string;
+}): Promise<{ ok: true; receiptsDeleted: number } | { ok: false; reason: string }> {
+  const firestore = loadFirestore();
+  if (!firestore) return { ok: false, reason: 'cloud module not loaded' };
+  try {
+    const db = firestore();
+    const hRef = db.collection('households').doc(args.householdId);
+    const hSnap = await hRef.get();
+    if (!hSnap.exists) return { ok: false, reason: 'household no longer exists' };
+    if ((hSnap.data()?.ownerUid as string | undefined) !== args.uid) {
+      return { ok: false, reason: 'only the owner can delete this household' };
+    }
+
+    let receiptsDeleted = 0;
+    const receiptsCol = hRef.collection('receipts');
+    const receiptsSnap = await receiptsCol.get();
+    const receiptDocs = receiptsSnap.docs;
+    const CHUNK = 400;
+    for (let i = 0; i < receiptDocs.length; i += CHUNK) {
+      const batch = db.batch();
+      for (const d of receiptDocs.slice(i, i + CHUNK)) batch.delete(d.ref);
+      try {
+        await batch.commit();
+        receiptsDeleted += Math.min(CHUNK, receiptDocs.length - i);
+      } catch {
+        for (const d of receiptDocs.slice(i, i + CHUNK)) {
+          try {
+            await d.ref.delete();
+            receiptsDeleted++;
+          } catch {
+            // skip
+          }
+        }
+      }
+    }
+    await tryDeleteHouseholdPhotos(args.householdId, receiptDocs.map((d) => d.id));
+
+    const settlementsCol = hRef.collection('settlements');
+    const settlementsSnap = await settlementsCol.get();
+    for (let i = 0; i < settlementsSnap.docs.length; i += CHUNK) {
+      const batch = db.batch();
+      for (const d of settlementsSnap.docs.slice(i, i + CHUNK)) batch.delete(d.ref);
+      try {
+        await batch.commit();
+      } catch {
+        for (const d of settlementsSnap.docs.slice(i, i + CHUNK)) {
+          try {
+            await d.ref.delete();
+          } catch {
+            // skip
+          }
+        }
+      }
+    }
+
+    await hRef.delete();
+    await db.collection('users').doc(args.uid).collection('memberships').doc(args.householdId).delete();
+
+    return { ok: true, receiptsDeleted };
+  } catch (e) {
+    return { ok: false, reason: (e as Error)?.message ?? 'unknown' };
+  }
 }
 
 async function tryDeleteHouseholdPhotos(

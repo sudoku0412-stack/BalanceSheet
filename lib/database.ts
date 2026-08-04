@@ -574,6 +574,27 @@ export async function deleteAllReceipts(): Promise<void> {
   });
 }
 
+/**
+ * Wipes every LOCAL row (any user_id) for one household on this device
+ * — receipts, their line items, and settlements. Called after
+ * cloudSync.deleteHousehold has already removed the household's cloud
+ * data, so this is just cleaning up this device's now-stale mirror.
+ * Scoped by household_id only (not user_id): a shared household's local
+ * mirror includes receipts synced in from OTHER members too, and all of
+ * it is equally stale once the household itself is gone.
+ */
+export async function deleteAllRowsForHousehold(householdId: string): Promise<void> {
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `DELETE FROM line_items
+       WHERE receipt_id IN (SELECT id FROM receipts WHERE household_id = ?)`,
+      [householdId],
+    );
+    await db.runAsync(`DELETE FROM receipts WHERE household_id = ?`, [householdId]);
+    await db.runAsync(`DELETE FROM settlements WHERE household_id = ?`, [householdId]);
+  });
+}
+
 export interface ProfileRow {
   uid: string;
   first_name: string;

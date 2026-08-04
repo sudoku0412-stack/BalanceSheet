@@ -84,7 +84,11 @@ service cloud.firestore {
           && request.resource.data.memberUids.hasAll(resource.data.memberUids)
           && request.auth.uid in request.resource.data.memberUids
         );
-      allow delete: if isMember();
+      // Only the owner can delete the whole household (lib/cloudSync.ts's
+      // deleteHousehold) — any member can still delete individual
+      // receipt/settlement docs inside it via the subcollection rules
+      // below, that's unrelated to deleting the household doc itself.
+      allow delete: if isMember() && resource.data.ownerUid == request.auth.uid;
 
       // Members subcollection — only existing household members can manage.
       match /members/{memberUid} {

@@ -176,6 +176,17 @@ export async function migrateLegacyBudgetsToHousehold(householdId: string): Prom
   await SecureStore.setItemAsync(marker, '1');
 }
 
+/** Removes a deleted household's namespaced budget keys (amounts,
+ *  alerts toggle, migration marker) from this device. Called by the
+ *  owner's device right after cloudSync.deleteHousehold succeeds. */
+export async function clearBudgetsForHousehold(householdId: string): Promise<void> {
+  await Promise.all([
+    SecureStore.deleteItemAsync(`${Keys.categoryBudgets}.${householdId}`),
+    SecureStore.deleteItemAsync(`${Keys.budgetAlertsEnabled}.${householdId}`),
+    SecureStore.deleteItemAsync(`${Keys.legacyBudgetsMigrated}.${householdId}`),
+  ]);
+}
+
 export async function getCurrency(): Promise<string | null> {
   return await SecureStore.getItemAsync(Keys.currency);
 }
