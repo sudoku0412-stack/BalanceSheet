@@ -26,14 +26,29 @@
       }
     },
     "production": {
-      "autoIncrement": true,
+      "autoIncrement": false,
       "channel": "production",
       "android": {
         "buildType": "app-bundle"
+      },
+      "ios": {
+        "image": "latest"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "serviceAccountKeyPath": "./play-service-account.json",
+        "track": "internal"
+      },
+      "ios": {
+        "ascApiKeyPath": "./appstore-connect-api-key.p8",
+        "ascApiKeyIssuerId": "3f466d0b-c61b-47e5-b85e-6c0259a88eee",
+        "ascApiKeyId": "5MV6V5NUF5",
+        "ascAppId": "6797353891",
+        "appleTeamId": "765HHHW3MW"
+      }
+    }
   }
 }

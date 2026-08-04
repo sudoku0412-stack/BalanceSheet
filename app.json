@@ -19,7 +19,7 @@
         "NSPhotoLibraryUsageDescription": "ReceiptScanner needs photo library access to import receipts.",
         "NSContactsUsageDescription": "ReceiptScanner needs contacts access so you can pick who to add to your household."
       },
-      "buildNumber": "5"
+      "buildNumber": "6"
     },
     "android": {
       "adaptiveIcon": {

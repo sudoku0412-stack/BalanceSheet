@@ -3,7 +3,12 @@ const withGooglePlayAdiToken = require('./plugins/withGooglePlayAdiToken');
 module.exports = ({ config }) => {
   return withGooglePlayAdiToken({
     ...config,
-    name: 'Receipt Scanner',
+    // Matches the App Store Connect listing name — "Receiptly" wasn't
+    // available there, so this is the name going forward on both
+    // platforms (not just a display-name mismatch with the store
+    // listing). `slug` stays as-is since it's tied to the existing EAS
+    // project/URLs, not user-visible.
+    name: 'NestExpenseTracker',
     slug: 'receipt-scanner',
     version: '1.0.0',
     runtimeVersion: { policy: 'appVersion' },
@@ -21,13 +26,42 @@ module.exports = ({ config }) => {
     },
     ios: {
       supportsTablet: false,
-      bundleIdentifier: 'com.kaushikmajumder.receiptscanner',
+      // NOT the same as the Android package (com.kaushikmajumder.
+      // receiptscanner) — that exact string is locked to a different,
+      // inaccessible Apple Developer account (likely from early local
+      // Xcode personal-team signing before this app had a paid
+      // account), so the iOS App Store build uses this pre-existing,
+      // already-registered identifier instead. Android is untouched;
+      // the two platforms' bundle/package ids don't need to match.
+      bundleIdentifier: 'com.kaushikmajumder.receiptly',
+      // Kept in sync BY HAND before each release build — same
+      // caveat as android.versionCode below, and eas.json's
+      // production profile now has autoIncrement disabled entirely
+      // (it was silently ignoring this literal and recomputing its
+      // own stale value every build, repeatedly colliding with
+      // versions already live on TestFlight/Play). This dynamic
+      // app.config.js literal is what actually gets used — it takes
+      // precedence over app.json's ios.buildNumber, which is kept in
+      // sync here purely for a human reader, not because anything
+      // reads it.
+      buildNumber: '6',
       googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
         NSCameraUsageDescription: 'ReceiptScanner needs camera access to scan receipts.',
         NSPhotoLibraryUsageDescription:
           'ReceiptScanner needs photo library access to import receipts.',
         NSFaceIDUsageDescription: 'Use Face ID to quickly and securely unlock ReceiptScanner.',
+        // expo-contacts (Settings → "Add by phone contact") pulls this
+        // in even though the app only ever reads the ONE contact the
+        // user explicitly taps in the native picker — Apple still
+        // requires the purpose string for the underlying API.
+        NSContactsUsageDescription:
+          'ReceiptScanner needs contacts access to let you pick a household member to invite by phone number.',
+        // Answers App Store Connect's export-compliance question ahead
+        // of time — this app only uses standard HTTPS/TLS (Firebase,
+        // Gemini, etc.), no custom/proprietary encryption, so it
+        // qualifies as exempt and this can stay false.
+        ITSAppUsesNonExemptEncryption: false,
       },
       // Phase 3 magic-link invites: an invite email arrives with a
       // link on our Firebase Hosting domain. iOS opens it directly
@@ -51,7 +85,10 @@ module.exports = ({ config }) => {
         'android.permission.USE_FINGERPRINT',
       ],
       package: 'com.kaushikmajumder.receiptscanner',
-      versionCode: 2,
+      // Kept in sync BY HAND before each release build — see the
+      // buildNumber comment above (autoIncrement is off; this literal
+      // is the one actually used).
+      versionCode: 4,
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       // Phase 3 magic-link invites: paired with the iOS associated
       // domain above. autoVerify=true makes Android verify the
@@ -96,7 +133,14 @@ module.exports = ({ config }) => {
       [
         'expo-build-properties',
         {
-          ios: { useFrameworks: 'static' },
+          ios: {
+            useFrameworks: 'static',
+            // Some pods pulled in this session (Firebase messaging/
+            // datetimepicker) require a higher minimum iOS version
+            // than Expo SDK 52's own default — bump it explicitly
+            // rather than letting CocoaPods pick per-pod minimums.
+            deploymentTarget: '16.0',
+          },
           android: {
             // Google Play minimum target raised to API 35 (Android 15)
             // for new app uploads in 2026. compileSdk must be >=
