@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
-  Dimensions,
   Easing,
   FlatList,
   NativeScrollEvent,
@@ -10,6 +9,7 @@ import {
   Text,
   View,
   ViewToken,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -59,11 +59,10 @@ const SLIDES: Slide[] = [
   },
 ];
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 export default function OnboardingScreen() {
   const { markOnboardingSeen } = useAuth();
   const theme = useTheme();
+  const { width: screenWidth } = useWindowDimensions();
   const [index, setIndex] = useState(0);
   const listRef = useRef<FlatList<Slide>>(null);
   const styles = useStyles(makeStyles);
@@ -82,7 +81,7 @@ export default function OnboardingScreen() {
   };
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const i = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    const i = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
     if (i !== index) setIndex(i);
   };
 
@@ -119,7 +118,7 @@ export default function OnboardingScreen() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         onMomentumScrollEnd={handleScroll}
-        renderItem={({ item }) => <SlideView slide={item} />}
+        renderItem={({ item }) => <SlideView slide={item} width={screenWidth} />}
       />
 
       <View style={styles.dotsRow}>
@@ -153,7 +152,7 @@ export default function OnboardingScreen() {
   );
 }
 
-function SlideView({ slide }: { slide: Slide }) {
+function SlideView({ slide, width }: { slide: Slide; width: number }) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const tileColor = theme.colors[slide.accent];
@@ -183,7 +182,7 @@ function SlideView({ slide }: { slide: Slide }) {
   }, [pulse]);
 
   return (
-    <View style={styles.slide}>
+    <View style={[styles.slide, { width }]}>
       <View style={styles.decorWrap}>
         <View style={[styles.decorCircleOuter, { backgroundColor: `${tileColor}14` }]} />
         <View style={[styles.decorCircleInner, { backgroundColor: `${tileColor}22` }]} />
@@ -216,7 +215,6 @@ const makeStyles = (t: Theme) => ({
     letterSpacing: 0.5,
   },
   slide: {
-    width: SCREEN_WIDTH,
     paddingHorizontal: t.spacing.xl,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,

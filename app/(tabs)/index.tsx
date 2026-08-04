@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { addMonths, format, isSameMonth, isToday, isYesterday, subMonths } from 'date-fns';
@@ -46,7 +47,7 @@ export default function DashboardScreen() {
     screen: { flex: 1, backgroundColor: t.colors.background },
     content: {
       paddingHorizontal: 20,
-      paddingTop: 58,
+      paddingTop: t.spacing.lg,
       paddingBottom: 32,
       gap: t.spacing.lg,
     },
@@ -70,6 +71,7 @@ export default function DashboardScreen() {
       elevation: 4,
     },
     householdRowName: {
+      flexShrink: 1,
       color: '#fff',
       fontSize: t.font.md,
       fontFamily: t.fonts.display.bold,
@@ -369,190 +371,192 @@ export default function DashboardScreen() {
   };
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.accent} />
-      }
-    >
-      {/* Active household + switcher */}
-      <View style={styles.householdRow}>
-        <TouchableOpacity
-          style={styles.householdChip}
-          onPress={() => router.push('/households' as never)}
-        >
-          <Ionicons name="home" size={16} color="#fff" />
-          <Text style={styles.householdRowName} numberOfLines={1}>
-            {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
-              'Unnamed household'}
-          </Text>
-          <Ionicons name="swap-horizontal" size={18} color="#fff" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Hero total card */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroDecorCircle} />
-        <Ionicons name="receipt" size={120} color="#fff" style={styles.heroDecorWatermark} />
-        <Text style={styles.heroLabel}>{greeting()}</Text>
-        <Text style={styles.heroAmount}>{formatCurrency(stats.totalSpent, currency)}</Text>
-        <View style={styles.monthNavRow}>
+    <SafeAreaView style={styles.screen} edges={['top']}>
+      <ScrollView
+        style={styles.screen}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.accent} />
+        }
+      >
+        {/* Active household + switcher */}
+        <View style={styles.householdRow}>
           <TouchableOpacity
-            onPress={() => setMonthOffset((v) => v - 1)}
-            hitSlop={8}
-            style={styles.monthNavBtn}
+            style={styles.householdChip}
+            onPress={() => router.push('/households' as never)}
           >
-            <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.85)" />
-          </TouchableOpacity>
-          <Text style={styles.monthNavLabel}>{format(viewedMonth, 'MMMM yyyy')}</Text>
-          <TouchableOpacity
-            onPress={() => setMonthOffset((v) => v + 1)}
-            disabled={isCurrentMonth}
-            hitSlop={8}
-            style={styles.monthNavBtn}
-          >
-            <Ionicons
-              name="chevron-forward"
-              size={16}
-              color={isCurrentMonth ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.85)'}
-            />
+            <Ionicons name="home" size={16} color="#fff" />
+            <Text style={styles.householdRowName} numberOfLines={1}>
+              {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
+                'Unnamed household'}
+            </Text>
+            <Ionicons name="swap-horizontal" size={18} color="#fff" />
           </TouchableOpacity>
         </View>
-        <View style={styles.heroMetaRow}>
-          <Text style={styles.heroMetaText}>
-            {stats.receiptCount} expense{stats.receiptCount === 1 ? '' : 's'}{' '}
-            {isCurrentMonth ? 'this month' : 'that month'}
-          </Text>
-          {trendPct != null && (
-            <View style={styles.trendPill}>
-              <Text
-                style={[
-                  styles.trendPillText,
-                  { color: trendPct <= 0 ? '#9FE0C8' : '#F0B4B6' },
-                ]}
-              >
-                {trendPct > 0 ? '+' : ''}
-                {trendPct}% vs last month
-              </Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      {/* Quick actions */}
-      <View style={styles.actionRow}>
-        <TouchableOpacity
-          style={styles.actionBtn}
-          onPress={() => router.push('/(tabs)/scan?mode=manual' as never)}
-        >
-          <Text style={styles.actionBtnText}>+ Add manually</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/recurring' as never)}>
-          <Text style={styles.actionBtnText}>Recurring</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/balances' as never)}>
-          <Text style={styles.actionBtnText}>Balances</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Budgets */}
-      {budgetRows.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Budgets</Text>
-            <TouchableOpacity onPress={() => router.push('/settings' as never)} hitSlop={8}>
-              <Text style={styles.sectionLink}>Manage</Text>
+  
+        {/* Hero total card */}
+        <View style={styles.heroCard}>
+          <View style={styles.heroDecorCircle} />
+          <Ionicons name="receipt" size={120} color="#fff" style={styles.heroDecorWatermark} />
+          <Text style={styles.heroLabel}>{greeting()}</Text>
+          <Text style={styles.heroAmount}>{formatCurrency(stats.totalSpent, currency)}</Text>
+          <View style={styles.monthNavRow}>
+            <TouchableOpacity
+              onPress={() => setMonthOffset((v) => v - 1)}
+              hitSlop={8}
+              style={styles.monthNavBtn}
+            >
+              <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.85)" />
+            </TouchableOpacity>
+            <Text style={styles.monthNavLabel}>{format(viewedMonth, 'MMMM yyyy')}</Text>
+            <TouchableOpacity
+              onPress={() => setMonthOffset((v) => v + 1)}
+              disabled={isCurrentMonth}
+              hitSlop={8}
+              style={styles.monthNavBtn}
+            >
+              <Ionicons
+                name="chevron-forward"
+                size={16}
+                color={isCurrentMonth ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.85)'}
+              />
             </TouchableOpacity>
           </View>
-          <View style={styles.budgetCard}>
-            {budgetRows.map((b, i) => {
-              const meta = statusMeta[b.status];
-              const catColor =
-                b.category === RECURRING_BUDGET_KEY
-                  ? theme.colors.accent
-                  : theme.colors.category[b.category as keyof typeof theme.colors.category];
-              const ratio = b.limit > 0 ? Math.min(b.spent / b.limit, 1) : 0;
-              return (
-                <View key={b.category} style={[styles.budgetRow, i === 0 && styles.budgetRowFirst]}>
-                  <View style={[styles.budgetAccent, { backgroundColor: catColor }]} />
-                  <View style={styles.budgetInfo}>
-                    <View style={styles.budgetNameRow}>
-                      <Text style={styles.budgetName}>{b.category}</Text>
-                      <Text style={[styles.budgetStatusText, { color: meta.color }]}>{meta.label}</Text>
-                    </View>
-                    <View style={styles.progressTrack}>
-                      <View
-                        style={[
-                          styles.progressFill,
-                          {
-                            width: `${ratio * 100}%`,
-                            backgroundColor: ratio > 0.9 ? theme.colors.error : catColor,
-                          },
-                        ]}
-                      />
-                    </View>
-                    <Text style={styles.budgetAmounts}>
-                      {formatCurrency(b.spent, currency)} of {formatCurrency(b.limit, currency)}
-                    </Text>
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        </View>
-      )}
-
-      {/* Recent expenses */}
-      {recentReceipts.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Recent</Text>
-            <TouchableOpacity onPress={() => router.push('/(tabs)/history' as never)} hitSlop={8}>
-              <Text style={styles.sectionLink}>See all</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.list}>
-            {recentReceipts.map((r) => {
-              const color = theme.colors.category[r.category as keyof typeof theme.colors.category];
-              return (
-                <TouchableOpacity
-                  key={r.id}
-                  style={styles.row}
-                  activeOpacity={0.8}
-                  onPress={() => router.push(`/edit/${r.id}` as never)}
+          <View style={styles.heroMetaRow}>
+            <Text style={styles.heroMetaText}>
+              {stats.receiptCount} expense{stats.receiptCount === 1 ? '' : 's'}{' '}
+              {isCurrentMonth ? 'this month' : 'that month'}
+            </Text>
+            {trendPct != null && (
+              <View style={styles.trendPill}>
+                <Text
+                  style={[
+                    styles.trendPillText,
+                    { color: trendPct <= 0 ? '#9FE0C8' : '#F0B4B6' },
+                  ]}
                 >
-                  <View style={styles.rowLeft}>
-                    <View style={[styles.avatar, { backgroundColor: color }]}>
-                      <Text style={styles.avatarText}>{r.storeName.charAt(0).toUpperCase()}</Text>
-                    </View>
-                    <View style={styles.rowInfo}>
-                      <Text style={styles.merchantName} numberOfLines={1}>
-                        {r.storeName}
-                      </Text>
-                      <Text style={styles.rowMeta}>
-                        {r.category} · {dateLabel(new Date(r.date))}
+                  {trendPct > 0 ? '+' : ''}
+                  {trendPct}% vs last month
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+  
+        {/* Quick actions */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push('/(tabs)/scan?mode=manual' as never)}
+          >
+            <Text style={styles.actionBtnText}>+ Add manually</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/recurring' as never)}>
+            <Text style={styles.actionBtnText}>Recurring</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/balances' as never)}>
+            <Text style={styles.actionBtnText}>Balances</Text>
+          </TouchableOpacity>
+        </View>
+  
+        {/* Budgets */}
+        {budgetRows.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Budgets</Text>
+              <TouchableOpacity onPress={() => router.push('/settings' as never)} hitSlop={8}>
+                <Text style={styles.sectionLink}>Manage</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.budgetCard}>
+              {budgetRows.map((b, i) => {
+                const meta = statusMeta[b.status];
+                const catColor =
+                  b.category === RECURRING_BUDGET_KEY
+                    ? theme.colors.accent
+                    : theme.colors.category[b.category as keyof typeof theme.colors.category];
+                const ratio = b.limit > 0 ? Math.min(b.spent / b.limit, 1) : 0;
+                return (
+                  <View key={b.category} style={[styles.budgetRow, i === 0 && styles.budgetRowFirst]}>
+                    <View style={[styles.budgetAccent, { backgroundColor: catColor }]} />
+                    <View style={styles.budgetInfo}>
+                      <View style={styles.budgetNameRow}>
+                        <Text style={styles.budgetName}>{b.category}</Text>
+                        <Text style={[styles.budgetStatusText, { color: meta.color }]}>{meta.label}</Text>
+                      </View>
+                      <View style={styles.progressTrack}>
+                        <View
+                          style={[
+                            styles.progressFill,
+                            {
+                              width: `${ratio * 100}%`,
+                              backgroundColor: ratio > 0.9 ? theme.colors.error : catColor,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text style={styles.budgetAmounts}>
+                        {formatCurrency(b.spent, currency)} of {formatCurrency(b.limit, currency)}
                       </Text>
                     </View>
                   </View>
-                  <Text style={styles.rowAmount}>{formatCurrency(r.totalAmount, currency)}</Text>
-                </TouchableOpacity>
-              );
-            })}
+                );
+              })}
+            </View>
           </View>
-        </View>
-      )}
-
-      {receipts.length === 0 && (
-        <EmptyState
-          icon="receipt-outline"
-          title="No receipts yet"
-          description="Tap the camera button below to scan your first receipt and start tracking your spending."
-          actionLabel="Scan a receipt"
-          onAction={() => router.push('/(tabs)/scan')}
-        />
-      )}
-    </ScrollView>
+        )}
+  
+        {/* Recent expenses */}
+        {recentReceipts.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent</Text>
+              <TouchableOpacity onPress={() => router.push('/(tabs)/history' as never)} hitSlop={8}>
+                <Text style={styles.sectionLink}>See all</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.list}>
+              {recentReceipts.map((r) => {
+                const color = theme.colors.category[r.category as keyof typeof theme.colors.category];
+                return (
+                  <TouchableOpacity
+                    key={r.id}
+                    style={styles.row}
+                    activeOpacity={0.8}
+                    onPress={() => router.push(`/edit/${r.id}` as never)}
+                  >
+                    <View style={styles.rowLeft}>
+                      <View style={[styles.avatar, { backgroundColor: color }]}>
+                        <Text style={styles.avatarText}>{r.storeName.charAt(0).toUpperCase()}</Text>
+                      </View>
+                      <View style={styles.rowInfo}>
+                        <Text style={styles.merchantName} numberOfLines={1}>
+                          {r.storeName}
+                        </Text>
+                        <Text style={styles.rowMeta}>
+                          {r.category} · {dateLabel(new Date(r.date))}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.rowAmount}>{formatCurrency(r.totalAmount, currency)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        )}
+  
+        {receipts.length === 0 && (
+          <EmptyState
+            icon="receipt-outline"
+            title="No receipts yet"
+            description="Tap the camera button below to scan your first receipt and start tracking your spending."
+            actionLabel="Scan a receipt"
+            onAction={() => router.push('/(tabs)/scan')}
+          />
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 }

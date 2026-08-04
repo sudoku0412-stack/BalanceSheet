@@ -77,7 +77,7 @@ export default function AuthScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['bottom']}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <View style={styles.navyHeader}>
         <View style={styles.decorCircleLg} />
         <View style={styles.decorCircleSm} />
@@ -374,7 +374,7 @@ const makeStyles = (t: Theme) => ({
   root: { flex: 1, backgroundColor: t.colors.primary },
   navyHeader: {
     backgroundColor: t.colors.primary,
-    paddingTop: 46,
+    paddingTop: t.spacing.lg,
     paddingBottom: 38,
     paddingHorizontal: t.spacing.lg,
     overflow: 'hidden' as const,

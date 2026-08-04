@@ -1205,7 +1205,7 @@ function EditReceiptScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top']}>
+    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       {/* Native header hidden in favor of the custom back-chevron +
           "EXPENSE" label row below, matching the design export. */}
       <Stack.Screen options={{ headerShown: false }} />

@@ -271,7 +271,9 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
                   return (
                     <View key={c.category} style={styles.row}>
                       <View style={[styles.categoryDot, { backgroundColor: color }]} />
-                      <Text style={styles.rowLabel}>{c.category}</Text>
+                      <Text style={styles.rowLabel} numberOfLines={1} ellipsizeMode="tail">
+                        {c.category}
+                      </Text>
                       <Text style={styles.rowPct}>{c.percentage.toFixed(0)}%</Text>
                       <Text style={styles.rowAmount}>
                         {formatCurrency(c.total, currency)}
