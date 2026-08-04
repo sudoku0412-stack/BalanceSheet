@@ -1,5 +1,8 @@
 name: Release build + submit
 
+# Retrigger note: Google Play service account key registered for
+# non-interactive submit via `eas credentials --platform android`.
+#
 # Every push to main → cloud EAS build (Android + iOS, production profile)
 # → auto-submit to Play Console (internal track) + App Store Connect
 # (TestFlight). Uses EAS's own macOS/Linux cloud builders (not this
