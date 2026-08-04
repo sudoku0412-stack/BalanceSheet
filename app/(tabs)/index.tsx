@@ -52,15 +52,22 @@ export default function DashboardScreen() {
     },
     householdRow: {
       flexDirection: 'row',
+    },
+    householdChip: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
+      alignSelf: 'flex-start',
+      backgroundColor: t.colors.accent,
+      borderRadius: t.radius.full,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      gap: 6,
+      maxWidth: '80%',
     },
     householdRowName: {
-      flex: 1,
-      color: t.colors.textSecondary,
+      color: '#fff',
       fontSize: t.font.sm,
       fontFamily: t.fonts.display.bold,
-      marginRight: t.spacing.sm,
     },
 
     heroCard: {
@@ -362,16 +369,19 @@ export default function DashboardScreen() {
       }
     >
       {/* Active household + switcher */}
-      <TouchableOpacity
-        style={styles.householdRow}
-        onPress={() => router.push('/households' as never)}
-      >
-        <Text style={styles.householdRowName} numberOfLines={1}>
-          {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
-            'Unnamed household'}
-        </Text>
-        <Ionicons name="swap-horizontal" size={18} color={theme.colors.textSecondary} />
-      </TouchableOpacity>
+      <View style={styles.householdRow}>
+        <TouchableOpacity
+          style={styles.householdChip}
+          onPress={() => router.push('/households' as never)}
+        >
+          <Ionicons name="home" size={14} color="#fff" />
+          <Text style={styles.householdRowName} numberOfLines={1}>
+            {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
+              'Unnamed household'}
+          </Text>
+          <Ionicons name="swap-horizontal" size={16} color="#fff" />
+        </TouchableOpacity>
+      </View>
 
       {/* Hero total card */}
       <View style={styles.heroCard}>
