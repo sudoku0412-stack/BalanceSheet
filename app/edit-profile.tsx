@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
@@ -24,6 +24,22 @@ export default function EditProfileScreen() {
   const [nameError, setNameError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // `useState`'s initial value only applies on the very first render —
+  // if `profile` from context is still null at that exact moment (not
+  // yet loaded), the fields lock in empty forever with no re-sync when
+  // it actually arrives. Hydrate once, the first time profile becomes
+  // available, without re-running on every later profile change (which
+  // would clobber whatever the user has typed since).
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (profile && !hydratedRef.current) {
+      hydratedRef.current = true;
+      setFirstName(profile.firstName ?? '');
+      setLastName(profile.lastName ?? '');
+      setPhoneInput(profile.phone ?? '');
+    }
+  }, [profile]);
 
   const save = async () => {
     if (!user?.uid) return;

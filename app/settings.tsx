@@ -798,15 +798,6 @@ export default function SettingsScreen() {
             </Text>
           </Pressable>
 
-          <Pressable
-            onPress={() => router.push('/balances')}
-            style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}
-          >
-            <Text style={{ color: theme.colors.accent, fontSize: theme.font.sm, fontFamily: theme.fonts.display.bold }}>
-              See who owes what — Balances
-            </Text>
-          </Pressable>
-
           {members && members.length > 1 ? (
             <Pressable
               onPress={confirmLeaveHousehold}
