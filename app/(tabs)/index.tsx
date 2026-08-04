@@ -59,14 +59,19 @@ export default function DashboardScreen() {
       alignSelf: 'flex-start',
       backgroundColor: t.colors.accent,
       borderRadius: t.radius.full,
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      gap: 6,
-      maxWidth: '80%',
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      gap: 8,
+      maxWidth: '90%',
+      shadowColor: t.colors.accent,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.35,
+      shadowRadius: 6,
+      elevation: 4,
     },
     householdRowName: {
       color: '#fff',
-      fontSize: t.font.sm,
+      fontSize: t.font.md,
       fontFamily: t.fonts.display.bold,
     },
 
@@ -378,12 +383,12 @@ export default function DashboardScreen() {
           style={styles.householdChip}
           onPress={() => router.push('/households' as never)}
         >
-          <Ionicons name="home" size={14} color="#fff" />
+          <Ionicons name="home" size={16} color="#fff" />
           <Text style={styles.householdRowName} numberOfLines={1}>
             {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
               'Unnamed household'}
           </Text>
-          <Ionicons name="swap-horizontal" size={16} color="#fff" />
+          <Ionicons name="swap-horizontal" size={18} color="#fff" />
         </TouchableOpacity>
       </View>
 

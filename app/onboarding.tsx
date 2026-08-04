@@ -44,6 +44,13 @@ const SLIDES: Slide[] = [
     accent: 'success',
   },
   {
+    key: 'household',
+    icon: 'people-outline',
+    title: 'Share it with your household',
+    body: 'Invite anyone to split costs, and switch between multiple households anytime — everyone sees the same shared expenses and settles up automatically.',
+    accent: 'accent',
+  },
+  {
     key: 'done',
     icon: 'checkmark-circle-outline',
     title: 'One tap, done',
