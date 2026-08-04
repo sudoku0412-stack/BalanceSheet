@@ -38,7 +38,11 @@ import { useAuth } from '../../lib/AuthContext';
 import { parseReceiptText, parseYmdLocal } from '../../lib/parser';
 import { persistReceiptImage } from '../../lib/receiptPhoto';
 import { notifySuccess } from '../../lib/haptics';
-import { notifyHouseholdOfBudgetStatus, notifyNewSharedExpense } from '../../lib/notifications';
+import {
+  notifyHouseholdOfBudgetStatus,
+  notifyNewExpenseToHousehold,
+  notifyNewSharedExpense,
+} from '../../lib/notifications';
 import {
   parseReceiptWithGemini,
   parseGeminiPayload,
@@ -1280,7 +1284,9 @@ export default function ScanScreen() {
 
       // Household activity push (fire-and-forget) — over-budget goes to
       // every OTHER member (self already sees this on screen); a new
-      // shared expense pings whoever it's split with.
+      // shared expense pings whoever it's split with; every OTHER
+      // member not already covered by the split-specific push hears
+      // that an expense was added at all.
       const householdId = getCurrentHouseholdId();
       if (householdId && user?.uid) {
         getReceiptsByMonth(parsedDate.getFullYear(), parsedDate.getMonth() + 1)
@@ -1289,19 +1295,32 @@ export default function ScanScreen() {
           )
           .catch(() => {});
       }
-      if (split?.enabled) {
-        const otherParticipantUids = split.participantIds.filter((pid) => pid !== selfUidForSave);
-        if (otherParticipantUids.length > 0) {
-          const payerLabel = profile
-            ? `${profile.firstName} ${profile.lastName}`.trim()
-            : user?.displayName || 'Someone';
-          void notifyNewSharedExpense({
-            participantUids: otherParticipantUids,
-            payerLabel,
-            amountLabel: formatCurrency(totalAmountUsd, currencyCode),
-            storeName: storeName.trim(),
-          });
-        }
+      const otherParticipantUids = split?.enabled
+        ? split.participantIds.filter((pid) => pid !== selfUidForSave)
+        : [];
+      if (otherParticipantUids.length > 0) {
+        const payerLabel = profile
+          ? `${profile.firstName} ${profile.lastName}`.trim()
+          : user?.displayName || 'Someone';
+        void notifyNewSharedExpense({
+          participantUids: otherParticipantUids,
+          payerLabel,
+          amountLabel: formatCurrency(totalAmountUsd, currencyCode),
+          storeName: storeName.trim(),
+        });
+      }
+      if (householdId && user?.uid) {
+        const payerLabel = profile
+          ? `${profile.firstName} ${profile.lastName}`.trim()
+          : user?.displayName || 'Someone';
+        void notifyNewExpenseToHousehold({
+          householdId,
+          selfUid: user.uid,
+          excludeUids: otherParticipantUids,
+          payerLabel,
+          amountLabel: formatCurrency(totalAmountUsd, currencyCode),
+          storeName: storeName.trim(),
+        });
       }
 
       // Feedback loop: if the user edited items vs. what the parser

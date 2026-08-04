@@ -8,7 +8,7 @@ import {
   setLastBudgetAlertDate,
 } from './secureStorage';
 import { getCurrentHouseholdId, getReceiptsByMonth } from './database';
-import { getHouseholdMemberPushTokens, getPushTokensForUids } from './cloudSync';
+import { getHouseholdMemberPushTokens, getHouseholdMembers, getPushTokensForUids } from './cloudSync';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -202,6 +202,38 @@ export async function notifyHouseholdOfBudgetStatus(args: {
   if (!summary) return;
   const tokens = await getHouseholdMemberPushTokens(args.householdId, args.selfUid);
   await sendExpoPushNotifications(tokens, summary.title, summary.body);
+}
+
+/**
+ * Pushes every OTHER household member — except whoever's already
+ * getting the more specific "split with you" push via
+ * notifyNewSharedExpense below — whenever any member adds a new
+ * expense. Split participants get told exactly what they owe/are
+ * involved in; everyone else just hears that *an* expense was added,
+ * so nobody is silently left out of household activity, but nobody
+ * gets pinged twice for the same receipt either.
+ */
+export async function notifyNewExpenseToHousehold(args: {
+  householdId: string;
+  selfUid: string;
+  /** Uids already notified via notifyNewSharedExpense for this same
+   *  receipt — excluded here to avoid a duplicate push. */
+  excludeUids?: string[];
+  payerLabel: string;
+  amountLabel: string;
+  storeName: string;
+}): Promise<void> {
+  const members = await getHouseholdMembers({ householdId: args.householdId, currentUid: args.selfUid });
+  if (!members) return;
+  const exclude = new Set([args.selfUid, ...(args.excludeUids ?? [])]);
+  const targetUids = members.map((m) => m.uid).filter((uid) => !exclude.has(uid));
+  if (targetUids.length === 0) return;
+  const tokens = await getPushTokensForUids(targetUids);
+  await sendExpoPushNotifications(
+    tokens,
+    'New expense',
+    `${args.payerLabel} added ${args.amountLabel} at ${args.storeName}`,
+  );
 }
 
 /** Pushes each OTHER participant of a newly-saved/edited split expense
