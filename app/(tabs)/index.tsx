@@ -12,6 +12,7 @@ import { useStyles, useTheme } from '../../constants/theme';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { computeStats } from '../../lib/dashboardStats';
 import { RECURRING_BUDGET_KEY, isRecurringExpense } from '../../lib/recurring';
+import { useAuth } from '../../lib/AuthContext';
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -40,6 +41,7 @@ function budgetStatus(spent: number, limit: number): BudgetStatus {
 
 export default function DashboardScreen() {
   const theme = useTheme();
+  const { memberships } = useAuth();
   const styles = useStyles((t) => ({
     screen: { flex: 1, backgroundColor: t.colors.background },
     content: {
@@ -47,6 +49,18 @@ export default function DashboardScreen() {
       paddingTop: 58,
       paddingBottom: 32,
       gap: t.spacing.lg,
+    },
+    householdRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    householdRowName: {
+      flex: 1,
+      color: t.colors.textSecondary,
+      fontSize: t.font.sm,
+      fontFamily: t.fonts.display.bold,
+      marginRight: t.spacing.sm,
     },
 
     heroCard: {
@@ -347,6 +361,18 @@ export default function DashboardScreen() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.colors.accent} />
       }
     >
+      {/* Active household + switcher */}
+      <TouchableOpacity
+        style={styles.householdRow}
+        onPress={() => router.push('/households' as never)}
+      >
+        <Text style={styles.householdRowName} numberOfLines={1}>
+          {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
+            'Unnamed household'}
+        </Text>
+        <Ionicons name="swap-horizontal" size={18} color={theme.colors.textSecondary} />
+      </TouchableOpacity>
+
       {/* Hero total card */}
       <View style={styles.heroCard}>
         <View style={styles.heroDecorCircle} />

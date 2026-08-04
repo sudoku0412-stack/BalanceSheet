@@ -13,7 +13,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
-import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../constants/theme';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
@@ -227,22 +226,6 @@ function useSettingsStyles() {
       // scale it down instead of reimplementing a custom pill toggle.
       transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
     },
-    householdHeaderRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: 12,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: theme.colors.border,
-    },
-    householdHeaderName: {
-      flex: 1,
-      color: theme.colors.textPrimary,
-      fontSize: theme.font.md,
-      fontFamily: theme.fonts.display.bold,
-      marginRight: theme.spacing.sm,
-    },
     memberRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -359,7 +342,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const styles = useSettingsStyles();
   const router = useRouter();
-  const { user, profile, signOut, refreshProfile, setActiveHousehold, memberships } = useAuth();
+  const { user, profile, signOut, refreshProfile, setActiveHousehold } = useAuth();
   const toast = useToast();
 
   // Per-category budget amounts (canonical USD) and the "notify near
@@ -730,17 +713,6 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title="Household">
-          <Pressable
-            style={styles.householdHeaderRow}
-            onPress={() => router.push('/households')}
-            hitSlop={4}
-          >
-            <Text style={styles.householdHeaderName} numberOfLines={1}>
-              {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
-                'Unnamed household'}
-            </Text>
-            <Ionicons name="swap-horizontal" size={20} color={theme.colors.accent} />
-          </Pressable>
           {!isCloudSyncAvailable() && (
             <Text style={styles.cloudSyncWarning}>
               Cloud sync isn't available on this install, so household members
