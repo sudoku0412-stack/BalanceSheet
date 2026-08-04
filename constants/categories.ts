@@ -72,6 +72,11 @@ export const CATEGORY_KEYWORDS: Record<Category, string[]> = {
     'ameren', 'firstenergy', 'nrg energy', 'direct energy', 'toronto hydro',
     'bc hydro', 'sask power', 'nova scotia power', 'utility bill',
   ],
+  // Manual-selection only — never auto-detected from receipt text.
+  // Selecting this chip also auto-enables "Repeat this expense" (see
+  // app/(tabs)/scan.tsx), so it overlaps by design with the existing
+  // isRecurringExpense tracking axis rather than fighting it.
+  Recurring: [],
   Other: [],
 };
 
@@ -586,6 +591,7 @@ export const CATEGORY_ICONS: Record<Category, string> = {
   Travel: '✈️',
   Healthcare: '🏥',
   Electricity: '⚡',
+  Recurring: '🔁',
   Other: '📦',
 };
 
@@ -600,5 +606,6 @@ export const ALL_CATEGORIES: Category[] = [
   'Travel',
   'Healthcare',
   'Electricity',
+  'Recurring',
   'Other',
 ];

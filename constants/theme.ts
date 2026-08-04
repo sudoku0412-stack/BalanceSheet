@@ -43,6 +43,7 @@ const CATEGORY_COLORS_LIGHT = {
   Travel: '#91A3C9',
   Healthcare: '#31303F',
   Electricity: '#A67C00',
+  Recurring: '#6B5CA5',
   Other: '#686672',
 } as Record<Category, string>;
 

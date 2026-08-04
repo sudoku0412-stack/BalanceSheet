@@ -116,6 +116,7 @@ const CATEGORY_VISUAL: Record<
   Travel:        { color: '#84CC16', tint: '#ECFCCB', icon: '✈️' },
   Healthcare:    { color: '#EF4444', tint: '#FEE2E2', icon: '🏥' },
   Electricity:   { color: '#CA8A04', tint: '#FEF9C3', icon: '⚡' },
+  Recurring:     { color: '#6B5CA5', tint: '#EDE9FE', icon: '🔁' },
   Other:         { color: '#64748B', tint: '#E2E8F0', icon: '📦' },
 };
 const DEFAULT_VISUAL = { color: '#64748B', tint: '#E2E8F0', icon: '🏷️' };

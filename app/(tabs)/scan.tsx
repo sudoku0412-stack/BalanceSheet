@@ -1903,6 +1903,10 @@ export default function ScanScreen() {
                     cat,
                     ...prev.filter((t) => t.toLowerCase() !== cat.toLowerCase()),
                   ]);
+                  // Picking "Recurring" as the category IS the intent
+                  // to repeat this expense — auto-enable the toggle
+                  // instead of making the user set both separately.
+                  if (cat === 'Recurring') setRecurringEnabled(true);
                 }}
                 activeOpacity={0.7}
                 style={[

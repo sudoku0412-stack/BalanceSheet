@@ -335,9 +335,13 @@ export default function DashboardScreen() {
   for (const r of receipts) {
     categorySpendForBudgets[r.category] =
       (categorySpendForBudgets[r.category] ?? 0) + r.totalAmount;
-    // "Recurring" is a separate axis, not a real category — a receipt
-    // still counts toward its own category's budget too.
-    if (isRecurringExpense(r)) {
+    // "Recurring" is normally a separate axis, not a real category — a
+    // receipt still counts toward its own category's budget too. Skip
+    // the double-add for a receipt whose category IS literally
+    // "Recurring" (the selectable category, which auto-enables the
+    // repeat toggle) — the loop above already added it once under
+    // that exact same key.
+    if (isRecurringExpense(r) && r.category !== RECURRING_BUDGET_KEY) {
       categorySpendForBudgets[RECURRING_BUDGET_KEY] =
         (categorySpendForBudgets[RECURRING_BUDGET_KEY] ?? 0) + r.totalAmount;
     }

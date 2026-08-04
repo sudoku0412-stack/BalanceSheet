@@ -124,10 +124,11 @@ function computeBudgetStatusSummary(
   const spentByCategory: Record<string, number> = {};
   for (const r of receipts) {
     spentByCategory[r.category] = (spentByCategory[r.category] ?? 0) + r.totalAmount;
-    // "Recurring" is a separate axis, not a real category — mirrors
-    // app/(tabs)/index.tsx's categorySpendForBudgets exactly. A receipt
-    // still counts toward its own category's budget too.
-    if (isRecurringExpense(r)) {
+    // "Recurring" is normally a separate axis, not a real category —
+    // mirrors app/(tabs)/index.tsx's categorySpendForBudgets exactly,
+    // including the same guard against double-adding a receipt whose
+    // category IS literally "Recurring" (the selectable category).
+    if (isRecurringExpense(r) && r.category !== RECURRING_BUDGET_KEY) {
       spentByCategory[RECURRING_BUDGET_KEY] =
         (spentByCategory[RECURRING_BUDGET_KEY] ?? 0) + r.totalAmount;
     }
