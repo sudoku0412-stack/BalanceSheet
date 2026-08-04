@@ -1,23 +1,42 @@
-import React, { useCallback, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useStyles, useTheme } from '../constants/theme';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../lib/AuthContext';
-import { getCurrentHouseholdId } from '../lib/database';
-import { createHousehold, renameHousehold } from '../lib/cloudSync';
+import {
+  deleteAllRowsForHousehold,
+  getAllReceiptsForHousehold,
+  getAllSettlementsForHousehold,
+  getCurrentHouseholdId,
+  insertSettlement,
+} from '../lib/database';
+import {
+  createHousehold,
+  deleteHousehold,
+  getHouseholdMembers,
+  getUserMemberships,
+  renameHousehold,
+} from '../lib/cloudSync';
+import { clearBudgetsForHousehold, getCurrency } from '../lib/secureStorage';
+import { computeMemberBalances, type MemberBalance } from '../lib/balances';
+import { formatCurrency, type CurrencyCode } from '../lib/currency';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Multi-household switcher. Lists every household the signed-in user
  * belongs to (lib/AuthContext's `memberships`), lets them switch the
- * active one, create a new one, or (owner-only) name a legacy
- * household that predates this feature and never got a real name.
- * Switching is blocked while `editInProgress` is true (an unsaved
- * scan/edit screen is open) — see app/(tabs)/scan.tsx and
- * app/edit/[id].tsx, which set that flag on mount/unmount.
+ * active one, create a new one, (owner-only) name a legacy household
+ * that predates this feature and never got a real name, or (owner-
+ * only) swipe a row left to delete it entirely. Switching is blocked
+ * while `editInProgress` is true (an unsaved scan/edit screen is
+ * open) — see app/(tabs)/scan.tsx and app/edit/[id].tsx, which set
+ * that flag on mount/unmount.
  */
 export default function HouseholdsScreen() {
   const theme = useTheme();
@@ -34,6 +53,17 @@ export default function HouseholdsScreen() {
   const [renamingHid, setRenamingHid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [savingRename, setSavingRename] = useState(false);
+  const [deletingHid, setDeletingHid] = useState<string | null>(null);
+  const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
+
+  useFocusEffect(
+    useCallback(() => {
+      getCurrency().then((c) => {
+        if (c) setCurrency(c as CurrencyCode);
+      });
+    }, []),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -115,6 +145,122 @@ export default function HouseholdsScreen() {
     }
   };
 
+  // Owner-only, triggered by swiping a row left. Checks THAT household
+  // (not necessarily the active one) for unsettled balances first — if
+  // any exist, the confirmation offers to auto-settle them before
+  // permanently deleting. Auto-settle only actually records a
+  // settlement when this IS the active household (insertSettlement
+  // stamps whatever household is currently active locally, so doing
+  // it for a non-active target would mis-attribute the settlement) —
+  // for a non-active target the balances just evaporate along with
+  // the rest of the household's data, which the confirmation copy
+  // makes clear either way.
+  const confirmDelete = async (
+    householdId: string,
+    label: string,
+    isActive: boolean,
+  ) => {
+    if (!user?.uid || deletingHid) return;
+    swipeableRefs.current[householdId]?.close();
+    const members = await getHouseholdMembers({ householdId, currentUid: user.uid });
+    const [receipts, settlements] = await Promise.all([
+      getAllReceiptsForHousehold(householdId),
+      getAllSettlementsForHousehold(householdId),
+    ]);
+    const memberArr = members ?? [];
+    const pending = computeMemberBalances(receipts, settlements, user.uid, memberArr).filter(
+      (b) => Math.abs(b.netUsd) > 0.005,
+    );
+    const otherCount = memberArr.filter((mm) => mm.uid !== user.uid).length;
+    const otherMembersWarning =
+      otherCount > 0
+        ? ` The other ${otherCount} member${otherCount === 1 ? '' : 's'} will lose access to it.`
+        : '';
+    if (pending.length > 0) {
+      const total = pending.reduce((sum, b) => sum + Math.abs(b.netUsd), 0);
+      Alert.alert(
+        'Unsettled balances',
+        `"${label}" has ${formatCurrency(total, currency)} in unsettled balances. Deleting it will auto-settle ${
+          pending.length === 1 ? 'it' : 'them'
+        } and permanently delete every receipt and settlement in it.${otherMembersWarning} This can't be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Settle & Delete',
+            style: 'destructive',
+            onPress: () => performDelete(householdId, pending, isActive),
+          },
+        ],
+      );
+    } else {
+      Alert.alert(
+        `Delete "${label}"?`,
+        `This permanently deletes every receipt and settlement in it.${otherMembersWarning} This can't be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: () => performDelete(householdId, [], isActive) },
+        ],
+      );
+    }
+  };
+
+  const performDelete = async (
+    householdId: string,
+    pending: MemberBalance[],
+    isActive: boolean,
+  ) => {
+    if (!user?.uid || deletingHid) return;
+    setDeletingHid(householdId);
+    try {
+      if (isActive) {
+        for (const b of pending) {
+          const fromUid = b.netUsd > 0 ? b.memberUid : user.uid;
+          const toUid = b.netUsd > 0 ? user.uid : b.memberUid;
+          await insertSettlement({
+            id: uuidv4(),
+            fromUid,
+            toUid,
+            amountUsd: Math.abs(b.netUsd),
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+      const res = await deleteHousehold({ householdId, uid: user.uid });
+      if (!res.ok) {
+        toast.show({ kind: 'error', message: res.reason || "Couldn't delete household" });
+        return;
+      }
+      await deleteAllRowsForHousehold(householdId);
+      await clearBudgetsForHousehold(householdId);
+      if (isActive) {
+        const remaining = (await getUserMemberships(user.uid)).filter(
+          (r) => r.householdId !== householdId,
+        );
+        let nextHid: string;
+        if (remaining.length > 0) {
+          nextHid = (remaining.find((r) => r.isDefault) ?? remaining[0]).householdId;
+        } else {
+          const created = await createHousehold({ uid: user.uid, name: 'My Household' });
+          if (!created.ok) {
+            toast.show({
+              kind: 'error',
+              message: "Household deleted, but couldn't set up a new one — restart the app.",
+            });
+            return;
+          }
+          nextHid = created.householdId;
+        }
+        await setActiveHousehold(nextHid);
+      }
+      await refreshMemberships();
+      toast.show({ kind: 'success', message: 'Household deleted' });
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't delete household" });
+    } finally {
+      setDeletingHid(null);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <ModalHeader
@@ -161,8 +307,8 @@ export default function HouseholdsScreen() {
             const isActive = m.householdId === activeHouseholdId;
             const isRenaming = renamingHid === m.householdId;
             const label = m.name || 'Unnamed household';
-            return (
-              <View key={m.householdId} style={[styles.card, isActive && styles.cardActive]}>
+            const card = (
+              <View style={[styles.card, isActive && styles.cardActive]}>
                 {isRenaming ? (
                   <View style={styles.renameRow}>
                     <TextInput
@@ -209,6 +355,37 @@ export default function HouseholdsScreen() {
                   </Pressable>
                 )}
               </View>
+            );
+
+            if (m.role !== 'owner' || isRenaming) {
+              return <View key={m.householdId}>{card}</View>;
+            }
+
+            return (
+              <Swipeable
+                key={m.householdId}
+                ref={(ref) => {
+                  swipeableRefs.current[m.householdId] = ref;
+                }}
+                renderRightActions={() => (
+                  <Pressable
+                    style={styles.deleteAction}
+                    onPress={() => confirmDelete(m.householdId, label, isActive)}
+                    disabled={deletingHid !== null}
+                  >
+                    {deletingHid === m.householdId ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <>
+                        <Ionicons name="trash" size={20} color="#fff" />
+                        <Text style={styles.deleteActionText}>Delete</Text>
+                      </>
+                    )}
+                  </Pressable>
+                )}
+              >
+                {card}
+              </Swipeable>
             );
           })}
         </ScrollView>
@@ -301,6 +478,21 @@ function useHouseholdsStyles() {
       paddingVertical: 4,
     },
     activeBadgeText: {
+      color: '#fff',
+      fontFamily: theme.fonts.display.bold,
+      fontSize: theme.font.xs,
+    },
+    deleteAction: {
+      backgroundColor: theme.colors.error,
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: 84,
+      marginBottom: theme.spacing.sm,
+      borderTopRightRadius: theme.radius.lg,
+      borderBottomRightRadius: theme.radius.lg,
+      gap: 2,
+    },
+    deleteActionText: {
       color: '#fff',
       fontFamily: theme.fonts.display.bold,
       fontSize: theme.font.xs,

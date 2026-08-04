@@ -13,13 +13,13 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
+import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../constants/theme';
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { ALL_CATEGORIES } from '../constants/categories';
 import { useAuth } from '../lib/AuthContext';
 import {
-  clearBudgetsForHousehold,
   getBudgetAlertsEnabled,
   getBudgetsSnapshot,
   getCategoryBudgets,
@@ -28,19 +28,10 @@ import {
   setCategoryBudget,
   setCurrency as persistCurrency,
 } from '../lib/secureStorage';
-import {
-  deleteAllRowsForHousehold,
-  getAllReceipts,
-  getAllSettlements,
-  getCurrentHouseholdId,
-  insertSettlement,
-} from '../lib/database';
+import { getAllReceipts, getCurrentHouseholdId } from '../lib/database';
 import { registerForPushNotificationsAsync, requestNotificationPermission } from '../lib/notifications';
 import {
-  createHousehold,
-  deleteHousehold,
   getHouseholdMembers,
-  getUserMemberships,
   inviteUserToHousehold,
   isCloudSyncAvailable,
   leaveHousehold,
@@ -60,8 +51,6 @@ import {
   formatCurrency,
   type CurrencyCode,
 } from '../lib/currency';
-import { computeMemberBalances } from '../lib/balances';
-import { v4 as uuidv4 } from 'uuid';
 import { Category } from '../types';
 
 function useSettingsStyles() {
@@ -238,6 +227,22 @@ function useSettingsStyles() {
       // scale it down instead of reimplementing a custom pill toggle.
       transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }],
     },
+    householdHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.colors.border,
+    },
+    householdHeaderName: {
+      flex: 1,
+      color: theme.colors.textPrimary,
+      fontSize: theme.font.md,
+      fontFamily: theme.fonts.display.bold,
+      marginRight: theme.spacing.sm,
+    },
     memberRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -354,7 +359,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const styles = useSettingsStyles();
   const router = useRouter();
-  const { user, profile, signOut, refreshProfile, setActiveHousehold } = useAuth();
+  const { user, profile, signOut, refreshProfile, setActiveHousehold, memberships } = useAuth();
   const toast = useToast();
 
   // Per-category budget amounts (canonical USD) and the "notify near
@@ -375,7 +380,6 @@ export default function SettingsScreen() {
   const [invitingSending, setInviteSending] = useState(false);
   const [addingByPhone, setAddingByPhone] = useState(false);
   const [leavingHousehold, setLeavingHousehold] = useState(false);
-  const [deletingHousehold, setDeletingHousehold] = useState(false);
   // Local-only echo of the last invite this device successfully sent —
   // NOT a query of pending invites (Firestore only tracks one pending
   // invite per invitee email, not per-sender). Exists purely so "Send"
@@ -501,101 +505,6 @@ export default function SettingsScreen() {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't leave household" });
     } finally {
       setLeavingHousehold(false);
-    }
-  };
-
-  // Owner-only. Checks for unsettled balances first — if any exist, the
-  // confirmation offers to auto-settle them (recording a settlement for
-  // whatever's outstanding, same mechanic as the Balances screen's
-  // manual "Settle up") before permanently deleting the household.
-  const confirmDeleteHousehold = async () => {
-    const householdId = getCurrentHouseholdId();
-    if (!householdId || !user?.uid || deletingHousehold) return;
-    const [receipts, settlements] = await Promise.all([getAllReceipts(), getAllSettlements()]);
-    const memberArr = members ?? [];
-    const pending = computeMemberBalances(receipts, settlements, user.uid, memberArr).filter(
-      (b) => Math.abs(b.netUsd) > 0.005,
-    );
-    const otherCount = memberArr.filter((m) => !m.isYou).length;
-    const otherMembersWarning =
-      otherCount > 0
-        ? ` The other ${otherCount} member${otherCount === 1 ? '' : 's'} will lose access to it.`
-        : '';
-    if (pending.length > 0) {
-      const total = pending.reduce((sum, b) => sum + Math.abs(b.netUsd), 0);
-      Alert.alert(
-        'Unsettled balances',
-        `There's ${formatCurrency(total, currency)} in unsettled balances. Deleting this household will auto-settle ${
-          pending.length === 1 ? 'it' : 'them'
-        } and permanently delete every receipt and settlement in it.${otherMembersWarning} This can't be undone.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Settle & Delete',
-            style: 'destructive',
-            onPress: () => doDeleteHousehold(householdId, pending),
-          },
-        ],
-      );
-    } else {
-      Alert.alert(
-        'Delete household?',
-        `This permanently deletes every receipt and settlement in this household.${otherMembersWarning} This can't be undone.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => doDeleteHousehold(householdId, []) },
-        ],
-      );
-    }
-  };
-
-  const doDeleteHousehold = async (
-    householdId: string,
-    pending: ReturnType<typeof computeMemberBalances>,
-  ) => {
-    if (!user?.uid || deletingHousehold) return;
-    setDeletingHousehold(true);
-    try {
-      for (const b of pending) {
-        const fromUid = b.netUsd > 0 ? b.memberUid : user.uid;
-        const toUid = b.netUsd > 0 ? user.uid : b.memberUid;
-        await insertSettlement({
-          id: uuidv4(),
-          fromUid,
-          toUid,
-          amountUsd: Math.abs(b.netUsd),
-          createdAt: new Date().toISOString(),
-        });
-      }
-      const res = await deleteHousehold({ householdId, uid: user.uid });
-      if (!res.ok) {
-        toast.show({ kind: 'error', message: res.reason || "Couldn't delete household" });
-        return;
-      }
-      await deleteAllRowsForHousehold(householdId);
-      await clearBudgetsForHousehold(householdId);
-      const remaining = await getUserMemberships(user.uid);
-      let nextHid: string;
-      if (remaining.length > 0) {
-        nextHid = (remaining.find((m) => m.isDefault) ?? remaining[0]).householdId;
-      } else {
-        const created = await createHousehold({ uid: user.uid, name: 'My Household' });
-        if (!created.ok) {
-          toast.show({
-            kind: 'error',
-            message: "Household deleted, but couldn't set up a new one — restart the app.",
-          });
-          return;
-        }
-        nextHid = created.householdId;
-      }
-      await setActiveHousehold(nextHid);
-      toast.show({ kind: 'success', message: 'Household deleted' });
-      await loadMembers();
-    } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't delete household" });
-    } finally {
-      setDeletingHousehold(false);
     }
   };
 
@@ -821,6 +730,17 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title="Household">
+          <Pressable
+            style={styles.householdHeaderRow}
+            onPress={() => router.push('/households')}
+            hitSlop={4}
+          >
+            <Text style={styles.householdHeaderName} numberOfLines={1}>
+              {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
+                'Unnamed household'}
+            </Text>
+            <Ionicons name="swap-horizontal" size={20} color={theme.colors.accent} />
+          </Pressable>
           {!isCloudSyncAvailable() && (
             <Text style={styles.cloudSyncWarning}>
               Cloud sync isn't available on this install, so household members
@@ -915,15 +835,6 @@ export default function SettingsScreen() {
             </Text>
           </Pressable>
 
-          <Pressable
-            onPress={() => router.push('/households')}
-            style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}
-          >
-            <Text style={{ color: theme.colors.accent, fontSize: theme.font.sm, fontFamily: theme.fonts.display.bold }}>
-              Switch or create household
-            </Text>
-          </Pressable>
-
           {members && members.length > 1 ? (
             <Pressable
               onPress={confirmLeaveHousehold}
@@ -933,19 +844,6 @@ export default function SettingsScreen() {
             >
               <Text style={styles.leaveHouseholdText}>
                 {leavingHousehold ? 'Leaving…' : 'Leave household'}
-              </Text>
-            </Pressable>
-          ) : null}
-
-          {members?.find((m) => m.isYou)?.role === 'owner' ? (
-            <Pressable
-              onPress={confirmDeleteHousehold}
-              style={styles.leaveHouseholdBtn}
-              disabled={deletingHousehold}
-              hitSlop={4}
-            >
-              <Text style={[styles.leaveHouseholdText, { color: theme.colors.error }]}>
-                {deletingHousehold ? 'Deleting…' : 'Delete household'}
               </Text>
             </Pressable>
           ) : null}

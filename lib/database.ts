@@ -1212,6 +1212,33 @@ export async function getAllSettlements(): Promise<Settlement[]> {
   return rows.map(rowToSettlement);
 }
 
+/**
+ * Same data as getAllReceipts/getAllSettlements, but scoped to an
+ * EXPLICIT household id rather than the current active one — used by
+ * the Households screen's delete flow to check a household for
+ * unsettled balances before deleting it, even when it isn't the one
+ * currently active. Strict equality only (no "OR household_id IS
+ * NULL" fallback, unlike householdFilterSql) since we're deliberately
+ * targeting one specific household, not "whatever the active one is."
+ */
+export async function getAllReceiptsForHousehold(householdId: string): Promise<Receipt[]> {
+  const uid = requireUserId('getAllReceiptsForHousehold');
+  const rows = await db.getAllAsync<RawRow>(
+    `SELECT * FROM receipts WHERE user_id=? AND household_id=? ORDER BY date DESC`,
+    [uid, householdId],
+  );
+  return await attachLineItems(rows);
+}
+
+export async function getAllSettlementsForHousehold(householdId: string): Promise<Settlement[]> {
+  const uid = requireUserId('getAllSettlementsForHousehold');
+  const rows = await db.getAllAsync<SettlementRow>(
+    `SELECT * FROM settlements WHERE user_id=? AND household_id=? ORDER BY created_at DESC`,
+    [uid, householdId],
+  );
+  return rows.map(rowToSettlement);
+}
+
 /** Applies a settlement pulled from the household's Firestore collection
  *  — insert-only (id is the primary key, so a duplicate delivery from the
  *  listener is a silent no-op, not an error). */
