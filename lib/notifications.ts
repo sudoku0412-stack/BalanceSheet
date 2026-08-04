@@ -161,7 +161,7 @@ export async function checkBudgetsAndNotify(): Promise<void> {
   const [alertsEnabled, permissionGranted, lastAlertDate] = await Promise.all([
     getBudgetAlertsEnabled(householdId),
     getNotificationPermissionGranted(),
-    getLastBudgetAlertDate(),
+    getLastBudgetAlertDate(householdId),
   ]);
   if (!alertsEnabled || !permissionGranted) return;
   if (lastAlertDate === todayYmd()) return;
@@ -176,7 +176,7 @@ export async function checkBudgetsAndNotify(): Promise<void> {
     content: { title: summary.title, body: summary.body },
     trigger: null, // fire immediately
   });
-  await setLastBudgetAlertDate(todayYmd());
+  await setLastBudgetAlertDate(householdId, todayYmd());
 }
 
 /**

@@ -191,12 +191,17 @@ export async function getCurrency(): Promise<string | null> {
   return await SecureStore.getItemAsync(Keys.currency);
 }
 
-export async function getLastBudgetAlertDate(): Promise<string | null> {
-  return await SecureStore.getItemAsync(Keys.lastBudgetAlertDate);
+/** Namespaced per household (multi-household support) — otherwise a
+ *  user with 2+ households could have today's local budget-alert slot
+ *  used up by whichever household happens to get checked first, and
+ *  a second household's own over-budget state would be silently
+ *  skipped for the rest of the day. */
+export async function getLastBudgetAlertDate(householdId: string): Promise<string | null> {
+  return await SecureStore.getItemAsync(`${Keys.lastBudgetAlertDate}.${householdId}`);
 }
 
-export async function setLastBudgetAlertDate(ymd: string): Promise<void> {
-  await SecureStore.setItemAsync(Keys.lastBudgetAlertDate, ymd);
+export async function setLastBudgetAlertDate(householdId: string, ymd: string): Promise<void> {
+  await SecureStore.setItemAsync(`${Keys.lastBudgetAlertDate}.${householdId}`, ymd);
 }
 
 export async function setCurrency(code: string): Promise<void> {
