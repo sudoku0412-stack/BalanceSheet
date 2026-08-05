@@ -155,6 +155,11 @@ module.exports = ({ config }) => {
             // unless we bump Kotlin explicitly. 1.9.25 is the
             // minimum that satisfies both.
             kotlinVersion: '1.9.25',
+            // R8/shrinking off by default in Expo builds — Play
+            // Console flagged "App optimization: Low" with no
+            // shrink/obfuscation numbers. Enabling both turns on R8.
+            enableProguardInReleaseBuilds: true,
+            enableShrinkResourcesInReleaseBuilds: true,
           },
         },
       ],
