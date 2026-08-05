@@ -143,13 +143,14 @@ module.exports = ({ config }) => {
             deploymentTarget: '16.0',
           },
           android: {
-            // Google Play minimum target raised to API 35 (Android 15)
-            // for new app uploads in 2026. compileSdk must be >=
-            // targetSdk so both bump together. buildTools 35.0.0
-            // matches the SDK version.
-            compileSdkVersion: 35,
-            targetSdkVersion: 35,
-            buildToolsVersion: '35.0.0',
+            // Google Play requires targeting API 36 (Android 16) by
+            // Aug 31 2026 or the app can no longer be updated —
+            // flagged in Play Console's Policy status. compileSdk
+            // must be >= targetSdk so both bump together. buildTools
+            // 36.0.0 matches the SDK version.
+            compileSdkVersion: 36,
+            targetSdkVersion: 36,
+            buildToolsVersion: '36.0.0',
             // Expo SDK 52 ships Kotlin 1.9.24 but bundles a Compose
             // Compiler (1.5.15) that requires 1.9.25 — the build
             // fails with a "not known to be compatible" error
