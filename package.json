@@ -21,7 +21,8 @@
     "build:android": "npx eas-cli build --platform android --profile production",
     "build:ios": "npx eas-cli build --platform ios --profile production",
     "build:android-dev": "npx eas-cli build --platform android --profile development",
-    "build:ios-dev": "npx eas-cli build --platform ios --profile development"
+    "build:ios-dev": "npx eas-cli build --platform ios --profile development",
+    "eas-build-post-install": "node scripts/write-google-services-plist.js"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

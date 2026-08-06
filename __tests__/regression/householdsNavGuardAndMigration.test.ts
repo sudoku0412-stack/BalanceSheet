@@ -86,4 +86,47 @@ describe('Regression: budget-legacy-migration self-heals without depending on Au
     // written and nothing here would have healed it.
     expect(budgets).toEqual({ Groceries: 300 });
   });
+
+  /**
+   * Bug: the migration marker was namespaced per-household
+   * (`bs.budgets.legacyMigrated.${householdId}`), so every *new*
+   * household looked "unmigrated" on its very first read and blindly
+   * inherited this device's old legacy budgets — including a brand-new
+   * guest account's freshly created household, which surfaced as
+   * "guest sign-in auto-fills random category budgets."
+   *
+   * Fixed by making the marker device-wide (unsuffixed), so the legacy
+   * copy happens at most once ever, for whichever household is read
+   * first — any household created afterwards starts empty.
+   */
+  it('does not re-inject legacy budgets into a second, later household once migration has already run', async () => {
+    jest.resetModules();
+    const mockSecureStoreMemory = new Map<string, string>();
+    jest.doMock('expo-secure-store', () => ({
+      getItemAsync: jest.fn(async (key: string) => mockSecureStoreMemory.get(key) ?? null),
+      setItemAsync: jest.fn(async (key: string, value: string) => {
+        mockSecureStoreMemory.set(key, value);
+      }),
+      deleteItemAsync: jest.fn(async (key: string) => {
+        mockSecureStoreMemory.delete(key);
+      }),
+    }));
+
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+    const { getCategoryBudgets } = require('../../lib/secureStorage');
+
+    mockSecureStoreMemory.set('bs.budgets.byCategory', JSON.stringify({ Groceries: 300 }));
+
+    // First household ever read on this device — legitimately inherits
+    // the legacy numbers.
+    const first = await getCategoryBudgets('household-1');
+    expect(first).toEqual({ Groceries: 300 });
+
+    // A second, brand-new household (e.g. a fresh guest account) reads
+    // budgets for the first time AFTER migration already ran once —
+    // under the original per-household-marker bug this would also
+    // inherit { Groceries: 300 }; it should start empty instead.
+    const second = await getCategoryBudgets('household-2');
+    expect(second).toEqual({});
+  });
 });

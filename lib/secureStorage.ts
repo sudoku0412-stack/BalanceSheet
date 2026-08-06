@@ -15,10 +15,13 @@ const Keys = {
   budgetAlertsEnabled: 'bs.budgets.alertsEnabled',
   currency: 'bs.currency',
   lastBudgetAlertDate: 'bs.budgets.lastAlertDate',
-  // Multi-household support: one-time per-household marker so the
-  // legacy flat budgets key (below) gets copied into its
-  // household-namespaced key exactly once. Mirrors cloudMigrationDone's
-  // `.${uid}` suffix pattern.
+  // Multi-household support: one-time, device-wide marker so the legacy
+  // flat budgets key (below) gets copied into a household-namespaced key
+  // exactly once, ever — NOT per-household. A per-household marker would
+  // re-inject this device's old pre-multi-household numbers into every
+  // *new* household created afterwards (a second household, or a fresh
+  // guest account), since each new id looks "unmigrated" on its first
+  // read even though the legacy data was never meant for it.
   legacyBudgetsMigrated: 'bs.budgets.legacyMigrated',
 } as const;
 
@@ -162,8 +165,7 @@ export async function applyBudgetsSnapshot(
  * call on every sign-in.
  */
 export async function migrateLegacyBudgetsToHousehold(householdId: string): Promise<void> {
-  const marker = `${Keys.legacyBudgetsMigrated}.${householdId}`;
-  const already = await SecureStore.getItemAsync(marker);
+  const already = await SecureStore.getItemAsync(Keys.legacyBudgetsMigrated);
   if (already === '1') return;
   const legacyBudgets = await SecureStore.getItemAsync(Keys.categoryBudgets);
   const legacyAlerts = await SecureStore.getItemAsync(Keys.budgetAlertsEnabled);
@@ -173,17 +175,16 @@ export async function migrateLegacyBudgetsToHousehold(householdId: string): Prom
   if (legacyAlerts) {
     await SecureStore.setItemAsync(`${Keys.budgetAlertsEnabled}.${householdId}`, legacyAlerts);
   }
-  await SecureStore.setItemAsync(marker, '1');
+  await SecureStore.setItemAsync(Keys.legacyBudgetsMigrated, '1');
 }
 
 /** Removes a deleted household's namespaced budget keys (amounts,
- *  alerts toggle, migration marker) from this device. Called by the
- *  owner's device right after cloudSync.deleteHousehold succeeds. */
+ *  alerts toggle) from this device. Called by the owner's device right
+ *  after cloudSync.deleteHousehold succeeds. */
 export async function clearBudgetsForHousehold(householdId: string): Promise<void> {
   await Promise.all([
     SecureStore.deleteItemAsync(`${Keys.categoryBudgets}.${householdId}`),
     SecureStore.deleteItemAsync(`${Keys.budgetAlertsEnabled}.${householdId}`),
-    SecureStore.deleteItemAsync(`${Keys.legacyBudgetsMigrated}.${householdId}`),
   ]);
 }
 

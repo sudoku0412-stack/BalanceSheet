@@ -842,7 +842,7 @@ export default function SettingsScreen() {
         </Section>
 
         <Section title="Categories & budgets">
-          {ALL_CATEGORIES.map((cat: Category) => (
+          {ALL_CATEGORIES.filter((cat) => cat !== RECURRING_BUDGET_KEY).map((cat: Category) => (
             <View key={cat} style={styles.budgetRow}>
               <View
                 style={[styles.categoryDot, { backgroundColor: theme.colors.category[cat] }]}
