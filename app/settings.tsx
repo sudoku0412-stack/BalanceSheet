@@ -590,7 +590,7 @@ export default function SettingsScreen() {
         toast.show({
           kind: 'error',
           message:
-            "Notifications are turned off for BalanceSheet — enable them in your device Settings to actually receive budget alerts.",
+            "Notifications are turned off for NestExpenseTracker — enable them in your device Settings to actually receive budget alerts.",
         });
         return;
       }
@@ -621,7 +621,7 @@ export default function SettingsScreen() {
         return;
       }
       const csv = receiptsToCsv(receipts, currency);
-      const filename = `BalanceSheet All Data - ${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `NestExpenseTracker All Data - ${new Date().toISOString().slice(0, 10)}.csv`;
       const path = `${FileSystem.documentDirectory}${filename}`;
       await FileSystem.writeAsStringAsync(path, csv, {
         encoding: FileSystem.EncodingType.UTF8,

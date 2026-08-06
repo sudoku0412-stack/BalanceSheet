@@ -36,6 +36,6 @@ export async function addByPhone(args: {
   }
   const inviterLabel = args.invitedByName?.trim() || 'Someone';
   const householdLabel = args.householdName?.trim() || 'their household';
-  const inviteText = `${inviterLabel} invited you to split expenses on BalanceSheet (${householdLabel}). Install the app and verify this phone number to join.`;
+  const inviteText = `${inviterLabel} invited you to split expenses on NestExpenseTracker (${householdLabel}). Install the app and verify this phone number to join.`;
   return { ok: true, matched: false, inviteText };
 }

@@ -44,7 +44,7 @@ describe('addByPhone', () => {
     if (result.ok && !result.matched) {
       expect(result.inviteText).toContain('Alice');
       expect(result.inviteText).toContain('The Smiths');
-      expect(result.inviteText).toContain('BalanceSheet');
+      expect(result.inviteText).toContain('NestExpenseTracker');
     } else {
       throw new Error('expected no-match branch');
     }

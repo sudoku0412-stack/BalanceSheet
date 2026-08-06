@@ -6,7 +6,7 @@ import {
 } from './geminiParseReceipt';
 
 /**
- * App-side client for the BalanceSheet Cloudflare Worker that proxies
+ * App-side client for the NestExpenseTracker Cloudflare Worker that proxies
  * receipt parsing through Workers AI (Llama 3.3 70B by default). Used
  * as the FREE-FOR-ALL-USERS default when:
  *   - the user has NOT pasted their own Gemini key in Settings, AND

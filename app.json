@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "ReceiptScanner",
+    "name": "NestExpenseTracker",
     "slug": "receipt-scanner",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -15,9 +15,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.yourname.receiptscanner",
       "infoPlist": {
-        "NSCameraUsageDescription": "ReceiptScanner needs camera access to scan receipts.",
-        "NSPhotoLibraryUsageDescription": "ReceiptScanner needs photo library access to import receipts.",
-        "NSContactsUsageDescription": "ReceiptScanner needs contacts access so you can pick who to add to your household."
+        "NSCameraUsageDescription": "NestExpenseTracker needs camera access to scan receipts.",
+        "NSPhotoLibraryUsageDescription": "NestExpenseTracker needs photo library access to import receipts.",
+        "NSContactsUsageDescription": "NestExpenseTracker needs contacts access so you can pick who to add to your household."
       },
       "buildNumber": "6"
     },
@@ -41,13 +41,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow ReceiptScanner to access your camera to scan receipts."
+          "cameraPermission": "Allow NestExpenseTracker to access your camera to scan receipts."
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow ReceiptScanner to access your photos to import receipts."
+          "photosPermission": "Allow NestExpenseTracker to access your photos to import receipts."
         }
       ],
       [
@@ -60,7 +60,7 @@
       [
         "expo-contacts",
         {
-          "contactsPermission": "Allow ReceiptScanner to access your contacts so you can pick who to add to your household."
+          "contactsPermission": "Allow NestExpenseTracker to access your contacts so you can pick who to add to your household."
         }
       ]
     ],

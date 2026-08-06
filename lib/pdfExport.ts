@@ -434,12 +434,12 @@ function buildHtml(args: {
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8" />
-<title>BalanceSheet Expense Report</title>
+<title>NestExpenseTracker Expense Report</title>
 <style>${styles}</style>
 </head><body>
 
 <section class="hero">
-  <div class="hero-brand"><span class="dot"></span> BalanceSheet · Expense Report</div>
+  <div class="hero-brand"><span class="dot"></span> NestExpenseTracker · Expense Report</div>
   <h1>${escapeHtml(startLabel)} — ${escapeHtml(endLabel)}</h1>
   <p class="hero-range">Generated ${escapeHtml(
     generatedAt.toLocaleString(undefined, {
@@ -476,7 +476,7 @@ function buildHtml(args: {
 </section>
 
 <footer class="footer">
-  <span>BalanceSheet · ${totalReceipts} receipt${totalReceipts === 1 ? '' : 's'}</span>
+  <span>NestExpenseTracker · ${totalReceipts} receipt${totalReceipts === 1 ? '' : 's'}</span>
   <span>${money(totalSpent)} total</span>
 </footer>
 

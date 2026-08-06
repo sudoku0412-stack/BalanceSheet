@@ -5,6 +5,8 @@ import {
   isSuccessResponse,
   statusCodes,
 } from '@react-native-google-signin/google-signin';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 
 let googleConfigured = false;
 
@@ -116,6 +118,44 @@ export async function signInWithGoogle(): Promise<AuthUser> {
   if (!idToken) throw new Error('No Google ID token returned.');
   const credential = auth.GoogleAuthProvider.credential(idToken);
   const cred = await auth().signInWithCredential(credential);
+  return cred.user;
+}
+
+/**
+ * Apple requires the nonce sent to signInAsync to be SHA256-hashed, but
+ * Firebase's AppleAuthProvider credential wants the original raw value —
+ * Apple echoes the hash back in the identity token for it to verify against.
+ */
+export async function signInWithApple(): Promise<AuthUser> {
+  const rawNonce = Crypto.randomUUID();
+  const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+
+  const appleCredential = await AppleAuthentication.signInAsync({
+    requestedScopes: [
+      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+    ],
+    nonce: hashedNonce,
+  });
+
+  if (!appleCredential.identityToken) throw new Error('No Apple identity token returned.');
+
+  const credential = auth.AppleAuthProvider.credential(
+    appleCredential.identityToken,
+    rawNonce,
+  );
+  const cred = await auth().signInWithCredential(credential);
+
+  // Apple only returns the name on the FIRST authorization ever for this
+  // user+app pair — later sign-ins omit it, so Firebase's displayName would
+  // stay null forever unless we capture and set it here on that first pass.
+  if (!cred.user.displayName && (appleCredential.fullName?.givenName || appleCredential.fullName?.familyName)) {
+    const name = [appleCredential.fullName?.givenName, appleCredential.fullName?.familyName]
+      .filter(Boolean)
+      .join(' ');
+    if (name) await cred.user.updateProfile({ displayName: name });
+  }
+
   return cred.user;
 }
 

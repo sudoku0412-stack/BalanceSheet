@@ -19,10 +19,12 @@ import { useAuth } from '../lib/AuthContext';
 import {
   sendPasswordReset,
   signInAsGuest,
+  signInWithApple,
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
 } from '../lib/auth';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { humanizeAuthError } from '../lib/authErrors';
 
 type Tab = 'login' | 'signup';
@@ -87,8 +89,8 @@ export default function AuthScreen() {
               <Ionicons name="receipt" size={16} color={theme.colors.primary} />
             </View>
             <Text style={styles.brand}>
-              <Text style={styles.brandBold}>Receipt</Text>
-              <Text style={styles.brandLight}>ly</Text>
+              <Text style={styles.brandBold}>Nest</Text>
+              <Text style={styles.brandLight}>ExpenseTracker</Text>
             </Text>
           </View>
         </FadeInUp>
@@ -334,17 +336,39 @@ function GoogleForm() {
 }
 
 function AppleButton() {
+  const { ensureProfile } = useAuth();
   const toast = useToast();
   const styles = useStyles(makeStyles);
+  const [loading, setLoading] = useState(false);
+  // isAvailableAsync resolves false on Android and on iOS < 13, so this
+  // also covers hiding the button on platforms that can't show it.
+  const [available, setAvailable] = useState(false);
 
-  const onPress = () => {
-    toast.show({ kind: 'info', message: "Apple sign-in isn't available yet" });
+  useEffect(() => {
+    AppleAuthentication.isAvailableAsync().then(setAvailable);
+  }, []);
+
+  const onPress = async () => {
+    try {
+      setLoading(true);
+      const user = await signInWithApple();
+      const parts = (user.displayName ?? '').split(' ').filter(Boolean);
+      await ensureProfile(parts[0] ?? '', parts.slice(1).join(' '));
+    } catch (e: any) {
+      if (e?.code === 'ERR_REQUEST_CANCELED') return;
+      toast.show({ kind: 'error', message: humanizeAuthError(e) });
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (!available) return null;
 
   return (
     <Button
       label="Continue with Apple"
       onPress={onPress}
+      loading={loading}
       variant="secondary"
       style={{ ...styles.socialButton, marginTop: 0 }}
       textStyle={styles.socialButtonText}

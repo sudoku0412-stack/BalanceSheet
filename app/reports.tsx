@@ -34,10 +34,10 @@ import { CategorySummary, MonthlyStats, Receipt, Category } from '../types';
 
 /**
  * Build a human-readable filename for the exported receipt report,
- * e.g. "BalanceSheet Expense Report - July 2026.pdf".
+ * e.g. "NestExpenseTracker Expense Report - July 2026.pdf".
  */
 function buildExportFilename(month: Date, ext: 'pdf' | 'csv'): string {
-  return `BalanceSheet Expense Report - ${format(month, 'MMMM yyyy')}.${ext}`;
+  return `NestExpenseTracker Expense Report - ${format(month, 'MMMM yyyy')}.${ext}`;
 }
 
 export default function ReportsScreenWrapped() {

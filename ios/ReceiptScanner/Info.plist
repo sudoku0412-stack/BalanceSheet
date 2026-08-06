@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Receipt Scanner</string>
+	<string>NestExpenseTracker</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -58,17 +58,17 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Allow ReceiptScanner to access your camera.</string>
+	<string>Allow NestExpenseTracker to access your camera.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>ReceiptScanner needs contacts access to let you pick a household member to invite by phone number.</string>
+	<string>NestExpenseTracker needs contacts access to let you pick a household member to invite by phone number.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSFaceIDUsageDescription</key>
-	<string>Use Face ID to quickly and securely unlock ReceiptScanner.</string>
+	<string>Use Face ID to quickly and securely unlock NestExpenseTracker.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Allow $(PRODUCT_NAME) to access your microphone</string>
+	<string>Allow NestExpenseTracker to access your microphone</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Allow ReceiptScanner to access your photos.</string>
+	<string>Allow NestExpenseTracker to access your photos.</string>
 	<key>NSUserActivityTypes</key>
 	<array>
 		<string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>

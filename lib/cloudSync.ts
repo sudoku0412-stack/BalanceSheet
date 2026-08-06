@@ -1240,7 +1240,7 @@ export async function clearPhoneIndex(phoneE164: string): Promise<void> {
   }
 }
 
-/** Does a verified BalanceSheet user already own this phone number?
+/** Does a verified NestExpenseTracker user already own this phone number?
  *  Returns just uid/displayName — never email or anything else, since
  *  this is a contact-discovery surface (see lib/phoneInvite.ts). */
 export async function lookupUserByPhone(

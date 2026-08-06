@@ -61,16 +61,16 @@ module.exports = ({ config }) => {
       buildNumber: '6',
       googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
-        NSCameraUsageDescription: 'ReceiptScanner needs camera access to scan receipts.',
+        NSCameraUsageDescription: 'NestExpenseTracker needs camera access to scan receipts.',
         NSPhotoLibraryUsageDescription:
-          'ReceiptScanner needs photo library access to import receipts.',
-        NSFaceIDUsageDescription: 'Use Face ID to quickly and securely unlock ReceiptScanner.',
+          'NestExpenseTracker needs photo library access to import receipts.',
+        NSFaceIDUsageDescription: 'Use Face ID to quickly and securely unlock NestExpenseTracker.',
         // expo-contacts (Settings → "Add by phone contact") pulls this
         // in even though the app only ever reads the ONE contact the
         // user explicitly taps in the native picker — Apple still
         // requires the purpose string for the underlying API.
         NSContactsUsageDescription:
-          'ReceiptScanner needs contacts access to let you pick a household member to invite by phone number.',
+          'NestExpenseTracker needs contacts access to let you pick a household member to invite by phone number.',
         // Answers App Store Connect's export-compliance question ahead
         // of time — this app only uses standard HTTPS/TLS (Firebase,
         // Gemini, etc.), no custom/proprietary encryption, so it
@@ -135,8 +135,8 @@ module.exports = ({ config }) => {
       'expo-secure-store',
       '@react-native-firebase/app',
       '@react-native-firebase/auth',
-      ['expo-camera', { cameraPermission: 'Allow ReceiptScanner to access your camera.' }],
-      ['expo-image-picker', { photosPermission: 'Allow ReceiptScanner to access your photos.' }],
+      ['expo-camera', { cameraPermission: 'Allow NestExpenseTracker to access your camera.' }],
+      ['expo-image-picker', { photosPermission: 'Allow NestExpenseTracker to access your photos.' }],
       '@react-native-community/datetimepicker',
       // Sets up the iOS aps-environment entitlement needed for remote
       // push (household activity alerts) — local-only notifications
@@ -144,6 +144,7 @@ module.exports = ({ config }) => {
       // needs it. Also needs `eas credentials` run once to upload an
       // APNs key from the Apple Developer account for iOS builds.
       'expo-notifications',
+      'expo-apple-authentication',
       [
         'expo-build-properties',
         {

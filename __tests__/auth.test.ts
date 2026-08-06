@@ -3,6 +3,7 @@ const mockSignInAnonymously = jest.fn();
 const mockSignInWithCredential = jest.fn();
 const mockSignOut = jest.fn();
 const mockCredentialFn = jest.fn();
+const mockAppleCredentialFn = jest.fn();
 
 let mockCurrentUser: { updateProfile?: jest.Mock; delete?: jest.Mock } | null = null;
 
@@ -16,8 +17,22 @@ jest.mock('@react-native-firebase/auth', () => {
     signOut: (...args: unknown[]) => mockSignOut(...args),
   });
   authFn.GoogleAuthProvider = { credential: (...args: unknown[]) => mockCredentialFn(...args) };
+  authFn.AppleAuthProvider = { credential: (...args: unknown[]) => mockAppleCredentialFn(...args) };
   return { __esModule: true, default: authFn };
 });
+
+const mockAppleSignInAsync = jest.fn();
+
+jest.mock('expo-apple-authentication', () => ({
+  signInAsync: (...args: unknown[]) => mockAppleSignInAsync(...args),
+  AppleAuthenticationScope: { FULL_NAME: 'FULL_NAME', EMAIL: 'EMAIL' },
+}));
+
+jest.mock('expo-crypto', () => ({
+  randomUUID: () => 'raw-nonce',
+  digestStringAsync: async () => 'hashed-nonce',
+  CryptoDigestAlgorithm: { SHA256: 'SHA256' },
+}));
 
 const mockGoogleSignIn = jest.fn();
 const mockGoogleSignOut = jest.fn();
@@ -40,7 +55,13 @@ jest.mock('@react-native-google-signin/google-signin', () => ({
   statusCodes: { SIGN_IN_CANCELLED: 'SIGN_IN_CANCELLED' },
 }));
 
-import { updateAuthDisplayName, signInWithGoogle, deleteCurrentAccount, signOutEverywhere } from '../lib/auth';
+import {
+  updateAuthDisplayName,
+  signInWithGoogle,
+  signInWithApple,
+  deleteCurrentAccount,
+  signOutEverywhere,
+} from '../lib/auth';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -99,6 +120,52 @@ describe('signInWithGoogle', () => {
     const user = await signInWithGoogle();
     expect(mockCredentialFn).toHaveBeenCalledWith('tok-123');
     expect(user).toEqual({ uid: 'u1' });
+  });
+});
+
+describe('signInWithApple', () => {
+  it('throws when no identityToken is returned', async () => {
+    mockAppleSignInAsync.mockResolvedValue({ identityToken: null });
+    await expect(signInWithApple()).rejects.toThrow('No Apple identity token returned.');
+  });
+
+  it('signs in with the credential using the raw (unhashed) nonce', async () => {
+    mockAppleSignInAsync.mockResolvedValue({ identityToken: 'tok-123', fullName: null });
+    mockAppleCredentialFn.mockReturnValue({ mock: 'cred' });
+    mockSignInWithCredential.mockResolvedValue({ user: { uid: 'u1', displayName: null } });
+    await signInWithApple();
+    expect(mockAppleSignInAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ nonce: 'hashed-nonce' }),
+    );
+    expect(mockAppleCredentialFn).toHaveBeenCalledWith('tok-123', 'raw-nonce');
+  });
+
+  it('sets displayName from fullName on first sign-in (no existing displayName)', async () => {
+    const updateProfile = jest.fn().mockResolvedValue(undefined);
+    mockAppleSignInAsync.mockResolvedValue({
+      identityToken: 'tok-123',
+      fullName: { givenName: 'Jane', familyName: 'Doe' },
+    });
+    mockSignInWithCredential.mockResolvedValue({
+      user: { uid: 'u1', displayName: null, updateProfile },
+    });
+    await signInWithApple();
+    expect(updateProfile).toHaveBeenCalledWith({ displayName: 'Jane Doe' });
+  });
+
+  it('does not touch displayName on later sign-ins (Apple omits fullName)', async () => {
+    const updateProfile = jest.fn();
+    mockAppleSignInAsync.mockResolvedValue({ identityToken: 'tok-123', fullName: null });
+    mockSignInWithCredential.mockResolvedValue({
+      user: { uid: 'u1', displayName: null, updateProfile },
+    });
+    await signInWithApple();
+    expect(updateProfile).not.toHaveBeenCalled();
+  });
+
+  it('propagates cancellation (ERR_REQUEST_CANCELED) unchanged', async () => {
+    mockAppleSignInAsync.mockRejectedValue({ code: 'ERR_REQUEST_CANCELED' });
+    await expect(signInWithApple()).rejects.toMatchObject({ code: 'ERR_REQUEST_CANCELED' });
   });
 });
 
