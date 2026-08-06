@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, View, Text, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -317,6 +317,23 @@ export default function DashboardScreen() {
       checkBudgetsAndNotify().catch(() => {});
     }, [load]),
   );
+
+  // useFocusEffect only fires on navigation focus changes — if Home was
+  // already the focused screen when the app got backgrounded (e.g. a
+  // shared-expense/settle-up push was tapped while Home was already
+  // open), resuming the app is an AppState change with no navigation
+  // event, so the load above would otherwise never refire and the
+  // screen would show stale data despite "opening."
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (appState.current !== 'active' && nextState === 'active') {
+        load();
+      }
+      appState.current = nextState;
+    });
+    return () => subscription.remove();
+  }, [load]);
 
   const onRefresh = async () => {
     setRefreshing(true);

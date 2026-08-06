@@ -162,6 +162,20 @@ module.exports = ({ config }) => {
             // shrink/obfuscation numbers. Enabling both turns on R8.
             enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
+            // @react-native-community/datetimepicker ships no proguard
+            // rules of its own (unlike Expo modules, which are covered
+            // by expo-modules-core's bundled rules) — R8 was silently
+            // stripping its TurboModule spec classes (package is
+            // com.reactcommunity.rndatetimepicker; RN's own bundled
+            // proguard-rules.pro keeps classic NativeModule implementers
+            // but not the TurboModule marker interface these use), which
+            // is why the recurring-expense date picker stopped opening
+            // once R8 shrinking was turned on above.
+            extraProguardRules: `
+-keep class com.reactcommunity.rndatetimepicker.** { *; }
+-keep class * implements com.facebook.react.turbomodule.core.interfaces.TurboModule { *; }
+-keep class * implements com.facebook.react.bridge.ReactPackage { *; }
+`,
           },
         },
       ],

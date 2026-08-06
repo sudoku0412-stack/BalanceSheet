@@ -133,17 +133,18 @@ function RootStack() {
     router.replace(targetToHref(target) as never);
   }, [initializing, user, onboardingSeen, segments]);
 
-  // Shared-expense/settle-up pushes carry data.screen: 'balances' (see
-  // lib/notifications.ts) — tapping one should jump straight to
-  // Balances, not just foreground whatever screen the app was left on.
-  // Covers both a cold-start tap (checked once here) and a tap while the
-  // app was already running/backgrounded (the listener).
+  // Shared-expense/settle-up pushes carry data.screen: 'home' (see
+  // lib/notifications.ts) — tapping one should jump straight to Home
+  // (freshly reloaded — see app/(tabs)/index.tsx's AppState listener),
+  // not just foreground whatever screen the app was left on. Covers
+  // both a cold-start tap (checked once here) and a tap while the app
+  // was already running/backgrounded (the listener).
   useEffect(() => {
     if (initializing) return;
     const goToTargetScreen = (response: Notifications.NotificationResponse) => {
       const data = response.notification.request.content.data as { screen?: string } | undefined;
-      if (data?.screen === 'balances') {
-        router.push('/balances');
+      if (data?.screen === 'home') {
+        router.push('/(tabs)');
       }
     };
     Notifications.getLastNotificationResponseAsync().then((response) => {

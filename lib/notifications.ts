@@ -275,7 +275,7 @@ export async function notifyNewSharedExpense(args: {
     tokens,
     'New shared expense',
     `${args.payerLabel} added ${args.amountLabel} at ${args.storeName}, split with you`,
-    { screen: 'balances' },
+    { screen: 'home' },
   );
 }
 
@@ -294,5 +294,5 @@ export async function notifySettleUp(args: {
   const body = args.actorIsPayer
     ? `${args.actorLabel} paid you ${args.amountLabel}`
     : `${args.actorLabel} marked ${args.amountLabel} as received from you`;
-  await sendExpoPushNotifications(tokens, 'Settled up', body, { screen: 'balances' });
+  await sendExpoPushNotifications(tokens, 'Settled up', body, { screen: 'home' });
 }
