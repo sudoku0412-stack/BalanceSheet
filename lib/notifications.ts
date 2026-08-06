@@ -109,6 +109,15 @@ function todayYmd(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/** Guards checkBudgetsAndNotify against concurrent overlapping calls
+ *  (e.g. useFocusEffect firing more than once in quick succession) —
+ *  without this, each concurrent call reads the same stale
+ *  lastBudgetAlertDate before any of them writes the updated value,
+ *  so all of them pass the once-per-day throttle and each fires its
+ *  own notification. A synchronous Set check-and-add has no await in
+ *  between, so it can't race the way the storage read/write can. */
+const budgetCheckInFlight = new Set<string>();
+
 /** Shared by checkBudgetsAndNotify (self, polled) and
  *  notifyHouseholdOfBudgetStatus (whole household, event-driven) —
  *  categorizes this month's spend against each category's limit and
@@ -167,25 +176,31 @@ function computeBudgetStatusSummary(
 export async function checkBudgetsAndNotify(): Promise<void> {
   const householdId = getCurrentHouseholdId();
   if (!householdId) return;
-  const [alertsEnabled, permissionGranted, lastAlertDate] = await Promise.all([
-    getBudgetAlertsEnabled(householdId),
-    getNotificationPermissionGranted(),
-    getLastBudgetAlertDate(householdId),
-  ]);
-  if (!alertsEnabled || !permissionGranted) return;
-  if (lastAlertDate === todayYmd()) return;
+  if (budgetCheckInFlight.has(householdId)) return;
+  budgetCheckInFlight.add(householdId);
+  try {
+    const [alertsEnabled, permissionGranted, lastAlertDate] = await Promise.all([
+      getBudgetAlertsEnabled(householdId),
+      getNotificationPermissionGranted(),
+      getLastBudgetAlertDate(householdId),
+    ]);
+    if (!alertsEnabled || !permissionGranted) return;
+    if (lastAlertDate === todayYmd()) return;
 
-  const budgets = await getCategoryBudgets(householdId);
-  const now = new Date();
-  const receipts = await getReceiptsByMonth(now.getFullYear(), now.getMonth() + 1);
-  const summary = computeBudgetStatusSummary(receipts, budgets);
-  if (!summary) return;
+    const budgets = await getCategoryBudgets(householdId);
+    const now = new Date();
+    const receipts = await getReceiptsByMonth(now.getFullYear(), now.getMonth() + 1);
+    const summary = computeBudgetStatusSummary(receipts, budgets);
+    if (!summary) return;
 
-  await Notifications.scheduleNotificationAsync({
-    content: { title: summary.title, body: summary.body },
-    trigger: null, // fire immediately
-  });
-  await setLastBudgetAlertDate(householdId, todayYmd());
+    await Notifications.scheduleNotificationAsync({
+      content: { title: summary.title, body: summary.body },
+      trigger: null, // fire immediately
+    });
+    await setLastBudgetAlertDate(householdId, todayYmd());
+  } finally {
+    budgetCheckInFlight.delete(householdId);
+  }
 }
 
 /**

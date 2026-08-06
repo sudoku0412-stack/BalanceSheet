@@ -16,6 +16,7 @@ type Template = { receipt: Receipt; nextDueDate: string; endDate: string; freque
 
 const FREQUENCY_LABEL: Record<string, string> = {
   weekly: 'Weekly',
+  biweekly: 'Bi-weekly',
   monthly: 'Monthly',
   yearly: 'Yearly',
 };

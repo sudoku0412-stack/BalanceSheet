@@ -712,7 +712,9 @@ export default function ScanScreen() {
   // first occurrence, and lib/recurring.ts's processor generates future
   // occurrences from `nextDueDate` up to `endDate`.
   const [recurringEnabled, setRecurringEnabled] = useState(false);
-  const [recurringFrequency, setRecurringFrequency] = useState<'weekly' | 'monthly' | 'yearly'>(
+  const [recurringFrequency, setRecurringFrequency] = useState<
+    'weekly' | 'biweekly' | 'monthly' | 'yearly'
+  >(
     'monthly',
   );
   const [recurringDuration, setRecurringDuration] = useState('');
@@ -1968,9 +1970,16 @@ export default function ScanScreen() {
           {recurringEnabled && (
             <View style={styles.recurringBody}>
               <View style={styles.segmented}>
-                {(['weekly', 'monthly', 'yearly'] as const).map((freq) => {
+                {(['weekly', 'biweekly', 'monthly', 'yearly'] as const).map((freq) => {
                   const active = recurringFrequency === freq;
-                  const label = freq === 'weekly' ? 'Weekly' : freq === 'monthly' ? 'Monthly' : 'Yearly';
+                  const label =
+                    freq === 'weekly'
+                      ? 'Weekly'
+                      : freq === 'biweekly'
+                        ? 'Bi-weekly'
+                        : freq === 'monthly'
+                          ? 'Monthly'
+                          : 'Yearly';
                   return (
                     <Pressable
                       key={freq}

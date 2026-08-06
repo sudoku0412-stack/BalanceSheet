@@ -88,7 +88,7 @@ export interface Receipt {
    *  clones this receipt onto new dated rows on a schedule until
    *  `endDate`, then stops. Absent means this expense is one-off. */
   recurring?: {
-    frequency: 'weekly' | 'monthly' | 'yearly';
+    frequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
     /** ISO date (YYYY-MM-DD) of the next occurrence still to generate. */
     nextDueDate: string;
     /** ISO date (YYYY-MM-DD) after which auto-add stops — derived once

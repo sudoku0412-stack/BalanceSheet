@@ -670,9 +670,9 @@ function EditReceiptScreen() {
   // this receipt's own date" — resetting nextDueDate on every save would
   // make already-generated occurrences repeat.
   const [recurringEnabled, setRecurringEnabled] = useState(false);
-  const [recurringFrequency, setRecurringFrequency] = useState<'weekly' | 'monthly' | 'yearly'>(
-    'monthly',
-  );
+  const [recurringFrequency, setRecurringFrequency] = useState<
+    'weekly' | 'biweekly' | 'monthly' | 'yearly'
+  >('monthly');
   const [recurringDuration, setRecurringDuration] = useState('');
   const [originalRecurring, setOriginalRecurring] = useState<Receipt['recurring'] | undefined>(
     undefined,
@@ -1376,9 +1376,16 @@ function EditReceiptScreen() {
         {recurringEnabled && (
           <View style={styles.splitBody}>
             <View style={styles.segmented}>
-              {(['weekly', 'monthly', 'yearly'] as const).map((freq) => {
+              {(['weekly', 'biweekly', 'monthly', 'yearly'] as const).map((freq) => {
                 const active = recurringFrequency === freq;
-                const label = freq === 'weekly' ? 'Weekly' : freq === 'monthly' ? 'Monthly' : 'Yearly';
+                const label =
+                  freq === 'weekly'
+                    ? 'Weekly'
+                    : freq === 'biweekly'
+                      ? 'Bi-weekly'
+                      : freq === 'monthly'
+                        ? 'Monthly'
+                        : 'Yearly';
                 return (
                   <Pressable
                     key={freq}
