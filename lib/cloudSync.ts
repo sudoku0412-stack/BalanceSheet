@@ -5,6 +5,7 @@ import {
   getCloudMigrationDone,
   setCloudMigrationDone,
 } from './secureStorage';
+import { notifyLocalDataChanged } from './dataSync';
 // setReceiptPhotoUrl is imported lazily inside syncReceiptToCloud to
 // avoid a circular dependency at module load: database.ts imports
 // from cloudSync, and we only need this writeback path from within
@@ -332,6 +333,7 @@ export function subscribeToHouseholdReceipts(
             console.warn('[cloudSync] receipt snapshot apply failed:', (e as Error)?.message);
           }
         }
+        if (snapshot.docChanges().length > 0) notifyLocalDataChanged();
       },
       (err) => {
         // eslint-disable-next-line no-console
@@ -627,6 +629,7 @@ export function subscribeToHouseholdSettlements(
             console.warn('[cloudSync] settlement snapshot apply failed:', (e as Error)?.message);
           }
         }
+        if (snapshot.docChanges().length > 0) notifyLocalDataChanged();
       },
       (err) => {
         // eslint-disable-next-line no-console
@@ -692,6 +695,7 @@ export function subscribeToHouseholdBudgets(
         if (!budgets) return;
         try {
           await applyBudgetsSnapshot(householdId, budgets);
+          notifyLocalDataChanged();
         } catch (e) {
           // eslint-disable-next-line no-console
           console.warn('[cloudSync] applying household budgets failed:', (e as Error)?.message);

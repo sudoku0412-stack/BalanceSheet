@@ -14,6 +14,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { computeStats } from '../../lib/dashboardStats';
 import { RECURRING_BUDGET_KEY, isRecurringExpense } from '../../lib/recurring';
 import { useAuth } from '../../lib/AuthContext';
+import { onLocalDataChanged } from '../../lib/dataSync';
 
 function greeting(): string {
   const h = new Date().getHours();
@@ -329,11 +330,21 @@ export default function DashboardScreen() {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (appState.current !== 'active' && nextState === 'active') {
         load();
+        checkBudgetsAndNotify().catch(() => {});
       }
       appState.current = nextState;
     });
     return () => subscription.remove();
   }, [load]);
+
+  // Firestore listeners (cloudSync.ts) write cloud changes into local
+  // SQLite/SecureStore asynchronously, on their own schedule — often
+  // AFTER the AppState/focus reload above already ran (e.g. resuming
+  // from a notification tap races the listener reconnecting), and also
+  // any time another household member's change arrives while this
+  // screen is sitting open in the foreground. Reload whenever that
+  // actually happens instead of only on navigation/AppState events.
+  useEffect(() => onLocalDataChanged(() => load()), [load]);
 
   const onRefresh = async () => {
     setRefreshing(true);

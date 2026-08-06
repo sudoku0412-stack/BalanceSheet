@@ -16,6 +16,7 @@ import { computeMemberBalances, MemberBalance } from '../lib/balances';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { notifySettleUp } from '../lib/notifications';
 import { Receipt, Settlement } from '../types';
+import { onLocalDataChanged } from '../lib/dataSync';
 
 function memberLabel(m: HouseholdMember): string {
   return m.displayName?.trim() || m.email || 'Household member';
@@ -89,6 +90,14 @@ export default function BalancesScreen() {
     });
     return () => subscription.remove();
   }, [load]);
+
+  // Firestore listeners (cloudSync.ts) write cloud changes into local
+  // SQLite asynchronously, on their own schedule — often AFTER the
+  // AppState/focus reload above already ran (e.g. resuming from a
+  // notification tap races the listener reconnecting), and also any
+  // time another household member's change arrives while this screen
+  // is open in the foreground. Reload whenever that actually happens.
+  useEffect(() => onLocalDataChanged(() => load()), [load]);
 
   // Either side of a balance can settle it — the debtor confirming they
   // paid, or the person owed confirming they got paid (in cash, e-transfer,
