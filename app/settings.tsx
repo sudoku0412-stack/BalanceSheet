@@ -342,7 +342,7 @@ export default function SettingsScreen() {
   const theme = useTheme();
   const styles = useSettingsStyles();
   const router = useRouter();
-  const { user, profile, signOut, refreshProfile, setActiveHousehold } = useAuth();
+  const { user, profile, signOut, deleteAccount, refreshProfile, setActiveHousehold } = useAuth();
   const toast = useToast();
 
   // Per-category budget amounts (canonical USD) and the "notify near
@@ -663,6 +663,30 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Delete account?',
+      'This permanently deletes your account, along with your receipts, budgets, and shared household data, from this device and the cloud. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete account',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteAccount();
+            } catch (e) {
+              toast.show({
+                kind: 'error',
+                message: (e as Error)?.message ?? 'Failed to delete account. Try again.',
+              });
+            }
+          },
+        },
+      ],
+    );
+  };
+
   // Initials shown on the navy avatar circle — e.g. "John Doe" -> "JD".
   const initials = profile
     ? `${profile.firstName?.trim()?.[0] ?? ''}${profile.lastName?.trim()?.[0] ?? ''}`.toUpperCase()
@@ -922,6 +946,10 @@ export default function SettingsScreen() {
 
         <Pressable onPress={confirmSignOut} style={styles.signOutTextBtn} hitSlop={4}>
           <Text style={styles.signOutTextLabel}>Sign out</Text>
+        </Pressable>
+
+        <Pressable onPress={confirmDeleteAccount} style={styles.signOutTextBtn} hitSlop={4}>
+          <Text style={styles.signOutTextLabel}>Delete account</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>

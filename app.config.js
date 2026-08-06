@@ -58,12 +58,13 @@ module.exports = ({ config }) => {
       // precedence over app.json's ios.buildNumber, which is kept in
       // sync here purely for a human reader, not because anything
       // reads it.
-      buildNumber: '6',
+      buildNumber: '7',
       googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
-        NSCameraUsageDescription: 'NestExpenseTracker needs camera access to scan receipts.',
+        NSCameraUsageDescription:
+          'NestExpenseTracker uses your camera to take a photo of a receipt, then automatically reads the merchant name, date, and total from that photo so you can track the expense without typing it in yourself.',
         NSPhotoLibraryUsageDescription:
-          'NestExpenseTracker needs photo library access to import receipts.',
+          'NestExpenseTracker reads photos of receipts you choose from your library so it can automatically extract the merchant name, date, and total, the same way it does for a photo taken with the camera.',
         NSFaceIDUsageDescription: 'Use Face ID to quickly and securely unlock NestExpenseTracker.',
         // expo-contacts (Settings → "Add by phone contact") pulls this
         // in even though the app only ever reads the ONE contact the
@@ -135,8 +136,20 @@ module.exports = ({ config }) => {
       'expo-secure-store',
       '@react-native-firebase/app',
       '@react-native-firebase/auth',
-      ['expo-camera', { cameraPermission: 'Allow NestExpenseTracker to access your camera.' }],
-      ['expo-image-picker', { photosPermission: 'Allow NestExpenseTracker to access your photos.' }],
+      [
+        'expo-camera',
+        {
+          cameraPermission:
+            'NestExpenseTracker uses your camera to take a photo of a receipt, then automatically reads the merchant name, date, and total from it.',
+        },
+      ],
+      [
+        'expo-image-picker',
+        {
+          photosPermission:
+            'NestExpenseTracker reads photos of receipts you choose from your library so it can automatically extract the merchant name, date, and total.',
+        },
+      ],
       '@react-native-community/datetimepicker',
       // Sets up the iOS aps-environment entitlement needed for remote
       // push (household activity alerts) — local-only notifications
