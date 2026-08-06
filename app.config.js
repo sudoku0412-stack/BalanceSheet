@@ -26,6 +26,19 @@ module.exports = ({ config }) => {
       backgroundColor: '#0F172A',
     },
     ios: {
+      // ios/ is now tracked in git (a real Xcode project checked in —
+      // see the git history), so EAS treats this platform as "bare",
+      // where the top-level policy-based runtimeVersion below is
+      // rejected outright: "You're currently using the bare workflow,
+      // where runtime version policies are not supported. You must
+      // set your runtime version manually." That error was failing
+      // EVERY iOS build attempt before it ever reached Xcode — no iOS
+      // build (cloud or local) has actually succeeded since ios/ was
+      // tracked. Override with a literal string here; Android has no
+      // checked-in native project (still EAS's fresh-every-time
+      // prebuild), so the policy-based fallback below still applies
+      // there.
+      runtimeVersion: '1.0.0',
       supportsTablet: false,
       // NOT the same as the Android package (com.kaushikmajumder.
       // receiptscanner) — that exact string is locked to a different,
