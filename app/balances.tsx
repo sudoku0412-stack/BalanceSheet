@@ -1,5 +1,5 @@
-import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, AppState, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ui/ModalHeader';
@@ -72,6 +72,23 @@ export default function BalancesScreen() {
       };
     }, [load]),
   );
+
+  // useFocusEffect only fires on navigation focus changes — if this
+  // screen was already focused when the app got backgrounded (e.g. the
+  // household member tapped a "settled up"/shared-expense push while
+  // Balances was already open), resuming the app is an AppState change
+  // with no navigation event, so the data above would otherwise stay
+  // stale until the user manually left and came back to this screen.
+  const appState = useRef(AppState.currentState);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (appState.current !== 'active' && nextState === 'active') {
+        load();
+      }
+      appState.current = nextState;
+    });
+    return () => subscription.remove();
+  }, [load]);
 
   // Either side of a balance can settle it — the debtor confirming they
   // paid, or the person owed confirming they got paid (in cash, e-transfer,
