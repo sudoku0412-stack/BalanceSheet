@@ -81,6 +81,12 @@ jobs:
       - name: EAS cloud build + auto-submit (Android)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # eas build archives the project via git's tracked-file list by
+          # default (VCS mode) — google-services.json is gitignored, so
+          # without this it's staged on the runner above but never makes
+          # it into the uploaded archive. android-build.yml already had
+          # to work around this same behavior.
+          EAS_NO_VCS: '1'
         run: |
           eas build \
             --profile production \
@@ -154,6 +160,15 @@ jobs:
       - name: EAS cloud build + auto-submit (iOS)
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+          # eas build archives the project via git's tracked-file list by
+          # default (VCS mode) — GoogleService-Info.plist is gitignored,
+          # so even though the staging step above writes it to
+          # ios/ReceiptScanner/ on the runner, it never made it into the
+          # uploaded archive: Xcode on EAS's remote builder reported
+          # "Build input file cannot be found" for a file that
+          # demonstrably existed locally. Same root cause the Android
+          # local-build workflow already had to work around.
+          EAS_NO_VCS: '1'
         run: |
           eas build \
             --profile production \
