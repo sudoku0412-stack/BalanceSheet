@@ -140,7 +140,15 @@ jobs:
           done
           [ "$missing" = "1" ] && exit 1
 
-          printf '%s' "$GOOGLE_SERVICES_PLIST_CONTENT" > GoogleService-Info.plist
+          # ios/ is now a real checked-in Xcode project (bare workflow for
+          # this platform, unlike Android's fresh-every-time prebuild), and
+          # its project.pbxproj references this file at the fixed path
+          # ios/ReceiptScanner/GoogleService-Info.plist — not repo root.
+          # Writing it only to root left Xcode's build phase looking for a
+          # file that was never there, failing every iOS build with
+          # "Build input file cannot be found:
+          # .../ios/ReceiptScanner/GoogleService-Info.plist".
+          printf '%s' "$GOOGLE_SERVICES_PLIST_CONTENT" > ios/ReceiptScanner/GoogleService-Info.plist
           printf '%s' "$ASC_API_KEY_P8" > appstore-connect-api-key.p8
 
       - name: EAS cloud build + auto-submit (iOS)
