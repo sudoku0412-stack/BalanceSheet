@@ -34,7 +34,7 @@
         "android.permission.READ_CONTACTS"
       ],
       "package": "com.yourname.receiptscanner",
-      "versionCode": 8
+      "versionCode": 9
     },
     "plugins": [
       "expo-router",
