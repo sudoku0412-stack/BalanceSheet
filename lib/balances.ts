@@ -74,7 +74,19 @@ export function computeReceiptNet(
   selfUid: string,
   memberUid: string,
 ): number {
-  if (!receipt.split?.enabled) return 0;
+  if (!receipt.split?.enabled) {
+    // Not shared with anyone — but someone else may still have fronted
+    // the money for this receipt's owner (Receipt.createdBy), the same
+    // way Splitwise separates "who paid" from "whose expense this is."
+    // Only receipts saved with createdBy tracked (this feature) get
+    // this; older receipts keep the pre-existing "no impact" behavior.
+    const ownerUid = receipt.createdBy;
+    const payerUid = receipt.paidBy;
+    if (!ownerUid || !payerUid || ownerUid === payerUid) return 0;
+    if (ownerUid === selfUid && payerUid === memberUid) return -receipt.totalAmount;
+    if (ownerUid === memberUid && payerUid === selfUid) return receipt.totalAmount;
+    return 0;
+  }
   const payerUid = receipt.paidBy ?? selfUid;
   const resolvedParticipants = receipt.split.participantIds.map((id) => resolveSelf(id, selfUid));
   if (!resolvedParticipants.includes(selfUid) || !resolvedParticipants.includes(memberUid)) return 0;

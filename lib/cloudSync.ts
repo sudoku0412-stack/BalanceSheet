@@ -280,6 +280,7 @@ interface CloudReceipt {
   photoUrl?: string | null;
   notes?: string | null;
   paidBy?: string | null;
+  createdBy?: string | null;
   isRecurringOccurrence?: boolean;
   lineItems?: Array<{
     id: string;
@@ -1871,6 +1872,7 @@ function serializeReceipt(
     split: r.split ?? null,
     recurring: r.recurring ?? null,
     paidBy: r.paidBy ?? null,
+    createdBy: r.createdBy ?? null,
     isRecurringOccurrence: r.isRecurringOccurrence ?? false,
     lineItems: (r.lineItems ?? []).map((it) => ({
       id: it.id,

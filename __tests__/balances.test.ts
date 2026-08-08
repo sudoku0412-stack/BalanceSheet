@@ -186,6 +186,38 @@ describe('computeReceiptNet', () => {
     });
     expect(computeReceiptNet(r, SELF, BOB)).toBe(0);
   });
+
+  describe('not split, but fronted by someone else (createdBy/paidBy)', () => {
+    it('memberUid paid for a personal expense that belongs to self: self owes the full amount', () => {
+      const r = baseReceipt({ totalAmount: 100, createdBy: SELF, paidBy: BOB });
+      expect(computeReceiptNet(r, SELF, BOB)).toBe(-100);
+    });
+
+    it('self paid for a personal expense that belongs to memberUid: memberUid owes the full amount', () => {
+      const r = baseReceipt({ totalAmount: 100, createdBy: BOB, paidBy: SELF });
+      expect(computeReceiptNet(r, SELF, BOB)).toBe(100);
+    });
+
+    it('returns 0 when createdBy and paidBy are the same person (no debt)', () => {
+      const r = baseReceipt({ totalAmount: 100, createdBy: SELF, paidBy: SELF });
+      expect(computeReceiptNet(r, SELF, BOB)).toBe(0);
+    });
+
+    it('returns 0 when createdBy is set but paidBy is absent', () => {
+      const r = baseReceipt({ totalAmount: 100, createdBy: SELF });
+      expect(computeReceiptNet(r, SELF, BOB)).toBe(0);
+    });
+
+    it('returns 0 for legacy receipts with neither createdBy nor paidBy', () => {
+      const r = baseReceipt({ totalAmount: 100 });
+      expect(computeReceiptNet(r, SELF, BOB)).toBe(0);
+    });
+
+    it("doesn't involve a third party's personal expense", () => {
+      const r = baseReceipt({ totalAmount: 100, createdBy: CAROL, paidBy: BOB });
+      expect(computeReceiptNet(r, SELF, BOB)).toBe(0);
+    });
+  });
 });
 
 describe('computeSettlementNet', () => {

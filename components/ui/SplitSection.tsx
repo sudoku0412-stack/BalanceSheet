@@ -41,8 +41,6 @@ export function SplitSection(props: {
   onChangePercent: (key: string, value: string) => void;
   splitAmounts: Record<string, string>;
   onChangeAmount: (key: string, value: string) => void;
-  paidBy: string;
-  onPaidByChange: (uid: string) => void;
   /** USD-canonical, matching Receipt.totalAmount. */
   totalAmountUsd: number;
   currencyCode: CurrencyCode;
@@ -64,8 +62,6 @@ export function SplitSection(props: {
     onChangePercent,
     splitAmounts,
     onChangeAmount,
-    paidBy,
-    onPaidByChange,
     totalAmountUsd,
     currencyCode,
     lineItems,
@@ -203,42 +199,6 @@ export function SplitSection(props: {
                 Nobody to split with yet — invite someone in Settings → Household
               </Text>
             </TouchableOpacity>
-          )}
-
-          {selectedOthers.length > 0 && (
-            <>
-              <Text style={[styles.avatarLabel, { marginTop: 12, marginBottom: 6 }]}>Paid by</Text>
-              <View style={styles.avatarRow}>
-                <TouchableOpacity style={styles.avatarWrap} onPress={() => onPaidByChange('self')} activeOpacity={0.7}>
-                  <View
-                    style={[
-                      styles.avatarCircle,
-                      { borderColor: paidBy === 'self' ? theme.colors.accent : 'transparent', opacity: paidBy === 'self' ? 1 : 0.35 },
-                    ]}
-                  >
-                    <Text style={styles.avatarInitial}>Y</Text>
-                  </View>
-                  <Text style={styles.avatarLabel} numberOfLines={1}>You</Text>
-                </TouchableOpacity>
-                {selectedOthers.map((m) => {
-                  const label = memberLabel(m);
-                  const active = paidBy === m.uid;
-                  return (
-                    <TouchableOpacity key={m.uid} style={styles.avatarWrap} onPress={() => onPaidByChange(m.uid)} activeOpacity={0.7}>
-                      <View
-                        style={[
-                          styles.avatarCircle,
-                          { borderColor: active ? theme.colors.accent : 'transparent', opacity: active ? 1 : 0.35 },
-                        ]}
-                      >
-                        <Text style={styles.avatarInitial}>{initialFor(label)}</Text>
-                      </View>
-                      <Text style={styles.avatarLabel} numberOfLines={1}>{label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </>
           )}
 
           <View style={styles.segmented}>

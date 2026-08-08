@@ -246,6 +246,10 @@ export async function initDatabase(): Promise<void> {
     // backfillHouseholdIdForRows above.
     `ALTER TABLE receipts             ADD COLUMN household_id     TEXT`,
     `ALTER TABLE settlements          ADD COLUMN household_id     TEXT`,
+    // Whose expense this is (immutable creator uid, distinct from
+    // paid_by which is who fronted the cash). See Receipt['createdBy']
+    // in types/index.ts.
+    `ALTER TABLE receipts             ADD COLUMN created_by       TEXT`,
   ]) {
     try {
       await db.execAsync(sql);
@@ -652,9 +656,9 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          split_json, recurring_json, original_currency, paid_by,
+          split_json, recurring_json, original_currency, paid_by, created_by,
           is_recurring_occurrence, created_at, updated_at, user_id, household_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         receipt.id,
         receipt.storeName,
@@ -672,6 +676,7 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
         serializeRecurring(receipt.recurring),
         receipt.originalCurrency ?? null,
         receipt.paidBy ?? uid,
+        receipt.createdBy ?? uid,
         receipt.isRecurringOccurrence ? 1 : 0,
         receipt.createdAt,
         receipt.updatedAt,
@@ -969,6 +974,7 @@ interface RawRow {
   recurring_json: string | null;
   original_currency: string | null;
   paid_by: string | null;
+  created_by: string | null;
   is_recurring_occurrence: number | null;
   household_id: string | null;
   created_at: string;
@@ -994,6 +1000,7 @@ function rowToReceipt(row: RawRow): Receipt {
     split: parseSplit(row.split_json),
     recurring: parseRecurring(row.recurring_json),
     paidBy: row.paid_by ?? undefined,
+    createdBy: row.created_by ?? undefined,
     isRecurringOccurrence: row.is_recurring_occurrence === 1,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1043,6 +1050,7 @@ type CloudReceiptShape = {
   split?: Receipt['split'];
   recurring?: Receipt['recurring'];
   paidBy?: string | null;
+  createdBy?: string | null;
   isRecurringOccurrence?: boolean;
   lineItems?: Array<{
     id: string;
@@ -1092,9 +1100,9 @@ export async function upsertReceiptFromCloud(
       `INSERT INTO receipts
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
-          split_json, recurring_json, paid_by, is_recurring_occurrence,
+          split_json, recurring_json, paid_by, created_by, is_recurring_occurrence,
           created_at, updated_at, user_id, household_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          store_name      = excluded.store_name,
          date            = excluded.date,
@@ -1114,6 +1122,11 @@ export async function upsertReceiptFromCloud(
          updated_at      = excluded.updated_at,
          user_id         = excluded.user_id,
          household_id    = excluded.household_id`,
+      // created_by is deliberately NOT in the ON CONFLICT UPDATE SET
+      // above — it's the receipt's immutable creator, stamped once on
+      // whichever device first inserts this row (either the original
+      // creator locally, or the FIRST other device to see it via this
+      // listener). A later resync must never let it drift.
       [
         cloud.id,
         cloud.storeName,
@@ -1130,6 +1143,7 @@ export async function upsertReceiptFromCloud(
         serializeSplit(cloud.split),
         serializeRecurring(cloud.recurring),
         cloud.paidBy ?? null,
+        cloud.createdBy ?? null,
         cloud.isRecurringOccurrence ? 1 : 0,
         cloud.createdAt,
         cloud.updatedAt,

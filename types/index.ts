@@ -84,6 +84,16 @@ export interface Receipt {
    *  Absent on receipts saved before this field existed — lib/balances.ts
    *  falls back to "creator paid" for those. */
   paidBy?: string;
+  /** Which household member this expense belongs to — set once, to the
+   *  creator's uid, when the receipt is first saved, and never changed
+   *  by later edits (even from another member's device). Lets
+   *  lib/balances.ts settle a receipt that ISN'T split (`split.enabled`
+   *  false/absent) but was still fronted by someone else: the full
+   *  amount is owed by `createdBy` to `paidBy`, the same way Splitwise
+   *  separates "who paid" from "whose expense this is." Absent on
+   *  receipts saved before this field existed — those keep the old
+   *  behavior (no cross-member balance impact unless split is enabled). */
+  createdBy?: string;
   /** Auto-repeat config. When set, `lib/recurring.ts`'s processor
    *  clones this receipt onto new dated rows on a schedule until
    *  `endDate`, then stops. Absent means this expense is one-off. */

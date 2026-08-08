@@ -58,6 +58,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../components/ui/Toast';
 import { SplitSection } from '../../components/ui/SplitSection';
+import { PaidBySection } from '../../components/ui/PaidBySection';
 import { DateField } from '../../components/ui/DateField';
 import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
 
@@ -823,16 +824,20 @@ export default function ScanScreen() {
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
   const [paidBy, setPaidBy] = useState<string>('self');
 
-  useEffect(() => {
-    if (paidBy !== 'self' && !selectedOtherUids.has(paidBy)) {
-      setPaidBy('self');
-    }
-  }, [paidBy, selectedOtherUids]);
-
   const otherMembers = useMemo(
     () => householdMembers.filter((m) => !m.isYou),
     [householdMembers],
   );
+
+  // Paid-by is independent of the split participant selection (you can
+  // say "my roommate paid" without splitting the expense with them at
+  // all) — only reset if the chosen payer isn't even a household
+  // member anymore (e.g. they left).
+  useEffect(() => {
+    if (paidBy !== 'self' && !otherMembers.some((m) => m.uid === paidBy)) {
+      setPaidBy('self');
+    }
+  }, [paidBy, otherMembers]);
   // 'self' + every other household member — the full set of ids a line
   // item can be split across. When an item's selected split covers all
   // of these we store splitWith as undefined (LineItem's "everyone"
@@ -1279,7 +1284,12 @@ export default function ScanScreen() {
         originalCurrency: currencyCode,
         recurring,
         split,
-        paidBy: splitEnabled ? (paidBy === 'self' ? user?.uid : paidBy) : undefined,
+        // Independent of splitEnabled — "paid by" now applies even to a
+        // personal, non-split expense (see PaidBySection/lib/balances.ts).
+        paidBy: paidBy === 'self' ? user?.uid : paidBy,
+        // Immutable creator stamp, always the person filling out THIS
+        // form — see Receipt['createdBy'] in types/index.ts.
+        createdBy: user?.uid,
         createdAt: now,
         updatedAt: now,
       });
@@ -2078,6 +2088,11 @@ export default function ScanScreen() {
           </TouchableOpacity>
         </Card>
 
+      {/* Who actually paid — independent of whether this is split with
+          anyone, so a personal expense someone else fronted for you
+          still settles correctly. Hidden when you're the only member. */}
+      <PaidBySection otherMembers={otherMembers} paidBy={paidBy} onPaidByChange={setPaidBy} />
+
       {/* Split this expense — settable right here at save time (both
           scanned and manual entries), no separate add-then-edit pass
           needed just to turn splitting on. */}
@@ -2100,8 +2115,6 @@ export default function ScanScreen() {
         onChangePercent={(key, v) => setSplitPercents((prev) => ({ ...prev, [key]: v }))}
         splitAmounts={splitAmounts}
         onChangeAmount={(key, v) => setSplitAmounts((prev) => ({ ...prev, [key]: v }))}
-        paidBy={paidBy}
-        onPaidByChange={setPaidBy}
         totalAmountUsd={convertToUsd(parseFloat(amount.replace(',', '.')) || 0, currencyCode)}
         currencyCode={currencyCode}
         lineItems={items}

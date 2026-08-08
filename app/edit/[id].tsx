@@ -51,6 +51,7 @@ import { Card } from '../../components/ui/Card';
 import { CategoryTagsPicker } from '../../components/ui/CategoryTagsPicker';
 import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
 import { SplitSection } from '../../components/ui/SplitSection';
+import { PaidBySection } from '../../components/ui/PaidBySection';
 import { DateField } from '../../components/ui/DateField';
 
 /** Validate the persisted currency code, defaulting to USD when unset
@@ -653,14 +654,15 @@ function EditReceiptScreen() {
   // Defaults to 'self' (the receipt's own creator) until loaded.
   const [paidBy, setPaidBy] = useState<string>('self');
 
-  // If the person currently marked as payer gets deselected as a
-  // participant, fall back to "You" rather than persisting a paidBy
-  // that no longer points at anyone in the split.
+  // Paid-by is independent of the split participant selection (you can
+  // say "my roommate paid" without splitting the expense with them at
+  // all) — only reset if the chosen payer isn't even a household
+  // member anymore (e.g. they left).
   useEffect(() => {
-    if (paidBy !== 'self' && !selectedOtherUids.has(paidBy)) {
+    if (paidBy !== 'self' && !(householdMembers ?? []).some((m) => m.uid === paidBy)) {
       setPaidBy('self');
     }
-  }, [paidBy, selectedOtherUids]);
+  }, [paidBy, householdMembers]);
 
   // ── Recurring expense ──
   // Mirrors Receipt.recurring (types/index.ts). Initialized from
@@ -1635,6 +1637,8 @@ function EditReceiptScreen() {
         </Pressable>
       </Modal>
 
+      <PaidBySection otherMembers={otherMembers} paidBy={paidBy} onPaidByChange={setPaidBy} />
+
       <SplitSection
         otherMembers={otherMembers}
         enabled={splitEnabled}
@@ -1647,8 +1651,6 @@ function EditReceiptScreen() {
         onChangePercent={(key, v) => setSplitPercents((prev) => ({ ...prev, [key]: v }))}
         splitAmounts={splitAmounts}
         onChangeAmount={(key, v) => setSplitAmounts((prev) => ({ ...prev, [key]: v }))}
-        paidBy={paidBy}
-        onPaidByChange={setPaidBy}
         totalAmountUsd={totalAmountVal}
         currencyCode={currencyCode}
         lineItems={items}
