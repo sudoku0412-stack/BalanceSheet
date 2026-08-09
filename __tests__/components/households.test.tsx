@@ -77,7 +77,7 @@ jest.mock('uuid', () => ({
 }));
 
 import HouseholdsScreen from '../../app/households';
-import { createHousehold, deleteHousehold, getHouseholdMembers } from '../../lib/cloudSync';
+import { createHousehold, deleteHousehold, getHouseholdMembers, renameHousehold } from '../../lib/cloudSync';
 import { getAllReceiptsForHousehold, getAllSettlementsForHousehold } from '../../lib/database';
 
 const mockCreateHousehold = createHousehold as jest.Mock;
@@ -85,6 +85,7 @@ const mockDeleteHousehold = deleteHousehold as jest.Mock;
 const mockGetHouseholdMembers = getHouseholdMembers as jest.Mock;
 const mockGetAllReceiptsForHousehold = getAllReceiptsForHousehold as jest.Mock;
 const mockGetAllSettlementsForHousehold = getAllSettlementsForHousehold as jest.Mock;
+const mockRenameHousehold = renameHousehold as jest.Mock;
 
 describe('HouseholdsScreen', () => {
   beforeEach(() => {
@@ -104,6 +105,7 @@ describe('HouseholdsScreen', () => {
     mockGetHouseholdMembers.mockResolvedValue([]);
     mockGetAllReceiptsForHousehold.mockResolvedValue([]);
     mockGetAllSettlementsForHousehold.mockResolvedValue([]);
+    mockRenameHousehold.mockResolvedValue({ ok: true });
   });
 
   it('renders a list of households from mocked memberships', async () => {
@@ -129,6 +131,83 @@ describe('HouseholdsScreen', () => {
     await waitFor(() => {
       expect(mockSetActiveHousehold).toHaveBeenCalledWith('hh-new');
     });
+  });
+
+  it('naming an unnamed household calls renameHousehold with that household\'s id, not createHousehold', async () => {
+    mockAuthValue.memberships = [
+      { householdId: 'hh1', name: '', role: 'owner', memberCount: 1, isDefault: true },
+      { householdId: 'hh2', name: 'Cabin', role: 'member', memberCount: 3, isDefault: false },
+    ];
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getByText('Unnamed household'));
+
+    fireEvent.press(screen.getByText('Name it'));
+    fireEvent.changeText(screen.getByPlaceholderText('Household name'), 'Home Nest');
+    fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(mockRenameHousehold).toHaveBeenCalledWith({ householdId: 'hh1', name: 'Home Nest', uid: 'u1' });
+    });
+    expect(mockCreateHousehold).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Regression for QA bug M-01 (Google Play closed testing): renaming
+   * the active "Unnamed household" produced a brand-new, separate
+   * empty "Home Nest" household instead of renaming in place, while
+   * "Unnamed household" stayed listed and unrenamed.
+   *
+   * The "create household" box (opened via the header "+") has no
+   * cancel button — only re-tapping "+" or a successful create closes
+   * it — and its TextInput uses autoFocus, same as the rename row's.
+   * If it's left open and a rename is then started on a household
+   * that sorts first in the list (the active/unnamed one commonly
+   * does), both a "Create" and a "Save" button end up on screen at
+   * once, right on top of each other. This test pins the fix: opening
+   * either box now closes the other, so they can never coexist and
+   * a save can never be mis-routed into a create.
+   */
+  it('opening "Name it" closes an open "create household" box, and vice versa (M-01 fix)', async () => {
+    mockAuthValue.memberships = [
+      { householdId: 'hh1', name: '', role: 'owner', memberCount: 1, isDefault: true },
+    ];
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getByText('Unnamed household'));
+
+    // Open the create box first (e.g. the user poked at "+" earlier).
+    fireEvent.press(screen.getByLabelText('Create household'));
+    expect(screen.getByText('Create')).toBeTruthy();
+
+    // Starting a rename must close it — only one "name it + save"
+    // affordance should ever be on screen.
+    fireEvent.press(screen.getByText('Name it'));
+    expect(screen.queryByText('Create')).toBeNull();
+    expect(screen.getByText('Save')).toBeTruthy();
+
+    // Typing and saving now can only hit renameHousehold — there's no
+    // "Create" button left to mis-tap.
+    fireEvent.changeText(screen.getByPlaceholderText('Household name'), 'Home Nest');
+    fireEvent.press(screen.getByText('Save'));
+
+    await waitFor(() => {
+      expect(mockRenameHousehold).toHaveBeenCalledWith({ householdId: 'hh1', name: 'Home Nest', uid: 'u1' });
+    });
+    expect(mockCreateHousehold).not.toHaveBeenCalled();
+  });
+
+  it('opening "create household" closes an in-progress rename (M-01 fix, reverse direction)', async () => {
+    mockAuthValue.memberships = [
+      { householdId: 'hh1', name: '', role: 'owner', memberCount: 1, isDefault: true },
+    ];
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getByText('Unnamed household'));
+
+    fireEvent.press(screen.getByText('Name it'));
+    expect(screen.getByText('Save')).toBeTruthy();
+
+    fireEvent.press(screen.getByLabelText('Create household'));
+    expect(screen.queryByText('Save')).toBeNull();
+    expect(screen.getByText('Create')).toBeTruthy();
   });
 
   it('deleting an owned household with no unsettled balances shows a confirm alert before deleting', async () => {

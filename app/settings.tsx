@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Share,
@@ -13,7 +14,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
-import { useStyles, useTheme } from '../constants/theme';
+import { useStyles, useTheme, useThemePreference } from '../constants/theme';
+import { ThemePreference } from '../lib/secureStorage';
+
+const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System' },
+];
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { ALL_CATEGORIES } from '../constants/categories';
@@ -42,6 +50,7 @@ import { receiptsToCsv } from '../lib/reports';
 import { RECURRING_BUDGET_KEY } from '../lib/recurring';
 import { pickContactWithPhone, isContactPickerAvailable } from '../lib/contactPicker';
 import { addByPhone } from '../lib/phoneInvite';
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../lib/legalLinks';
 import {
   CURRENCIES,
   CURRENCY_SYMBOLS,
@@ -128,6 +137,23 @@ function useSettingsStyles() {
       color: theme.colors.error,
       fontSize: theme.font.md,
       fontFamily: theme.fonts.display.bold,
+    },
+    legalRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: theme.spacing.sm,
+      paddingTop: theme.spacing.sm,
+    },
+    legalLink: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.body.regular,
+      textDecorationLine: 'underline',
+    },
+    legalDivider: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.sm,
     },
     currencyRow: {
       flexDirection: 'row',
@@ -340,6 +366,7 @@ function useSettingsStyles() {
 
 export default function SettingsScreen() {
   const theme = useTheme();
+  const { preference: themePreference, setPreference: setThemePreference } = useThemePreference();
   const styles = useSettingsStyles();
   const router = useRouter();
   const { user, profile, signOut, deleteAccount, refreshProfile, setActiveHousehold } = useAuth();
@@ -836,6 +863,32 @@ export default function SettingsScreen() {
           ) : null}
         </Section>
 
+        <Section title="Appearance">
+          <View style={{ paddingVertical: theme.spacing.sm }}>
+            <View style={styles.currencyRow}>
+              {THEME_OPTIONS.map(({ value, label }) => {
+                const active = value === themePreference;
+                return (
+                  <Pressable
+                    key={value}
+                    onPress={() => setThemePreference(value)}
+                    style={[styles.currencyPill, active && styles.currencyPillActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.currencyPillText,
+                        active && styles.currencyPillTextActive,
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Section>
+
         <Section title="Profile Currency">
           <View style={{ paddingVertical: theme.spacing.sm }}>
             <View style={styles.currencyRow}>
@@ -942,6 +995,16 @@ export default function SettingsScreen() {
             variant="secondary"
             loading={exportingAll}
           />
+        </View>
+
+        <View style={styles.legalRow}>
+          <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={4}>
+            <Text style={styles.legalLink}>Privacy Policy</Text>
+          </Pressable>
+          <Text style={styles.legalDivider}>·</Text>
+          <Pressable onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)} hitSlop={4}>
+            <Text style={styles.legalLink}>Terms of Service</Text>
+          </Pressable>
         </View>
 
         <Pressable onPress={confirmSignOut} style={styles.signOutTextBtn} hitSlop={4}>

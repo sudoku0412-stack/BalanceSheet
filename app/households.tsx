@@ -122,6 +122,20 @@ export default function HouseholdsScreen() {
   };
 
   const startRename = (hid: string, current: string) => {
+    // Close the (top-of-screen, always-visible-until-toggled) "create
+    // household" box first. It has no cancel affordance of its own —
+    // only re-tapping "+" or a successful create closes it — and both
+    // its TextInput and the rename row's below use autoFocus, so if a
+    // user had previously opened it (even just to poke at it) and it
+    // was left open, starting a rename put TWO name-entry-with-a-
+    // green-save-style-button rows on screen at once, right on top of
+    // each other for whichever household sorts first. That's a real
+    // tap-the-wrong-button trap: type the new name, hit what looks
+    // like "Save" but is actually "Create" a few px above it, and you
+    // get a brand-new empty household instead of a rename (QA bug
+    // M-01). Enforcing mutual exclusion here removes the trap.
+    setCreating(false);
+    setNewName('');
     setRenamingHid(hid);
     setRenameValue(current);
   };
@@ -269,7 +283,13 @@ export default function HouseholdsScreen() {
         rightActions={[
           {
             icon: 'add',
-            onPress: () => setCreating((v) => !v),
+            onPress: () => {
+              // Mirror of startRename's guard below: don't let the
+              // create box and an in-progress rename box both be open
+              // at once (see M-01 comment in startRename).
+              setRenamingHid(null);
+              setCreating((v) => !v);
+            },
             accessibilityLabel: 'Create household',
           },
         ]}

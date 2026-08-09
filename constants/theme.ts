@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, useColorScheme } from 'react-native';
 import { Category } from '../types';
+import { getThemePreference, setThemePreference, ThemePreference } from '../lib/secureStorage';
 
 /**
  * Theme system. Light + dark palettes that mirror each other by shape,
@@ -146,23 +147,62 @@ export type Theme = typeof darkTheme;
 
 const ThemeContext = createContext<Theme>(darkTheme);
 
+type ThemePreferenceContextValue = {
+  preference: ThemePreference;
+  setPreference: (pref: ThemePreference) => void;
+};
+
+const ThemePreferenceContext = createContext<ThemePreferenceContextValue>({
+  preference: 'system',
+  setPreference: () => {},
+});
+
 /**
- * Wrap the app's root in this provider. It listens to the system
- * color scheme via useColorScheme() and re-renders consumers when
- * the user toggles light/dark mode in their OS settings.
+ * Wrap the app's root in this provider. Resolves the active theme from
+ * the user's manual Settings override (see useThemePreference below) —
+ * defaulting to 'system', which follows useColorScheme() and re-renders
+ * consumers when the user toggles light/dark mode in their OS settings.
  */
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const scheme = useColorScheme();
+  const [preference, setPreferenceState] = useState<ThemePreference>('system');
+
+  useEffect(() => {
+    getThemePreference().then(setPreferenceState);
+  }, []);
+
+  const setPreference = (pref: ThemePreference) => {
+    setPreferenceState(pref);
+    void setThemePreference(pref);
+  };
+
+  const resolvedScheme = preference === 'system' ? scheme : preference;
   const value = useMemo(
-    () => (scheme === 'light' ? lightTheme : darkTheme),
-    [scheme],
+    () => (resolvedScheme === 'light' ? lightTheme : darkTheme),
+    [resolvedScheme],
   );
-  return React.createElement(ThemeContext.Provider, { value }, children);
+  const preferenceValue = useMemo(
+    () => ({ preference, setPreference }),
+    [preference],
+  );
+
+  return React.createElement(
+    ThemePreferenceContext.Provider,
+    { value: preferenceValue },
+    React.createElement(ThemeContext.Provider, { value }, children),
+  );
 }
 
-/** Returns the active theme (reactive — re-renders on system change). */
+/** Returns the active theme (reactive — re-renders on system or manual change). */
 export function useTheme(): Theme {
   return useContext(ThemeContext);
+}
+
+/** Settings' "Appearance" control reads/writes this — the user's raw
+ *  light/dark/system choice, as opposed to useTheme()'s already-resolved
+ *  palette. */
+export function useThemePreference(): ThemePreferenceContextValue {
+  return useContext(ThemePreferenceContext);
 }
 
 /**

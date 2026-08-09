@@ -61,6 +61,7 @@ import { SplitSection } from '../../components/ui/SplitSection';
 import { PaidBySection } from '../../components/ui/PaidBySection';
 import { DateField } from '../../components/ui/DateField';
 import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
+import { sanitizeAmountInput, parseAmountInput } from '../../lib/amountValidation';
 
 // Household-member display helpers for the per-item "Split with" picker
 // (Add Expense / manual entry only) — mirrors the label/initial logic
@@ -905,8 +906,8 @@ export default function ScanScreen() {
       toast.show({ message: 'Please enter an item name.', kind: 'error' });
       return;
     }
-    const amt = parseFloat(itemAmount.replace(',', '.'));
-    if (isNaN(amt) || amt < 0) {
+    const amt = parseAmountInput(itemAmount);
+    if (amt === null || amt < 0) {
       toast.show({ message: 'Please enter a valid item amount.', kind: 'error' });
       return;
     }
@@ -1131,8 +1132,8 @@ export default function ScanScreen() {
       toast.show({ message: 'Please enter a merchant name.', kind: 'error' });
       return;
     }
-    const amountVal = parseFloat(amount.replace(',', '.'));
-    if (isNaN(amountVal) || amountVal < 0) {
+    const amountVal = parseAmountInput(amount);
+    if (amountVal === null || amountVal < 0) {
       toast.show({ message: 'Please enter a valid amount.', kind: 'error' });
       return;
     }
@@ -1433,6 +1434,16 @@ export default function ScanScreen() {
     } else {
       router.push('/(tabs)');
     }
+  };
+
+  // Used by the review-screen close (X) and the "Discard" link — both
+  // leave a filled-in expense form, unlike the camera-idle X above
+  // which has nothing to lose yet.
+  const confirmDiscardExpense = () => {
+    Alert.alert('Discard this expense?', 'Your entered details will be lost.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: exitScan },
+    ]);
   };
 
   // Apply a Gemini-validated receipt into the form state. Used from
@@ -1769,7 +1780,7 @@ export default function ScanScreen() {
           {isManualEntry ? (
             <TouchableOpacity
               style={styles.headerIconBtn}
-              onPress={exitScan}
+              onPress={confirmDiscardExpense}
               activeOpacity={0.7}
             >
               <Ionicons name="close" size={22} color={theme.colors.textPrimary} />
@@ -1865,7 +1876,7 @@ export default function ScanScreen() {
         <TextInput
           style={[styles.input, styles.amountInput]}
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(text) => setAmount(sanitizeAmountInput(text))}
           placeholder="0.00"
           placeholderTextColor={theme.colors.textMuted}
           keyboardType="decimal-pad"
@@ -2148,7 +2159,7 @@ export default function ScanScreen() {
               <TextInput
                 style={[styles.input, styles.amountInput]}
                 value={itemAmount}
-                onChangeText={setItemAmount}
+                onChangeText={(text) => setItemAmount(sanitizeAmountInput(text))}
                 placeholder="0.00"
                 placeholderTextColor={theme.colors.textMuted}
                 keyboardType="decimal-pad"
@@ -2287,7 +2298,7 @@ export default function ScanScreen() {
         />
         <TouchableOpacity
           style={styles.discardLink}
-          onPress={exitScan}
+          onPress={confirmDiscardExpense}
           activeOpacity={0.7}
         >
           <Text style={styles.discardLinkText}>Discard</Text>

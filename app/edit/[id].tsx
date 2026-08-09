@@ -53,6 +53,7 @@ import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
 import { SplitSection } from '../../components/ui/SplitSection';
 import { PaidBySection } from '../../components/ui/PaidBySection';
 import { DateField } from '../../components/ui/DateField';
+import { sanitizeAmountInput, parseAmountInput } from '../../lib/amountValidation';
 
 /** Validate the persisted currency code, defaulting to USD when unset
  *  or unrecognized (matches lib/currency.ts's canonical-USD design). */
@@ -876,8 +877,8 @@ function EditReceiptScreen() {
       Alert.alert('Missing field', 'Please enter a store name.');
       return;
     }
-    const amountVal = parseFloat(amount.replace(',', '.'));
-    if (isNaN(amountVal) || amountVal < 0) {
+    const amountVal = parseAmountInput(amount);
+    if (amountVal === null || amountVal < 0) {
       Alert.alert('Invalid amount', 'Please enter a valid amount.');
       return;
     }
@@ -1272,7 +1273,7 @@ function EditReceiptScreen() {
         <TextInput
           style={styles.amountInput}
           value={amount}
-          onChangeText={setAmount}
+          onChangeText={(text) => setAmount(sanitizeAmountInput(text))}
           keyboardType="decimal-pad"
           placeholder="0.00"
           placeholderTextColor={theme.colors.textMuted}

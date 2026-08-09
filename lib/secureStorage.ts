@@ -23,6 +23,7 @@ const Keys = {
   // guest account), since each new id looks "unmigrated" on its first
   // read even though the legacy data was never meant for it.
   legacyBudgetsMigrated: 'bs.budgets.legacyMigrated',
+  themePreference: 'bs.theme.preference',
 } as const;
 
 export async function getOnboardingSeen(): Promise<boolean> {
@@ -207,6 +208,20 @@ export async function setLastBudgetAlertDate(householdId: string, ymd: string): 
 
 export async function setCurrency(code: string): Promise<void> {
   await SecureStore.setItemAsync(Keys.currency, code);
+}
+
+export type ThemePreference = 'light' | 'dark' | 'system';
+
+/** Manual override for the app's light/dark theme, independent of the
+ *  OS setting — Settings' "Appearance" control. Defaults to 'system'
+ *  (follow the OS) when never set. */
+export async function getThemePreference(): Promise<ThemePreference> {
+  const v = await SecureStore.getItemAsync(Keys.themePreference);
+  return v === 'light' || v === 'dark' ? v : 'system';
+}
+
+export async function setThemePreference(pref: ThemePreference): Promise<void> {
+  await SecureStore.setItemAsync(Keys.themePreference, pref);
 }
 
 export async function resetAllSecureStorage(): Promise<void> {

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -26,6 +27,7 @@ import {
 } from '../lib/auth';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { humanizeAuthError } from '../lib/authErrors';
+import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../lib/legalLinks';
 
 type Tab = 'login' | 'signup';
 
@@ -146,6 +148,16 @@ export default function AuthScreen() {
             <Pressable onPress={() => router.replace('/onboarding')} hitSlop={8} style={styles.backRow}>
               <Text style={styles.linkMuted}>‹ Back to intro</Text>
             </Pressable>
+
+            <View style={styles.legalRow}>
+              <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={4}>
+                <Text style={styles.legalLink}>Privacy Policy</Text>
+              </Pressable>
+              <Text style={styles.legalDivider}>·</Text>
+              <Pressable onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)} hitSlop={4}>
+                <Text style={styles.legalLink}>Terms of Service</Text>
+              </Pressable>
+            </View>
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
@@ -378,18 +390,37 @@ function AppleButton() {
 
 function Field({
   label,
+  secureTextEntry,
   ...input
 }: { label: string } & React.ComponentProps<typeof TextInput>) {
   const theme = useTheme();
   const styles = useStyles(makeStyles);
+  const [hidden, setHidden] = useState(true);
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
-      <TextInput
-        {...input}
-        placeholderTextColor={theme.colors.textMuted}
-        style={styles.input}
-      />
+      <View style={styles.inputRow}>
+        <TextInput
+          {...input}
+          secureTextEntry={secureTextEntry && hidden}
+          placeholderTextColor={theme.colors.textMuted}
+          style={[styles.input, secureTextEntry && styles.inputWithIcon]}
+        />
+        {secureTextEntry && (
+          <Pressable
+            onPress={() => setHidden((v) => !v)}
+            style={styles.eyeBtn}
+            hitSlop={8}
+            accessibilityLabel={hidden ? 'Show password' : 'Hide password'}
+          >
+            <Ionicons
+              name={hidden ? 'eye-outline' : 'eye-off-outline'}
+              size={20}
+              color={theme.colors.textMuted}
+            />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -534,6 +565,19 @@ const makeStyles = (t: Theme) => ({
     borderColor: t.colors.border,
     fontSize: t.font.md,
   },
+  inputRow: {
+    position: 'relative' as const,
+  },
+  inputWithIcon: {
+    paddingRight: 44,
+  },
+  eyeBtn: {
+    position: 'absolute' as const,
+    right: t.spacing.sm,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center' as const,
+  },
   submitButton: {
     height: 50,
     justifyContent: 'center' as const,
@@ -555,6 +599,23 @@ const makeStyles = (t: Theme) => ({
     color: t.colors.textMuted,
     fontFamily: t.fonts.body.medium,
     fontSize: t.font.sm,
+  },
+  legalRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    gap: t.spacing.sm,
+    marginTop: t.spacing.md,
+  },
+  legalLink: {
+    color: t.colors.textMuted,
+    fontFamily: t.fonts.body.medium,
+    fontSize: t.font.xs,
+    textDecorationLine: 'underline' as const,
+  },
+  legalDivider: {
+    color: t.colors.textMuted,
+    fontSize: t.font.xs,
   },
   errorText: {
     color: t.colors.error,
