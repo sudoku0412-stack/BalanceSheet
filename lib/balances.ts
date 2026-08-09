@@ -174,15 +174,15 @@ export function computeMemberBalances(
 }
 
 /** Every receipt contributing to the self<->memberUid balance, for the
- *  drill-down list on the Balances screen. */
+ *  drill-down list on the Balances screen. Delegates to computeReceiptNet
+ *  itself (rather than re-deriving "does this involve both of them") so
+ *  this list can never drift out of sync with the total it's supposed to
+ *  add up to — split-enabled receipts AND non-split ones fronted by
+ *  someone else (Receipt.createdBy/paidBy) both count. */
 export function getReceiptsForMemberPair(
   receipts: Receipt[],
   selfUid: string,
   memberUid: string,
 ): Receipt[] {
-  return receipts.filter((r) => {
-    if (!r.split?.enabled) return false;
-    const resolved = r.split.participantIds.map((id) => resolveSelf(id, selfUid));
-    return resolved.includes(selfUid) && resolved.includes(memberUid);
-  });
+  return receipts.filter((r) => Math.abs(computeReceiptNet(r, selfUid, memberUid)) > 0.005);
 }

@@ -265,6 +265,18 @@ describe('getReceiptsForMemberPair', () => {
     const result = getReceiptsForMemberPair(receipts, SELF, BOB);
     expect(result.map((r) => r.id)).toEqual(['a']);
   });
+
+  it('also includes a non-split receipt fronted by someone else (createdBy/paidBy), matching computeReceiptNet', () => {
+    const receipts: Receipt[] = [
+      baseReceipt({ id: 'a', totalAmount: 50, createdBy: SELF, paidBy: BOB }),
+      // Same pair but no debt (createdBy === paidBy) — correctly excluded.
+      baseReceipt({ id: 'b', totalAmount: 20, createdBy: SELF, paidBy: SELF }),
+      // A third person's personal expense — doesn't involve this pair.
+      baseReceipt({ id: 'c', totalAmount: 30, createdBy: CAROL, paidBy: BOB }),
+    ];
+    const result = getReceiptsForMemberPair(receipts, SELF, BOB);
+    expect(result.map((r) => r.id)).toEqual(['a']);
+  });
 });
 
 describe('computeMemberBalances', () => {

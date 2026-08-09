@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import {
 } from '../../lib/balances';
 import { CurrencyCode, formatCurrency } from '../../lib/currency';
 import { Receipt, Settlement } from '../../types';
+import { onLocalDataChanged } from '../../lib/dataSync';
 
 function memberLabel(m: HouseholdMember | undefined): string {
   return m?.displayName?.trim() || m?.email || 'Household member';
@@ -43,55 +44,58 @@ export default function SharedExpensesScreen() {
   const [member, setMember] = useState<HouseholdMember | undefined>(undefined);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!memberUid) return;
-      let mounted = true;
-      (async () => {
-        const uid = getCurrentUser()?.uid ?? null;
-        const householdId = getCurrentHouseholdId();
-        const [all, settlements, memberList, rawCurrency] = await Promise.all([
-          getAllReceipts(),
-          getAllSettlements(),
-          householdId && uid
-            ? getHouseholdMembers({ householdId, currentUid: uid })
-            : Promise.resolve<HouseholdMember[] | null>(null),
-          getCurrency(),
-        ]);
-        if (!mounted) return;
-        setMember((memberList ?? []).find((m) => m.uid === memberUid));
-        if (uid) {
-          const receiptRows: Row[] = getReceiptsForMemberPair(all as Receipt[], uid, memberUid)
-            .map((receipt) => ({
-              kind: 'receipt' as const,
-              date: receipt.date,
-              receipt,
-              net: computeReceiptNet(receipt, uid, memberUid),
-            }))
-            .filter((row) => Math.abs(row.net) > 0.005);
-          const settlementRows: Row[] = getSettlementsForMemberPair(
-            settlements as Settlement[],
-            uid,
-            memberUid,
-          ).map((settlement) => ({
-            kind: 'settlement' as const,
-            date: settlement.createdAt,
-            settlement,
-            net: computeSettlementNet(settlement, uid, memberUid),
-          }));
-          const shared = [...receiptRows, ...settlementRows].sort(
-            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-          );
-          setRows(shared);
-        }
-        if (rawCurrency) setCurrency(rawCurrency as CurrencyCode);
-        setLoading(false);
-      })();
-      return () => {
-        mounted = false;
-      };
-    }, [memberUid]),
-  );
+  const load = useCallback(async () => {
+    if (!memberUid) return;
+    const uid = getCurrentUser()?.uid ?? null;
+    const householdId = getCurrentHouseholdId();
+    const [all, settlements, memberList, rawCurrency] = await Promise.all([
+      getAllReceipts(),
+      getAllSettlements(),
+      householdId && uid
+        ? getHouseholdMembers({ householdId, currentUid: uid })
+        : Promise.resolve<HouseholdMember[] | null>(null),
+      getCurrency(),
+    ]);
+    setMember((memberList ?? []).find((m) => m.uid === memberUid));
+    if (uid) {
+      const receiptRows: Row[] = getReceiptsForMemberPair(all as Receipt[], uid, memberUid)
+        .map((receipt) => ({
+          kind: 'receipt' as const,
+          date: receipt.date,
+          receipt,
+          net: computeReceiptNet(receipt, uid, memberUid),
+        }))
+        .filter((row) => Math.abs(row.net) > 0.005);
+      const settlementRows: Row[] = getSettlementsForMemberPair(
+        settlements as Settlement[],
+        uid,
+        memberUid,
+      ).map((settlement) => ({
+        kind: 'settlement' as const,
+        date: settlement.createdAt,
+        settlement,
+        net: computeSettlementNet(settlement, uid, memberUid),
+      }));
+      const shared = [...receiptRows, ...settlementRows].sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+      );
+      setRows(shared);
+    }
+    if (rawCurrency) setCurrency(rawCurrency as CurrencyCode);
+    setLoading(false);
+  }, [memberUid]);
+
+  useFocusEffect(useCallback(() => {
+    load();
+  }, [load]));
+
+  // Same rationale as Home/Balances (see lib/dataSync.ts) — a Firestore
+  // listener can write the receipt/settlement that changes this exact
+  // total AFTER this screen already loaded (e.g. it was opened right
+  // as another device's write was still in flight), with nothing else
+  // to trigger a second read. Without this the total shown here could
+  // drift from the Balances screen's own number until manually reopened.
+  useEffect(() => onLocalDataChanged(() => load()), [load]);
 
   const label = memberLabel(member);
   const totalNet = rows.reduce((sum, r) => sum + r.net, 0);

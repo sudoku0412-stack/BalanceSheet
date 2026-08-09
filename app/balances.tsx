@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, AppState, ScrollView, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, AppState, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ui/ModalHeader';
@@ -13,7 +13,7 @@ import { useAuth } from '../lib/AuthContext';
 import { getCurrency } from '../lib/secureStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { computeMemberBalances, MemberBalance } from '../lib/balances';
-import { CurrencyCode, formatCurrency } from '../lib/currency';
+import { convertToUsd, CurrencyCode, formatCurrency } from '../lib/currency';
 import { notifySettleUp } from '../lib/notifications';
 import { Receipt, Settlement } from '../types';
 import { onLocalDataChanged } from '../lib/dataSync';
@@ -40,6 +40,14 @@ export default function BalancesScreen() {
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [settlingUid, setSettlingUid] = useState<string | null>(null);
+  // Which member's row currently has the partial-payment amount input
+  // expanded — a real payment/refund between two people that ISN'T the
+  // full owed amount. Recording it as a receipt (the only workaround
+  // available before this) wrongly counted it toward that month's
+  // spending totals; this settles the balance directly instead, exactly
+  // like a full settle-up but for a user-chosen amount.
+  const [partialUid, setPartialUid] = useState<string | null>(null);
+  const [partialAmount, setPartialAmount] = useState('');
 
   const load = useCallback(async () => {
     const uid = getCurrentUser()?.uid;
@@ -143,6 +151,27 @@ export default function BalancesScreen() {
     }
   };
 
+  const confirmPartialPayment = (memberUid: string, theyOweYou: boolean, maxOwedUsd: number) => {
+    const entered = parseFloat(partialAmount.replace(',', '.'));
+    if (!entered || entered <= 0) {
+      toast.show({ kind: 'error', message: 'Enter an amount greater than 0.' });
+      return;
+    }
+    const amountUsd = convertToUsd(entered, currency);
+    if (amountUsd > maxOwedUsd + 0.005) {
+      toast.show({
+        kind: 'error',
+        message: `Can't exceed ${formatCurrency(maxOwedUsd, currency)} — use Settle up for the full amount.`,
+      });
+      return;
+    }
+    const fromUid = theyOweYou ? memberUid : (getCurrentUser()?.uid ?? '');
+    const toUid = theyOweYou ? (getCurrentUser()?.uid ?? '') : memberUid;
+    setPartialUid(null);
+    setPartialAmount('');
+    settleUp(memberUid, fromUid, toUid, amountUsd);
+  };
+
   const memberByUid = new Map(members.map((m) => [m.uid, m]));
   // Keep a row for anyone with ANY shared-expense history, even once
   // fully settled — settling shouldn't make the pair vanish, just show
@@ -190,21 +219,64 @@ export default function BalancesScreen() {
                     {formatCurrency(Math.abs(b.netUsd), currency)}
                   </Text>
                 </TouchableOpacity>
-                {!isSettled && (
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    disabled={settlingUid === b.memberUid}
-                    style={[styles.settleBtn, settlingUid === b.memberUid && styles.settleBtnDisabled]}
-                    onPress={() => confirmSettleUp(b.memberUid, label, theyOweYou, Math.abs(b.netUsd))}
-                  >
-                    <Text style={styles.settleBtnText}>
-                      {settlingUid === b.memberUid
-                        ? 'Settling…'
-                        : theyOweYou
-                          ? 'Mark as received'
-                          : 'Settle up'}
-                    </Text>
-                  </TouchableOpacity>
+                {!isSettled && partialUid !== b.memberUid && (
+                  <View style={styles.settleRow}>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      disabled={settlingUid === b.memberUid}
+                      style={[styles.settleBtn, settlingUid === b.memberUid && styles.settleBtnDisabled]}
+                      onPress={() => confirmSettleUp(b.memberUid, label, theyOweYou, Math.abs(b.netUsd))}
+                    >
+                      <Text style={styles.settleBtnText}>
+                        {settlingUid === b.memberUid
+                          ? 'Settling…'
+                          : theyOweYou
+                            ? 'Mark as received'
+                            : 'Settle up'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      style={styles.partialBtn}
+                      onPress={() => {
+                        setPartialAmount('');
+                        setPartialUid(b.memberUid);
+                      }}
+                    >
+                      <Text style={styles.partialBtnText}>Partial payment</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                {!isSettled && partialUid === b.memberUid && (
+                  <View style={styles.partialInputRow}>
+                    <Text style={styles.partialInputPrefix}>{currency}</Text>
+                    <TextInput
+                      style={styles.partialInput}
+                      value={partialAmount}
+                      onChangeText={setPartialAmount}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                      placeholderTextColor={theme.colors.textMuted}
+                      autoFocus
+                    />
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      style={styles.partialConfirmBtn}
+                      onPress={() => confirmPartialPayment(b.memberUid, theyOweYou, Math.abs(b.netUsd))}
+                    >
+                      <Text style={styles.partialConfirmBtnText}>Confirm</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setPartialUid(null);
+                        setPartialAmount('');
+                      }}
+                      hitSlop={8}
+                    >
+                      <Text style={styles.partialCancelText}>Cancel</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             );
@@ -237,12 +309,18 @@ function useBalancesStyles() {
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.md,
     },
+    settleRow: {
+      flexDirection: 'row',
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
     settleBtn: {
+      flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
       paddingVertical: 12,
-      borderTopWidth: 1,
-      borderTopColor: theme.colors.border,
+      borderRightWidth: 1,
+      borderRightColor: theme.colors.border,
     },
     settleBtnDisabled: {
       opacity: 0.5,
@@ -253,6 +331,58 @@ function useBalancesStyles() {
       color: theme.colors.accent,
       fontSize: theme.font.sm,
       fontFamily: theme.fonts.display.bold,
+    },
+    partialBtn: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 12,
+    },
+    partialBtnText: {
+      color: theme.colors.textSecondary,
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.display.bold,
+    },
+    partialInputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: theme.spacing.sm,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: theme.colors.border,
+    },
+    partialInputPrefix: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.mono.regular,
+    },
+    partialInput: {
+      flex: 1,
+      color: theme.colors.textPrimary,
+      fontFamily: theme.fonts.mono.regular,
+      fontSize: theme.font.md,
+      backgroundColor: theme.colors.surfaceHigh,
+      borderRadius: theme.radius.sm,
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+    },
+    partialConfirmBtn: {
+      backgroundColor: theme.colors.accent,
+      borderRadius: theme.radius.sm,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    partialConfirmBtnText: {
+      color: '#fff',
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.display.bold,
+    },
+    partialCancelText: {
+      color: theme.colors.textMuted,
+      fontSize: theme.font.sm,
     },
     avatar: {
       width: 40,
