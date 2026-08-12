@@ -126,6 +126,17 @@ export default function ScanScreen() {
   // at all, which isn't what "camera should open within the app" means).
   const cameraRef = useRef<CameraView>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  // React Navigation keeps tab screens mounted when switching away, so
+  // without this the live CameraView (and the phone's camera sensor)
+  // stayed on in the background after leaving this tab. Unmount it on
+  // blur, remount on focus.
+  const [isFocused, setIsFocused] = useState(true);
+  useFocusEffect(
+    useCallback(() => {
+      setIsFocused(true);
+      return () => setIsFocused(false);
+    }, []),
+  );
   const theme = useTheme();
   const toast = useToast();
   const styles = useStyles((t) => ({
@@ -1690,7 +1701,7 @@ export default function ScanScreen() {
   // keep working, so they ride along as small icon affordances either
   // side of the shutter rather than the old two-card grid.
   if (scanState === 'idle') {
-    const showLivePreview = !!cameraPermission?.granted;
+    const showLivePreview = !!cameraPermission?.granted && isFocused;
     return (
       <View style={styles.cameraScreen}>
         {showLivePreview ? (
