@@ -20,7 +20,7 @@ import {
 } from '@expo-google-fonts/roboto';
 import { RobotoMono_400Regular, RobotoMono_500Medium } from '@expo-google-fonts/roboto-mono';
 import { initDatabase } from '../lib/database';
-import { ThemeProvider, useTheme } from '../constants/theme';
+import { ThemeProvider, useTheme, lightTheme, darkTheme } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/AuthContext';
 import { ToastProvider } from '../components/ui/Toast';
 import { pickTarget, targetToHref } from '../lib/routeGuard';
@@ -60,16 +60,17 @@ export default function RootLayout() {
   const isLight = scheme === 'light';
 
   if (!fontsLoaded || !dbReady) {
+    const bootstrapTheme = isLight ? lightTheme : darkTheme;
     return (
       <View
         style={{
           flex: 1,
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: isLight ? '#F7F7F8' : '#0C0F24',
+          backgroundColor: bootstrapTheme.colors.background,
         }}
       >
-        <ActivityIndicator color={isLight ? '#0C0F24' : '#fff'} />
+        <ActivityIndicator color={bootstrapTheme.colors.textPrimary} />
       </View>
     );
   }
