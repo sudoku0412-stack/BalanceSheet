@@ -47,7 +47,14 @@ export default function HouseholdsScreen() {
 
   const [loading, setLoading] = useState(true);
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
+  // Which name-entry form (if any) is open. "create" and "rename" are
+  // mutually exclusive by construction — there's no way to enter one
+  // without leaving the other — since both forms use autoFocus and
+  // showing both at once for the same-sorted household created a tap-
+  // the-wrong-button trap (QA bug M-01): type a new name, hit what
+  // looks like "Save" but is actually "Create" a few px above it, and
+  // you get a brand-new empty household instead of a rename.
+  const [activeForm, setActiveForm] = useState<'none' | 'create' | 'rename'>('none');
   const [newName, setNewName] = useState('');
   const [savingNew, setSavingNew] = useState(false);
   const [renamingHid, setRenamingHid] = useState<string | null>(null);
@@ -111,7 +118,7 @@ export default function HouseholdsScreen() {
         return;
       }
       await setActiveHousehold(res.householdId);
-      setCreating(false);
+      setActiveForm('none');
       setNewName('');
       toast.show({ kind: 'success', message: `${name} created` });
     } catch (e) {
@@ -122,20 +129,7 @@ export default function HouseholdsScreen() {
   };
 
   const startRename = (hid: string, current: string) => {
-    // Close the (top-of-screen, always-visible-until-toggled) "create
-    // household" box first. It has no cancel affordance of its own —
-    // only re-tapping "+" or a successful create closes it — and both
-    // its TextInput and the rename row's below use autoFocus, so if a
-    // user had previously opened it (even just to poke at it) and it
-    // was left open, starting a rename put TWO name-entry-with-a-
-    // green-save-style-button rows on screen at once, right on top of
-    // each other for whichever household sorts first. That's a real
-    // tap-the-wrong-button trap: type the new name, hit what looks
-    // like "Save" but is actually "Create" a few px above it, and you
-    // get a brand-new empty household instead of a rename (QA bug
-    // M-01). Enforcing mutual exclusion here removes the trap.
-    setCreating(false);
-    setNewName('');
+    setActiveForm('rename');
     setRenamingHid(hid);
     setRenameValue(current);
   };
@@ -150,6 +144,7 @@ export default function HouseholdsScreen() {
         toast.show({ kind: 'error', message: res.reason || "Couldn't rename household" });
         return;
       }
+      setActiveForm('none');
       setRenamingHid(null);
       await refreshMemberships();
     } catch (e) {
@@ -284,18 +279,14 @@ export default function HouseholdsScreen() {
           {
             icon: 'add',
             onPress: () => {
-              // Mirror of startRename's guard below: don't let the
-              // create box and an in-progress rename box both be open
-              // at once (see M-01 comment in startRename).
-              setRenamingHid(null);
-              setCreating((v) => !v);
+              setActiveForm((f) => (f === 'create' ? 'none' : 'create'));
             },
             accessibilityLabel: 'Create household',
           },
         ]}
       />
 
-      {creating && (
+      {activeForm === 'create' && (
         <View style={styles.createRow}>
           <TextInput
             value={newName}
@@ -325,7 +316,7 @@ export default function HouseholdsScreen() {
         <ScrollView contentContainerStyle={styles.scroll}>
           {memberships.map((m) => {
             const isActive = m.householdId === activeHouseholdId;
-            const isRenaming = renamingHid === m.householdId;
+            const isRenaming = activeForm === 'rename' && renamingHid === m.householdId;
             const label = m.name || 'Unnamed household';
             const card = (
               <View style={[styles.card, isActive && styles.cardActive]}>

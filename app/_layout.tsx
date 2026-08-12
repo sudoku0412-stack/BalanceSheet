@@ -3,7 +3,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, useColorScheme, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import {
@@ -53,10 +53,23 @@ export default function RootLayout() {
     RobotoMono_500Medium,
   });
 
+  // Rendered before ThemeProvider mounts, so it can't read the
+  // resolved (preference-aware) theme yet — falls back to the raw OS
+  // scheme so a light-mode device doesn't flash dark here.
+  const scheme = useColorScheme();
+  const isLight = scheme === 'light';
+
   if (!fontsLoaded || !dbReady) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0C0F24' }}>
-        <ActivityIndicator color="#fff" />
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: isLight ? '#F7F7F8' : '#0C0F24',
+        }}
+      >
+        <ActivityIndicator color={isLight ? '#0C0F24' : '#fff'} />
       </View>
     );
   }

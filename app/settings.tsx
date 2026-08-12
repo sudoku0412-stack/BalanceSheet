@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
-  Linking,
   Pressable,
   ScrollView,
   Share,
@@ -50,7 +49,7 @@ import { receiptsToCsv } from '../lib/reports';
 import { RECURRING_BUDGET_KEY } from '../lib/recurring';
 import { pickContactWithPhone, isContactPickerAvailable } from '../lib/contactPicker';
 import { addByPhone } from '../lib/phoneInvite';
-import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../lib/legalLinks';
+import { LegalLinksRow } from '../components/ui/LegalLinksRow';
 import {
   CURRENCIES,
   CURRENCY_SYMBOLS,
@@ -137,23 +136,6 @@ function useSettingsStyles() {
       color: theme.colors.error,
       fontSize: theme.font.md,
       fontFamily: theme.fonts.display.bold,
-    },
-    legalRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: theme.spacing.sm,
-      paddingTop: theme.spacing.sm,
-    },
-    legalLink: {
-      color: theme.colors.textMuted,
-      fontSize: theme.font.sm,
-      fontFamily: theme.fonts.body.regular,
-      textDecorationLine: 'underline',
-    },
-    legalDivider: {
-      color: theme.colors.textMuted,
-      fontSize: theme.font.sm,
     },
     currencyRow: {
       flexDirection: 'row',
@@ -997,14 +979,8 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <View style={styles.legalRow}>
-          <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={4}>
-            <Text style={styles.legalLink}>Privacy Policy</Text>
-          </Pressable>
-          <Text style={styles.legalDivider}>·</Text>
-          <Pressable onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)} hitSlop={4}>
-            <Text style={styles.legalLink}>Terms of Service</Text>
-          </Pressable>
+        <View style={{ paddingTop: theme.spacing.sm }}>
+          <LegalLinksRow />
         </View>
 
         <Pressable onPress={confirmSignOut} style={styles.signOutTextBtn} hitSlop={4}>

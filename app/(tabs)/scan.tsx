@@ -1457,6 +1457,15 @@ export default function ScanScreen() {
     ]);
   };
 
+  // Same data-loss risk as confirmDiscardExpense above, but for the
+  // "Retake" chevron — it stays on this screen (closeScan), not exits.
+  const confirmRetake = () => {
+    Alert.alert('Retake photo?', 'Your entered details will be lost.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Retake', style: 'destructive', onPress: closeScan },
+    ]);
+  };
+
   // Apply a Gemini-validated receipt into the form state. Used from
   // both the live API path and the cache-hit path.
   /**
@@ -1799,7 +1808,7 @@ export default function ScanScreen() {
           ) : (
             <TouchableOpacity
               style={styles.retakeBtn}
-              onPress={closeScan}
+              onPress={confirmRetake}
               activeOpacity={0.7}
             >
               <Ionicons

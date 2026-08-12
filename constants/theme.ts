@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, useColorScheme } from 'react-native';
 import { Category } from '../types';
 import { getThemePreference, setThemePreference, ThemePreference } from '../lib/secureStorage';
@@ -145,14 +145,17 @@ export const lightTheme = {
 
 export type Theme = typeof darkTheme;
 
-const ThemeContext = createContext<Theme>(darkTheme);
-
-type ThemePreferenceContextValue = {
+type ThemeContextValue = {
+  theme: Theme;
   preference: ThemePreference;
   setPreference: (pref: ThemePreference) => void;
 };
 
-const ThemePreferenceContext = createContext<ThemePreferenceContextValue>({
+// Single source of truth: the resolved theme and the raw preference
+// that produced it live in one context, so there's one place to keep
+// them in sync instead of two providers wrapping each other.
+const ThemeContext = createContext<ThemeContextValue>({
+  theme: darkTheme,
   preference: 'system',
   setPreference: () => {},
 });
@@ -171,38 +174,35 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     getThemePreference().then(setPreferenceState);
   }, []);
 
-  const setPreference = (pref: ThemePreference) => {
+  const setPreference = useCallback((pref: ThemePreference) => {
     setPreferenceState(pref);
     void setThemePreference(pref);
-  };
+  }, []);
 
   const resolvedScheme = preference === 'system' ? scheme : preference;
-  const value = useMemo(
-    () => (resolvedScheme === 'light' ? lightTheme : darkTheme),
-    [resolvedScheme],
-  );
-  const preferenceValue = useMemo(
-    () => ({ preference, setPreference }),
-    [preference],
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      theme: resolvedScheme === 'light' ? lightTheme : darkTheme,
+      preference,
+      setPreference,
+    }),
+    [resolvedScheme, preference, setPreference],
   );
 
-  return React.createElement(
-    ThemePreferenceContext.Provider,
-    { value: preferenceValue },
-    React.createElement(ThemeContext.Provider, { value }, children),
-  );
+  return React.createElement(ThemeContext.Provider, { value }, children);
 }
 
 /** Returns the active theme (reactive — re-renders on system or manual change). */
 export function useTheme(): Theme {
-  return useContext(ThemeContext);
+  return useContext(ThemeContext).theme;
 }
 
 /** Settings' "Appearance" control reads/writes this — the user's raw
  *  light/dark/system choice, as opposed to useTheme()'s already-resolved
  *  palette. */
-export function useThemePreference(): ThemePreferenceContextValue {
-  return useContext(ThemePreferenceContext);
+export function useThemePreference(): { preference: ThemePreference; setPreference: (pref: ThemePreference) => void } {
+  const { preference, setPreference } = useContext(ThemeContext);
+  return { preference, setPreference };
 }
 
 /**

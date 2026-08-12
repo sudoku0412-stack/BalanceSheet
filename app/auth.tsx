@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   KeyboardAvoidingView,
-  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -27,7 +26,7 @@ import {
 } from '../lib/auth';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { humanizeAuthError } from '../lib/authErrors';
-import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../lib/legalLinks';
+import { LegalLinksRow } from '../components/ui/LegalLinksRow';
 
 type Tab = 'login' | 'signup';
 
@@ -149,14 +148,8 @@ export default function AuthScreen() {
               <Text style={styles.linkMuted}>‹ Back to intro</Text>
             </Pressable>
 
-            <View style={styles.legalRow}>
-              <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={4}>
-                <Text style={styles.legalLink}>Privacy Policy</Text>
-              </Pressable>
-              <Text style={styles.legalDivider}>·</Text>
-              <Pressable onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)} hitSlop={4}>
-                <Text style={styles.legalLink}>Terms of Service</Text>
-              </Pressable>
+            <View style={{ marginTop: theme.spacing.md }}>
+              <LegalLinksRow />
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -599,23 +592,6 @@ const makeStyles = (t: Theme) => ({
     color: t.colors.textMuted,
     fontFamily: t.fonts.body.medium,
     fontSize: t.font.sm,
-  },
-  legalRow: {
-    flexDirection: 'row' as const,
-    alignItems: 'center' as const,
-    justifyContent: 'center' as const,
-    gap: t.spacing.sm,
-    marginTop: t.spacing.md,
-  },
-  legalLink: {
-    color: t.colors.textMuted,
-    fontFamily: t.fonts.body.medium,
-    fontSize: t.font.xs,
-    textDecorationLine: 'underline' as const,
-  },
-  legalDivider: {
-    color: t.colors.textMuted,
-    fontSize: t.font.xs,
   },
   errorText: {
     color: t.colors.error,
