@@ -20,7 +20,7 @@ import {
 } from '@expo-google-fonts/roboto';
 import { RobotoMono_400Regular, RobotoMono_500Medium } from '@expo-google-fonts/roboto-mono';
 import { initDatabase } from '../lib/database';
-import { ThemeProvider, useTheme, lightTheme, darkTheme } from '../constants/theme';
+import { ThemeProvider, useTheme, getBootstrapTheme } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/AuthContext';
 import { ToastProvider } from '../components/ui/Toast';
 import { pickTarget, targetToHref } from '../lib/routeGuard';
@@ -57,10 +57,9 @@ export default function RootLayout() {
   // resolved (preference-aware) theme yet — falls back to the raw OS
   // scheme so a light-mode device doesn't flash dark here.
   const scheme = useColorScheme();
-  const isLight = scheme === 'light';
 
   if (!fontsLoaded || !dbReady) {
-    const bootstrapTheme = isLight ? lightTheme : darkTheme;
+    const bootstrapTheme = getBootstrapTheme(scheme);
     return (
       <View
         style={{

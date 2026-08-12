@@ -56,8 +56,13 @@ export default function HouseholdsScreen() {
   // you get a brand-new empty household instead of a rename.
   // "rename" carries which household id right on the state itself —
   // there's no separate renamingHid to forget to clear/keep in sync,
-  // and no way to end up in a "rename" state without a target id.
-  const [activeForm, setActiveForm] = useState<'none' | 'create' | { hid: string }>('none');
+  // and no way to end up in a "rename" state without a target id. A
+  // tagged union (mode) rather than a bare {hid} object, so it reads
+  // and greps the same way as this codebase's other "one of several
+  // shapes" state (e.g. lib/cloudSync.ts's {ok:true/false}).
+  const [activeForm, setActiveForm] = useState<
+    { mode: 'none' } | { mode: 'create' } | { mode: 'rename'; hid: string }
+  >({ mode: 'none' });
   const [newName, setNewName] = useState('');
   const [savingNew, setSavingNew] = useState(false);
   const [renameValue, setRenameValue] = useState('');
@@ -120,10 +125,7 @@ export default function HouseholdsScreen() {
         return;
       }
       await setActiveHousehold(res.householdId);
-      // Functional updater, not a bare 'none' — if the user has since
-      // switched to the rename form while this create call was in
-      // flight, don't stomp on it.
-      setActiveForm((current) => (current === 'create' ? 'none' : current));
+      setActiveForm({ mode: 'none' });
       setNewName('');
       toast.show({ kind: 'success', message: `${name} created` });
     } catch (e) {
@@ -133,15 +135,23 @@ export default function HouseholdsScreen() {
     }
   };
 
+  // Entry points into either form (this, the header "+" toggle below,
+  // and the per-row "Name it" link) are all disabled while a save is
+  // in flight (see formBusy) — so by the time saveNewHousehold/
+  // saveRename's success path runs, activeForm can only be what THIS
+  // call set it to; nothing else could have changed it in the
+  // meantime, closing the race a plain 'none'/functional-updater guard
+  // couldn't (switching to a DIFFERENT target and back to the SAME one
+  // still matched on hid value alone).
   const startRename = (hid: string, current: string) => {
-    setActiveForm({ hid });
+    setActiveForm({ mode: 'rename', hid });
     setNewName('');
     setRenameValue(current);
   };
 
   const saveRename = async () => {
     const name = renameValue.trim();
-    const renamingHid = typeof activeForm === 'object' ? activeForm.hid : null;
+    const renamingHid = activeForm.mode === 'rename' ? activeForm.hid : null;
     if (!name || !renamingHid || !user?.uid || savingRename) return;
     setSavingRename(true);
     try {
@@ -150,11 +160,7 @@ export default function HouseholdsScreen() {
         toast.show({ kind: 'error', message: res.reason || "Couldn't rename household" });
         return;
       }
-      // Functional updater — see the matching comment in
-      // saveNewHousehold above.
-      setActiveForm((current) =>
-        typeof current === 'object' && current.hid === renamingHid ? 'none' : current,
-      );
+      setActiveForm({ mode: 'none' });
       await refreshMemberships();
     } catch (e) {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't rename household" });
@@ -162,6 +168,12 @@ export default function HouseholdsScreen() {
       setSavingRename(false);
     }
   };
+
+  // Shared across both forms — disables the header "+" toggle and
+  // every row's "Name it" link while either form's save is in flight,
+  // so the user can't switch targets mid-save (see the comment above
+  // startRename for why that mattered).
+  const formBusy = savingNew || savingRename;
 
   // Owner-only, triggered by swiping a row left. Checks THAT household
   // (not necessarily the active one) for unsettled balances first — if
@@ -288,14 +300,20 @@ export default function HouseholdsScreen() {
           {
             icon: 'add',
             onPress: () => {
-              setActiveForm((f) => (f === 'create' ? 'none' : 'create'));
+              if (activeForm.mode === 'create') {
+                setActiveForm({ mode: 'none' });
+                setNewName('');
+              } else {
+                setActiveForm({ mode: 'create' });
+              }
             },
+            disabled: formBusy,
             accessibilityLabel: 'Create household',
           },
         ]}
       />
 
-      {activeForm === 'create' && (
+      {activeForm.mode === 'create' && (
         <View style={styles.createRow}>
           <TextInput
             value={newName}
@@ -325,7 +343,7 @@ export default function HouseholdsScreen() {
         <ScrollView contentContainerStyle={styles.scroll}>
           {memberships.map((m) => {
             const isActive = m.householdId === activeHouseholdId;
-            const isRenaming = typeof activeForm === 'object' && activeForm.hid === m.householdId;
+            const isRenaming = activeForm.mode === 'rename' && activeForm.hid === m.householdId;
             const label = m.name || 'Unnamed household';
             const card = (
               <View style={[styles.card, isActive && styles.cardActive]}>
@@ -360,8 +378,12 @@ export default function HouseholdsScreen() {
                         {m.role === 'owner' ? 'Owner' : 'Member'}
                       </Text>
                       {!m.name && m.role === 'owner' && (
-                        <Pressable onPress={() => startRename(m.householdId, '')} hitSlop={4}>
-                          <Text style={styles.nameItLink}>Name it</Text>
+                        <Pressable
+                          onPress={() => startRename(m.householdId, '')}
+                          disabled={formBusy}
+                          hitSlop={4}
+                        >
+                          <Text style={[styles.nameItLink, formBusy && { opacity: 0.4 }]}>Name it</Text>
                         </Pressable>
                       )}
                     </View>

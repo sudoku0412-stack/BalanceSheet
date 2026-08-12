@@ -145,6 +145,14 @@ export const lightTheme = {
 
 export type Theme = typeof darkTheme;
 
+/** For the rare screen that renders before ThemeProvider mounts (e.g.
+ *  app/_layout.tsx's fonts/DB loading gate) and so can't call
+ *  useTheme() — resolves the raw OS scheme straight to a palette,
+ *  with no preference override (there's nothing to read one from yet). */
+export function getBootstrapTheme(scheme: 'light' | 'dark' | null | undefined): Theme {
+  return scheme === 'light' ? lightTheme : darkTheme;
+}
+
 type ThemePreferenceContextValue = {
   preference: ThemePreference;
   setPreference: (pref: ThemePreference) => void;
