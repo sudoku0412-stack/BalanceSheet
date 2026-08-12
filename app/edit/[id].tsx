@@ -1151,8 +1151,8 @@ function EditReceiptScreen() {
       Alert.alert('Missing name', 'Please enter an item name.');
       return;
     }
-    const amt = parseFloat(itemAmount.replace(',', '.'));
-    if (isNaN(amt) || amt < 0) {
+    const amt = parseAmountInput(itemAmount);
+    if (amt === null || amt < 0) {
       Alert.alert('Invalid amount', 'Please enter a valid item amount.');
       return;
     }
@@ -1513,7 +1513,7 @@ function EditReceiptScreen() {
               <TextInput
                 style={styles.input}
                 value={itemAmount}
-                onChangeText={setItemAmount}
+                onChangeText={(text) => setItemAmount(sanitizeAmountInput(text))}
                 placeholder="0.00"
                 placeholderTextColor={theme.colors.textMuted}
                 keyboardType="decimal-pad"
