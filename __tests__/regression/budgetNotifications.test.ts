@@ -84,8 +84,12 @@ describe('Regression: Recurring-category double-counting (lib/notifications.ts)'
    */
   it('does not double count a receipt whose category is literally the Recurring key', async () => {
     const { notifyHouseholdOfBudgetStatus } = require('../../lib/notifications');
-    const { getCategoryBudgets, setCategoryBudget } = require('../../lib/secureStorage');
+    const { getCategoryBudgets, setCategoryBudget, setBudgetAlertsEnabled } = require('../../lib/secureStorage');
 
+    // Budget alerts default OFF now (turning them on is what triggers the
+    // permission prompt) — this test is about the double-counting bug,
+    // not the default, so opt in explicitly.
+    await setBudgetAlertsEnabled('household-1', true);
     await setCategoryBudget('household-1', 'Recurring', 100);
     // sanity: budget actually persisted through the stateful mock
     expect(await getCategoryBudgets('household-1')).toMatchObject({ Recurring: 100 });

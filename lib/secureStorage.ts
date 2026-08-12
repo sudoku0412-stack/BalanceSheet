@@ -119,7 +119,7 @@ export async function setCategoryBudget(
 export async function getBudgetAlertsEnabled(householdId: string): Promise<boolean> {
   await migrateLegacyBudgetsToHousehold(householdId);
   const v = await SecureStore.getItemAsync(`${Keys.budgetAlertsEnabled}.${householdId}`);
-  return v !== '0'; // default on
+  return v === '1'; // default off — turning it on is what triggers the permission prompt
 }
 
 export async function setBudgetAlertsEnabled(householdId: string, enabled: boolean): Promise<void> {

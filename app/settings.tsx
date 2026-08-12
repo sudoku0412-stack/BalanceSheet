@@ -378,7 +378,7 @@ export default function SettingsScreen() {
   // setBudgetAlertsEnabled) — the same store the dashboard reads from.
   const [categoryBudgetsUsd, setCategoryBudgetsUsd] = useState<Record<string, number>>({});
   const [budgetInputs, setBudgetInputs] = useState<Record<string, string>>({});
-  const [budgetAlertsEnabled, setBudgetAlertsEnabledState] = useState(true);
+  const [budgetAlertsEnabled, setBudgetAlertsEnabledState] = useState(false);
   const [exportingAll, setExportingAll] = useState(false);
   const [currency, setCurrencyState] = useState<CurrencyCode>('USD');
 
