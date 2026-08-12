@@ -238,4 +238,66 @@ describe('HouseholdsScreen', () => {
       expect(mockDeleteHousehold).toHaveBeenCalledWith({ householdId: 'hh1', uid: 'u1' });
     });
   });
+
+  it('disables the "+" toggle and other rows\' "Name it" link while a rename save is in flight', async () => {
+    mockAuthValue.memberships = [
+      { householdId: 'hh1', name: '', role: 'owner', memberCount: 1, isDefault: true },
+      { householdId: 'hh2', name: '', role: 'owner', memberCount: 1, isDefault: false },
+    ];
+    let resolveRename: (v: { ok: true }) => void = () => {};
+    mockRenameHousehold.mockImplementation(
+      () => new Promise((resolve) => { resolveRename = resolve; }),
+    );
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getAllByText('Unnamed household'));
+
+    fireEvent.press(screen.getAllByText('Name it')[0]);
+    fireEvent.changeText(screen.getByPlaceholderText('Household name'), 'Home Nest');
+    fireEvent.press(screen.getByText('Save'));
+    await waitFor(() => expect(screen.getByText('Saving…')).toBeTruthy());
+
+    // hh1's rename is in flight (the mock promise hasn't resolved) —
+    // hh2's "Name it" link and the header "+" toggle must both be
+    // disabled, not just dimmed, so no second form can be opened.
+    fireEvent.press(screen.getByText('Name it'));
+    expect(screen.queryAllByPlaceholderText('Household name')).toHaveLength(1);
+    fireEvent.press(screen.getByLabelText('Create household'));
+    expect(screen.queryByText('Create')).toBeNull();
+
+    await act(async () => {
+      resolveRename({ ok: true });
+      await Promise.resolve();
+    });
+  });
+
+  it('disables "Name it" for a household while it is mid-delete', async () => {
+    mockAuthValue.memberships = [
+      { householdId: 'hh1', name: '', role: 'owner', memberCount: 1, isDefault: true },
+    ];
+    let resolveDelete: (v: { ok: true }) => void = () => {};
+    mockDeleteHousehold.mockImplementation(
+      () => new Promise((resolve) => { resolveDelete = resolve; }),
+    );
+    const alertSpy = jest.spyOn(Alert, 'alert');
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getByText('Unnamed household'));
+
+    fireEvent.press(screen.getByText('Delete'));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalled());
+    const buttons = alertSpy.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+    await act(async () => {
+      buttons.find((b) => b.text === 'Delete')?.onPress?.();
+      await Promise.resolve();
+    });
+
+    // hh1 is mid-delete — its own "Name it" link must not be able to
+    // start a rename on a household concurrently being deleted.
+    fireEvent.press(screen.getByText('Name it'));
+    expect(screen.queryByText('Save')).toBeNull();
+
+    await act(async () => {
+      resolveDelete({ ok: true });
+      await Promise.resolve();
+    });
+  });
 });

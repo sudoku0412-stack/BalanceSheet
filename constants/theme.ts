@@ -190,10 +190,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const resolvedScheme = preference === 'system' ? scheme : preference;
-  const theme = useMemo(
-    () => (resolvedScheme === 'light' ? lightTheme : darkTheme),
-    [resolvedScheme],
-  );
+  const theme = useMemo(() => getBootstrapTheme(resolvedScheme), [resolvedScheme]);
   const preferenceValue = useMemo(
     () => ({ preference, setPreference }),
     [preference, setPreference],

@@ -47,26 +47,24 @@ export default function HouseholdsScreen() {
 
   const [loading, setLoading] = useState(true);
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
-  // Which name-entry form (if any) is open. "create" and "rename" are
-  // mutually exclusive by construction — there's no way to enter one
-  // without leaving the other — since both forms use autoFocus and
-  // showing both at once for the same-sorted household created a tap-
-  // the-wrong-button trap (QA bug M-01): type a new name, hit what
-  // looks like "Save" but is actually "Create" a few px above it, and
-  // you get a brand-new empty household instead of a rename.
-  // "rename" carries which household id right on the state itself —
-  // there's no separate renamingHid to forget to clear/keep in sync,
-  // and no way to end up in a "rename" state without a target id. A
-  // tagged union (mode) rather than a bare {hid} object, so it reads
-  // and greps the same way as this codebase's other "one of several
-  // shapes" state (e.g. lib/cloudSync.ts's {ok:true/false}).
-  const [activeForm, setActiveForm] = useState<
-    { mode: 'none' } | { mode: 'create' } | { mode: 'rename'; hid: string }
+  // Which name-entry form (if any) is open, and everything about it
+  // (its typed value, whether it's mid-save) lives on ONE state value
+  // instead of several separately-toggled booleans/strings — so a
+  // save's `saving` flag can never end up describing a DIFFERENT
+  // household's form, and there's no separate hid/value/saving to
+  // forget to clear/keep in sync with which mode is active. "create"
+  // and "rename" are mutually exclusive by construction — there's no
+  // way to enter one without leaving the other — since both forms use
+  // autoFocus and showing both at once for the same-sorted household
+  // created a tap-the-wrong-button trap (QA bug M-01): type a new
+  // name, hit what looks like "Save" but is actually "Create" a few
+  // px above it, and you get a brand-new empty household instead of a
+  // rename.
+  const [form, setForm] = useState<
+    | { mode: 'none' }
+    | { mode: 'create'; value: string; saving: boolean }
+    | { mode: 'rename'; hid: string; value: string; saving: boolean }
   >({ mode: 'none' });
-  const [newName, setNewName] = useState('');
-  const [savingNew, setSavingNew] = useState(false);
-  const [renameValue, setRenameValue] = useState('');
-  const [savingRename, setSavingRename] = useState(false);
   const [deletingHid, setDeletingHid] = useState<string | null>(null);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
@@ -114,66 +112,86 @@ export default function HouseholdsScreen() {
     }
   };
 
+  // Bounds a request so a dropped connection or backend hang can't
+  // leave `form.saving` stuck true forever — which would otherwise
+  // permanently disable the "+" toggle and every "Name it" link (see
+  // formBusy) with no error and no way to recover short of leaving
+  // the screen.
+  const REQUEST_TIMEOUT_MS = 15000;
+  function withTimeout<T>(promise: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("Request timed out — check your connection and try again.")),
+        REQUEST_TIMEOUT_MS,
+      );
+      promise.then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (err) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
+  }
+
   const saveNewHousehold = async () => {
-    const name = newName.trim();
-    if (!name || !user?.uid || savingNew) return;
-    setSavingNew(true);
+    if (form.mode !== 'create') return;
+    const name = form.value.trim();
+    if (!name || !user?.uid || form.saving) return;
+    setForm({ mode: 'create', value: form.value, saving: true });
     try {
-      const res = await createHousehold({ uid: user.uid, name });
+      const res = await withTimeout(createHousehold({ uid: user.uid, name }));
       if (!res.ok) {
         toast.show({ kind: 'error', message: res.reason || "Couldn't create household" });
         return;
       }
       await setActiveHousehold(res.householdId);
-      setActiveForm({ mode: 'none' });
-      setNewName('');
+      setForm({ mode: 'none' });
       toast.show({ kind: 'success', message: `${name} created` });
     } catch (e) {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't create household" });
     } finally {
-      setSavingNew(false);
+      setForm((f) => (f.mode === 'create' ? { ...f, saving: false } : f));
     }
   };
 
   // Entry points into either form (this, the header "+" toggle below,
   // and the per-row "Name it" link) are all disabled while a save is
   // in flight (see formBusy) — so by the time saveNewHousehold/
-  // saveRename's success path runs, activeForm can only be what THIS
-  // call set it to; nothing else could have changed it in the
-  // meantime, closing the race a plain 'none'/functional-updater guard
-  // couldn't (switching to a DIFFERENT target and back to the SAME one
-  // still matched on hid value alone).
+  // saveRename's success path runs, `form` can only be what THIS call
+  // set it to; nothing else could have changed it in the meantime.
   const startRename = (hid: string, current: string) => {
-    setActiveForm({ mode: 'rename', hid });
-    setNewName('');
-    setRenameValue(current);
+    setForm({ mode: 'rename', hid, value: current, saving: false });
   };
 
   const saveRename = async () => {
-    const name = renameValue.trim();
-    const renamingHid = activeForm.mode === 'rename' ? activeForm.hid : null;
-    if (!name || !renamingHid || !user?.uid || savingRename) return;
-    setSavingRename(true);
+    if (form.mode !== 'rename') return;
+    const { hid, value } = form;
+    const name = value.trim();
+    if (!name || !user?.uid || form.saving) return;
+    setForm({ mode: 'rename', hid, value, saving: true });
     try {
-      const res = await renameHousehold({ householdId: renamingHid, name, uid: user.uid });
+      const res = await withTimeout(renameHousehold({ householdId: hid, name, uid: user.uid }));
       if (!res.ok) {
         toast.show({ kind: 'error', message: res.reason || "Couldn't rename household" });
         return;
       }
-      setActiveForm({ mode: 'none' });
+      setForm({ mode: 'none' });
       await refreshMemberships();
     } catch (e) {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't rename household" });
     } finally {
-      setSavingRename(false);
+      setForm((f) => (f.mode === 'rename' ? { ...f, saving: false } : f));
     }
   };
 
   // Shared across both forms — disables the header "+" toggle and
   // every row's "Name it" link while either form's save is in flight,
-  // so the user can't switch targets mid-save (see the comment above
-  // startRename for why that mattered).
-  const formBusy = savingNew || savingRename;
+  // so the user can't switch targets mid-save.
+  const formBusy = form.mode !== 'none' && form.saving;
 
   // Owner-only, triggered by swiping a row left. Checks THAT household
   // (not necessarily the active one) for unsettled balances first — if
@@ -300,12 +318,7 @@ export default function HouseholdsScreen() {
           {
             icon: 'add',
             onPress: () => {
-              if (activeForm.mode === 'create') {
-                setActiveForm({ mode: 'none' });
-                setNewName('');
-              } else {
-                setActiveForm({ mode: 'create' });
-              }
+              setForm((f) => (f.mode === 'create' ? { mode: 'none' } : { mode: 'create', value: '', saving: false }));
             },
             disabled: formBusy,
             accessibilityLabel: 'Create household',
@@ -313,11 +326,11 @@ export default function HouseholdsScreen() {
         ]}
       />
 
-      {activeForm.mode === 'create' && (
+      {form.mode === 'create' && (
         <View style={styles.createRow}>
           <TextInput
-            value={newName}
-            onChangeText={setNewName}
+            value={form.value}
+            onChangeText={(text) => setForm((f) => (f.mode === 'create' ? { ...f, value: text } : f))}
             placeholder="Household name"
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
@@ -325,10 +338,10 @@ export default function HouseholdsScreen() {
           />
           <Pressable
             onPress={saveNewHousehold}
-            disabled={savingNew || !newName.trim()}
-            style={[styles.saveBtn, (savingNew || !newName.trim()) && styles.saveBtnDisabled]}
+            disabled={form.saving || !form.value.trim()}
+            style={[styles.saveBtn, (form.saving || !form.value.trim()) && styles.saveBtnDisabled]}
           >
-            <Text style={styles.saveBtnText}>{savingNew ? 'Creating…' : 'Create'}</Text>
+            <Text style={styles.saveBtnText}>{form.saving ? 'Creating…' : 'Create'}</Text>
           </Pressable>
         </View>
       )}
@@ -343,15 +356,17 @@ export default function HouseholdsScreen() {
         <ScrollView contentContainerStyle={styles.scroll}>
           {memberships.map((m) => {
             const isActive = m.householdId === activeHouseholdId;
-            const isRenaming = activeForm.mode === 'rename' && activeForm.hid === m.householdId;
+            const isRenaming = form.mode === 'rename' && form.hid === m.householdId;
             const label = m.name || 'Unnamed household';
             const card = (
               <View style={[styles.card, isActive && styles.cardActive]}>
-                {isRenaming ? (
+                {isRenaming && form.mode === 'rename' ? (
                   <View style={styles.renameRow}>
                     <TextInput
-                      value={renameValue}
-                      onChangeText={setRenameValue}
+                      value={form.value}
+                      onChangeText={(text) =>
+                        setForm((f) => (f.mode === 'rename' ? { ...f, value: text } : f))
+                      }
                       placeholder="Household name"
                       placeholderTextColor={theme.colors.textMuted}
                       style={styles.input}
@@ -359,10 +374,10 @@ export default function HouseholdsScreen() {
                     />
                     <Pressable
                       onPress={saveRename}
-                      disabled={savingRename || !renameValue.trim()}
-                      style={[styles.saveBtn, (savingRename || !renameValue.trim()) && styles.saveBtnDisabled]}
+                      disabled={form.saving || !form.value.trim()}
+                      style={[styles.saveBtn, (form.saving || !form.value.trim()) && styles.saveBtnDisabled]}
                     >
-                      <Text style={styles.saveBtnText}>{savingRename ? 'Saving…' : 'Save'}</Text>
+                      <Text style={styles.saveBtnText}>{form.saving ? 'Saving…' : 'Save'}</Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -380,10 +395,17 @@ export default function HouseholdsScreen() {
                       {!m.name && m.role === 'owner' && (
                         <Pressable
                           onPress={() => startRename(m.householdId, '')}
-                          disabled={formBusy}
+                          disabled={formBusy || deletingHid === m.householdId}
                           hitSlop={4}
                         >
-                          <Text style={[styles.nameItLink, formBusy && { opacity: 0.4 }]}>Name it</Text>
+                          <Text
+                            style={[
+                              styles.nameItLink,
+                              (formBusy || deletingHid === m.householdId) && { opacity: 0.4 },
+                            ]}
+                          >
+                            Name it
+                          </Text>
                         </Pressable>
                       )}
                     </View>
