@@ -11,7 +11,7 @@ module.exports = ({ config }) => {
     // project/URLs, not user-visible.
     name: 'NestExpenseTracker',
     slug: 'receipt-scanner',
-    version: '1.0.1',
+    version: '1.0.2',
     runtimeVersion: { policy: 'appVersion' },
     updates: {
       url: 'https://u.expo.dev/bbdefab5-4cc5-4480-96a9-8ece7eb913a5',
@@ -58,7 +58,7 @@ module.exports = ({ config }) => {
       // precedence over app.json's ios.buildNumber, which is kept in
       // sync here purely for a human reader, not because anything
       // reads it.
-      buildNumber: '9',
+      buildNumber: '10',
       googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
         NSCameraUsageDescription:
