@@ -21,6 +21,7 @@ const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
   { value: 'dark', label: 'Dark' },
   { value: 'system', label: 'System' },
 ];
+const REQUEST_TIMEOUT_MS = 15000;
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { ALL_CATEGORIES } from '../constants/categories';
@@ -49,6 +50,7 @@ import { receiptsToCsv } from '../lib/reports';
 import { RECURRING_BUDGET_KEY } from '../lib/recurring';
 import { pickContactWithPhone, isContactPickerAvailable } from '../lib/contactPicker';
 import { addByPhone } from '../lib/phoneInvite';
+import { withTimeout } from '../lib/withTimeout';
 import { LegalLinksRow } from '../components/ui/LegalLinksRow';
 import {
   CURRENCIES,
@@ -401,14 +403,17 @@ export default function SettingsScreen() {
     if (!email) return;
     setInviteSending(true);
     try {
-      const res = await inviteUserToHousehold({
-        email,
-        householdId,
-        invitedByUid: user.uid,
-        invitedByEmail: user.email ?? null,
-        invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
-        budgets: await getBudgetsSnapshot(householdId),
-      });
+      const res = await withTimeout(
+        inviteUserToHousehold({
+          email,
+          householdId,
+          invitedByUid: user.uid,
+          invitedByEmail: user.email ?? null,
+          invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
+          budgets: await getBudgetsSnapshot(householdId),
+        }),
+        REQUEST_TIMEOUT_MS,
+      );
       if (res.ok) {
         toast.show({ kind: 'success', message: 'Invite sent' });
         setLastInvitedEmail(email);
@@ -480,12 +485,15 @@ export default function SettingsScreen() {
     if (!householdId || !user?.uid || leavingHousehold) return;
     setLeavingHousehold(true);
     try {
-      const res = await leaveHousehold({
-        uid: user.uid,
-        householdId,
-        email: user.email ?? null,
-        displayName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
-      });
+      const res = await withTimeout(
+        leaveHousehold({
+          uid: user.uid,
+          householdId,
+          email: user.email ?? null,
+          displayName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
+        }),
+        REQUEST_TIMEOUT_MS,
+      );
       if (res.ok) {
         await setActiveHousehold(res.nextActiveHouseholdId);
         toast.show({ kind: 'success', message: 'You left the household' });

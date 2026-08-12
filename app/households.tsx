@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -24,6 +24,7 @@ import {
   renameHousehold,
 } from '../lib/cloudSync';
 import { clearBudgetsForHousehold, getCurrency } from '../lib/secureStorage';
+import { withTimeout } from '../lib/withTimeout';
 import { computeMemberBalances, type MemberBalance } from '../lib/balances';
 import { formatCurrency, type CurrencyCode } from '../lib/currency';
 import { v4 as uuidv4 } from 'uuid';
@@ -68,6 +69,15 @@ export default function HouseholdsScreen() {
   const [deletingHid, setDeletingHid] = useState<string | null>(null);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
+  // Guards state updates that resolve after the screen's gone (e.g. a
+  // hung save's withTimeout rejection landing after the user's already
+  // navigated away) from hitting an unmounted component.
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -112,30 +122,11 @@ export default function HouseholdsScreen() {
     }
   };
 
-  // Bounds a request so a dropped connection or backend hang can't
-  // leave `form.saving` stuck true forever — which would otherwise
-  // permanently disable the "+" toggle and every "Name it" link (see
-  // formBusy) with no error and no way to recover short of leaving
-  // the screen.
+  // A hung request would otherwise leave `form.saving` stuck true
+  // forever, permanently disabling the "+" toggle and every "Name it"
+  // link (see formBusy) with no error and no way to recover short of
+  // leaving the screen.
   const REQUEST_TIMEOUT_MS = 15000;
-  function withTimeout<T>(promise: Promise<T>): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error("Request timed out — check your connection and try again.")),
-        REQUEST_TIMEOUT_MS,
-      );
-      promise.then(
-        (value) => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        (err) => {
-          clearTimeout(timer);
-          reject(err);
-        },
-      );
-    });
-  }
 
   const saveNewHousehold = async () => {
     if (form.mode !== 'create') return;
@@ -143,18 +134,24 @@ export default function HouseholdsScreen() {
     if (!name || !user?.uid || form.saving) return;
     setForm({ mode: 'create', value: form.value, saving: true });
     try {
-      const res = await withTimeout(createHousehold({ uid: user.uid, name }));
+      const res = await withTimeout(createHousehold({ uid: user.uid, name }), REQUEST_TIMEOUT_MS);
+      if (!isMountedRef.current) return;
       if (!res.ok) {
         toast.show({ kind: 'error', message: res.reason || "Couldn't create household" });
         return;
       }
       await setActiveHousehold(res.householdId);
+      if (!isMountedRef.current) return;
       setForm({ mode: 'none' });
       toast.show({ kind: 'success', message: `${name} created` });
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't create household" });
+      if (isMountedRef.current) {
+        toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't create household" });
+      }
     } finally {
-      setForm((f) => (f.mode === 'create' ? { ...f, saving: false } : f));
+      if (isMountedRef.current) {
+        setForm((f) => (f.mode === 'create' ? { ...f, saving: false } : f));
+      }
     }
   };
 
@@ -174,7 +171,8 @@ export default function HouseholdsScreen() {
     if (!name || !user?.uid || form.saving) return;
     setForm({ mode: 'rename', hid, value, saving: true });
     try {
-      const res = await withTimeout(renameHousehold({ householdId: hid, name, uid: user.uid }));
+      const res = await withTimeout(renameHousehold({ householdId: hid, name, uid: user.uid }), REQUEST_TIMEOUT_MS);
+      if (!isMountedRef.current) return;
       if (!res.ok) {
         toast.show({ kind: 'error', message: res.reason || "Couldn't rename household" });
         return;
@@ -182,9 +180,19 @@ export default function HouseholdsScreen() {
       setForm({ mode: 'none' });
       await refreshMemberships();
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't rename household" });
+      if (isMountedRef.current) {
+        toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't rename household" });
+      }
     } finally {
-      setForm((f) => (f.mode === 'rename' ? { ...f, saving: false } : f));
+      // Checks `f.hid === hid`, not just `f.mode === 'rename'` — the
+      // `await refreshMemberships()` above (success path) is a gap
+      // where formBusy dropping to false could let the user open and
+      // save a rename for a DIFFERENT household before this finally
+      // runs; without the hid check it would clear THAT household's
+      // saving flag mid-request instead of just its own.
+      if (isMountedRef.current) {
+        setForm((f) => (f.mode === 'rename' && f.hid === hid ? { ...f, saving: false } : f));
+      }
     }
   };
 
@@ -358,6 +366,7 @@ export default function HouseholdsScreen() {
             const isActive = m.householdId === activeHouseholdId;
             const isRenaming = form.mode === 'rename' && form.hid === m.householdId;
             const label = m.name || 'Unnamed household';
+            const nameItDisabled = formBusy || deletingHid === m.householdId;
             const card = (
               <View style={[styles.card, isActive && styles.cardActive]}>
                 {isRenaming && form.mode === 'rename' ? (
@@ -395,15 +404,10 @@ export default function HouseholdsScreen() {
                       {!m.name && m.role === 'owner' && (
                         <Pressable
                           onPress={() => startRename(m.householdId, '')}
-                          disabled={formBusy || deletingHid === m.householdId}
+                          disabled={nameItDisabled}
                           hitSlop={4}
                         >
-                          <Text
-                            style={[
-                              styles.nameItLink,
-                              (formBusy || deletingHid === m.householdId) && { opacity: 0.4 },
-                            ]}
-                          >
+                          <Text style={[styles.nameItLink, nameItDisabled && { opacity: 0.4 }]}>
                             Name it
                           </Text>
                         </Pressable>
