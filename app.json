@@ -2,7 +2,7 @@
   "expo": {
     "name": "NestExpenseTracker",
     "slug": "receipt-scanner",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -19,7 +19,7 @@
         "NSPhotoLibraryUsageDescription": "NestExpenseTracker needs photo library access to import receipts.",
         "NSContactsUsageDescription": "NestExpenseTracker needs contacts access so you can pick who to add to your household."
       },
-      "buildNumber": "11"
+      "buildNumber": "12"
     },
     "android": {
       "adaptiveIcon": {
@@ -34,7 +34,7 @@
         "android.permission.READ_CONTACTS"
       ],
       "package": "com.yourname.receiptscanner",
-      "versionCode": 12
+      "versionCode": 13
     },
     "plugins": [
       "expo-router",
