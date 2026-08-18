@@ -946,16 +946,29 @@ export default function ScanScreen() {
         ? undefined
         : Array.from(itemSplit).map((id) => (id === 'self' ? user?.uid ?? 'self' : id)),
     };
+    // Keep the receipt total in lockstep with the items that make it
+    // up — adding/editing/removing a line item adjusts Amount by the
+    // same delta instead of leaving it stale at whatever it was when
+    // the receipt was first parsed/entered.
+    const oldAmount = editingItemId ? items.find((it) => it.id === editingItemId)?.amount ?? 0 : 0;
+    const delta = newItem.amount - oldAmount;
     setItems((prev) =>
       editingItemId
         ? prev.map((it) => (it.id === editingItemId ? newItem : it))
         : [...prev, newItem],
     );
+    if (delta !== 0) {
+      setAmount((prev) => Math.max(0, (parseAmountInput(prev) ?? 0) + delta).toFixed(2));
+    }
     setItemModalVisible(false);
   };
 
   const removeItem = (id: string) => {
+    const removed = items.find((it) => it.id === id);
     setItems((prev) => prev.filter((it) => it.id !== id));
+    if (removed) {
+      setAmount((prev) => Math.max(0, (parseAmountInput(prev) ?? 0) - removed.amount).toFixed(2));
+    }
   };
 
   // "Split with 2 people" / "You only" summary shown on each item row.

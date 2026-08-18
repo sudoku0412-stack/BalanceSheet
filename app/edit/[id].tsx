@@ -1184,16 +1184,33 @@ function EditReceiptScreen() {
         ? undefined
         : Array.from(itemSplit).map((id) => (id === 'self' ? user?.uid ?? 'self' : id)),
     };
+    // Keep the receipt total in lockstep with the items that make it
+    // up — adding/editing/removing a line item adjusts Amount by the
+    // same delta instead of leaving it stale. `newItem.amount`/removed
+    // items are USD-canonical, `amount` (the displayed total) is in
+    // the receipt's own currency, so the delta has to cross that
+    // conversion too.
+    const oldAmountUsd = editingItemId ? items.find((it) => it.id === editingItemId)?.amount ?? 0 : 0;
+    const deltaUsd = newItem.amount - oldAmountUsd;
     setItems((prev) =>
       editingItemId
         ? prev.map((it) => (it.id === editingItemId ? newItem : it))
         : [...prev, newItem],
     );
+    if (deltaUsd !== 0) {
+      const deltaDisplay = convertFromUsd(deltaUsd, currencyCode);
+      setAmount((prev) => Math.max(0, (parseAmountInput(prev) ?? 0) + deltaDisplay).toFixed(2));
+    }
     setItemModalVisible(false);
   };
 
   const removeItem = (itemId: string) => {
+    const removed = items.find((it) => it.id === itemId);
     setItems((prev) => prev.filter((it) => it.id !== itemId));
+    if (removed) {
+      const deltaDisplay = convertFromUsd(removed.amount, currencyCode);
+      setAmount((prev) => Math.max(0, (parseAmountInput(prev) ?? 0) - deltaDisplay).toFixed(2));
+    }
   };
 
   // "Split with N people" / "You only" summary shown on each item row.
