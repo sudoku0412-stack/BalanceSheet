@@ -5,6 +5,7 @@ jest.mock('../lib/cloudSync', () => ({
 }));
 
 import { addByPhone } from '../lib/phoneInvite';
+import { APP_STORE_URL } from '../lib/appLinks';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -60,6 +61,7 @@ describe('addByPhone', () => {
       expect(result.inviteText).toContain('Alice');
       expect(result.inviteText).toContain('The Smiths');
       expect(result.inviteText).toContain('NestExpenseTracker');
+      expect(result.inviteText).toContain(APP_STORE_URL);
     } else {
       throw new Error('expected no-match branch');
     }

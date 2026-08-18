@@ -47,6 +47,7 @@ import {
 } from '../lib/cloudSync';
 import { receiptsToCsv } from '../lib/reports';
 import { RECURRING_BUDGET_KEY } from '../lib/recurring';
+import { suggestEmailCompletions } from '../lib/emailSuggestions';
 import { withTimeout } from '../lib/withTimeout';
 import { LegalLinksRow } from '../components/ui/LegalLinksRow';
 import {
@@ -316,6 +317,27 @@ function useSettingsStyles() {
       color: '#FFFFFF',
       fontSize: theme.font.sm,
       fontFamily: theme.fonts.display.bold,
+    },
+    emailSuggestionRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: theme.spacing.xs,
+      paddingHorizontal: theme.spacing.md,
+      marginTop: -4,
+      marginBottom: 4,
+    },
+    emailSuggestionChip: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.full,
+      paddingHorizontal: theme.spacing.sm,
+      paddingVertical: 5,
+      backgroundColor: theme.colors.background,
+    },
+    emailSuggestionText: {
+      color: theme.colors.accent,
+      fontSize: theme.font.xs,
+      fontFamily: theme.fonts.body.regular,
     },
     inviteHint: {
       color: theme.colors.textMuted,
@@ -667,6 +689,8 @@ export default function SettingsScreen() {
         .join('')
         .toUpperCase();
 
+  const emailSuggestions = suggestEmailCompletions(inviteEmail);
+
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView contentContainerStyle={styles.scroll}>
@@ -767,6 +791,21 @@ export default function SettingsScreen() {
               <Text style={styles.inviteSendText}>{invitingSending ? 'Sending…' : 'Send'}</Text>
             </Pressable>
           </View>
+          {emailSuggestions.length > 0 && (
+            <View style={styles.emailSuggestionRow}>
+              {emailSuggestions.map((suggestion) => (
+                <Pressable
+                  key={suggestion}
+                  onPress={() => setInviteEmail(suggestion)}
+                  style={styles.emailSuggestionChip}
+                >
+                  <Text style={styles.emailSuggestionText} numberOfLines={1}>
+                    {suggestion}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
           {lastInvitedEmail && (
             <Text style={styles.inviteHint}>
               Invite sent to {lastInvitedEmail} — they'll show up here once

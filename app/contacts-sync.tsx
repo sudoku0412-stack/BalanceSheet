@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, Share, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Share, Text, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ui/ModalHeader';
@@ -13,6 +13,7 @@ import { withTimeout } from '../lib/withTimeout';
 import { inviteUserToHousehold } from '../lib/cloudSync';
 import { addByPhone } from '../lib/phoneInvite';
 import { sendExpoPushNotifications } from '../lib/notifications';
+import { APP_STORE_URL } from '../lib/appLinks';
 import {
   isContactsSyncAvailable,
   readAllContacts,
@@ -52,6 +53,7 @@ export default function ContactsSyncScreen() {
   // tap (as the first version of this screen did) was pure wasted
   // SecureStore I/O for every add/invite action.
   const [budgets, setBudgets] = useState<BudgetsSnapshot | undefined>(undefined);
+  const [search, setSearch] = useState('');
 
   const inviterName = profile ? `${profile.firstName} ${profile.lastName}`.trim() : null;
   const inviterLabel = inviterName?.trim() || 'Someone';
@@ -263,10 +265,9 @@ export default function ContactsSyncScreen() {
           toast.show({ kind: 'error', message: res.reason || "Couldn't invite contact" });
           return;
         }
-        const inviterLabel = inviterName?.trim() || 'Someone';
         try {
           await Share.share({
-            message: `${inviterLabel} invited you to split expenses on NestExpenseTracker. Install the app and sign in with this email to join.`,
+            message: `${inviterLabel} invited you to split expenses on NestExpenseTracker. Get the app: ${APP_STORE_URL} — then sign in with this email to join.`,
           });
         } catch {
           // Same as above — the invite doc is saved either way.
@@ -280,6 +281,14 @@ export default function ContactsSyncScreen() {
       setBusyId(null);
     }
   };
+
+  const searchLower = search.trim().toLowerCase();
+  const filteredMatched = searchLower
+    ? matched.filter((m) => (m.displayName || m.contact.name).toLowerCase().includes(searchLower))
+    : matched;
+  const filteredUnmatched = searchLower
+    ? unmatched.filter((c) => c.name.toLowerCase().includes(searchLower))
+    : unmatched;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
@@ -308,10 +317,27 @@ export default function ContactsSyncScreen() {
             <Text style={styles.emptyText}>No contacts with a phone number or email found.</Text>
           )}
 
-          {matched.length > 0 && (
+          {(matched.length > 0 || unmatched.length > 0) && (
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search contacts"
+              placeholderTextColor={theme.colors.textMuted}
+              style={styles.searchInput}
+              autoCapitalize="none"
+            />
+          )}
+
+          {(matched.length > 0 || unmatched.length > 0) &&
+            filteredMatched.length === 0 &&
+            filteredUnmatched.length === 0 && (
+              <Text style={styles.emptyText}>No contacts match "{search.trim()}".</Text>
+            )}
+
+          {filteredMatched.length > 0 && (
             <>
               <Text style={styles.sectionHeader}>On NestExpenseTracker</Text>
-              {matched.map((item) => {
+              {filteredMatched.map((item) => {
                 const added = addedUids.has(item.uid);
                 const busy = busyId === item.contact.id;
                 return (
@@ -338,10 +364,10 @@ export default function ContactsSyncScreen() {
             </>
           )}
 
-          {unmatched.length > 0 && (
+          {filteredUnmatched.length > 0 && (
             <>
               <Text style={styles.sectionHeader}>Invite to NestExpenseTracker</Text>
-              {unmatched.map((contact) => {
+              {filteredUnmatched.map((contact) => {
                 const busy = busyId === contact.id;
                 return (
                   <View key={contact.id} style={styles.row}>
@@ -379,6 +405,18 @@ function useContactsSyncStyles() {
       paddingHorizontal: theme.spacing.lg,
       paddingTop: theme.spacing.lg,
       paddingBottom: theme.spacing.xl,
+    },
+    searchInput: {
+      borderWidth: 1,
+      borderColor: theme.colors.border,
+      borderRadius: theme.radius.full,
+      paddingHorizontal: theme.spacing.md,
+      paddingVertical: 10,
+      color: theme.colors.textPrimary,
+      fontSize: theme.font.sm,
+      fontFamily: theme.fonts.body.regular,
+      backgroundColor: theme.colors.surface,
+      marginBottom: theme.spacing.md,
     },
     emptyText: {
       color: theme.colors.textMuted,
