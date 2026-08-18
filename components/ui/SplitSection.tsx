@@ -279,7 +279,7 @@ export function SplitSection(props: {
                     style={styles.participantInput}
                     value={splitShares.self ?? ''}
                     onChangeText={(v) => onChangeShare('self', v)}
-                    keyboardType="number-pad"
+                    keyboardType="decimal-pad"
                     placeholder="1"
                     placeholderTextColor={theme.colors.textMuted}
                   />
@@ -334,7 +334,7 @@ export function SplitSection(props: {
                         style={styles.participantInput}
                         value={splitShares[m.uid] ?? ''}
                         onChangeText={(v) => onChangeShare(m.uid, v)}
-                        keyboardType="number-pad"
+                        keyboardType="decimal-pad"
                         placeholder="1"
                         placeholderTextColor={theme.colors.textMuted}
                       />

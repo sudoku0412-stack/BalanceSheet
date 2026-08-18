@@ -250,6 +250,12 @@ function RootStack() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="contacts-sync"
+        options={{
+          headerShown: false,
+        }}
+      />
     </Stack>
   );
 }

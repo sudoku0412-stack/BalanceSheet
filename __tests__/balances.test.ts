@@ -125,6 +125,21 @@ describe('computeReceiptShare', () => {
     expect(computeReceiptShare(r, CAROL, SELF)).toBeCloseTo(200, 5);
   });
 
+  it('shares split accepts decimal share counts, not just whole numbers', () => {
+    const r = baseReceipt({
+      totalAmount: 300,
+      split: {
+        enabled: true,
+        method: 'shares',
+        participantIds: ['self', BOB],
+        values: { self: 0.5, [BOB]: 0.7 },
+      },
+    });
+    // 0.5:0.7 shares of 300 -> 125 / 175
+    expect(computeReceiptShare(r, SELF, SELF)).toBeCloseTo(125, 5);
+    expect(computeReceiptShare(r, BOB, SELF)).toBeCloseTo(175, 5);
+  });
+
   it('shares split defaults to 0 when no shares are set for anyone', () => {
     const r = baseReceipt({
       totalAmount: 200,

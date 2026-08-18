@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Share, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,7 +39,10 @@ export default function ContactsSyncScreen() {
   const toast = useToast();
   const { user, profile, memberships, refreshMemberships } = useAuth();
 
-  const [phase, setPhase] = useState<'idle' | 'loading' | 'done'>('idle');
+  // 'idle' only appears transiently before the auto-start effect below
+  // kicks in — 'denied' is the actual resting state when the OS
+  // permission prompt was declined, with its own retry CTA.
+  const [phase, setPhase] = useState<'idle' | 'loading' | 'done' | 'denied'>('idle');
   const [matched, setMatched] = useState<MatchedContact[]>([]);
   const [unmatched, setUnmatched] = useState<DeviceContact[]>([]);
   const [addedUids, setAddedUids] = useState<Set<string>>(new Set());
@@ -61,6 +64,7 @@ export default function ContactsSyncScreen() {
         kind: 'error',
         message: 'This app needs an update before contacts sync works — try again after updating.',
       });
+      setPhase('denied');
       return;
     }
     const householdId = getCurrentHouseholdId();
@@ -70,7 +74,7 @@ export default function ContactsSyncScreen() {
       const contacts = await readAllContacts();
       if (!contacts) {
         toast.show({ kind: 'error', message: 'Contacts permission was denied.' });
-        setPhase('idle');
+        setPhase('denied');
         return;
       }
       const [result, budgetsSnapshot] = await Promise.all([
@@ -83,9 +87,18 @@ export default function ContactsSyncScreen() {
       setPhase('done');
     } catch (e) {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't read contacts" });
-      setPhase('idle');
+      setPhase('denied');
     }
   }, [toast]);
+
+  // Skip the extra "tap to start" step — the user already opted in by
+  // tapping "Add by phone contact" in Settings, so ask for the OS
+  // permission (and read contacts) immediately on opening this screen
+  // instead of showing an explainer + button first.
+  useEffect(() => {
+    void startSync();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addMatched = async (item: MatchedContact) => {
     const householdId = getCurrentHouseholdId();
@@ -272,17 +285,17 @@ export default function ContactsSyncScreen() {
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <ModalHeader title="Add from contacts" onBack={() => router.back()} />
 
-      {phase === 'idle' && (
+      {phase === 'denied' && (
         <EmptyState
           icon="people-outline"
-          title="Find household members in your contacts"
-          description="We'll check your contacts against NestExpenseTracker accounts — accounts get added directly, everyone else gets an invite link you send yourself."
-          actionLabel="Scan contacts"
+          title="Contacts access needed"
+          description="We'll check your contacts against NestExpenseTracker accounts — accounts get added directly, everyone else gets an invite link you send yourself. Grant contacts access to continue."
+          actionLabel="Try again"
           onAction={startSync}
         />
       )}
 
-      {phase === 'loading' && (
+      {(phase === 'idle' || phase === 'loading') && (
         <View style={styles.centered}>
           <ActivityIndicator color={theme.colors.accent} />
           <Text style={styles.loadingText}>Reading contacts…</Text>
