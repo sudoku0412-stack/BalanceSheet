@@ -25,16 +25,31 @@ describe('addByPhone', () => {
     expect(result).toEqual({ ok: false, reason: 'not found' });
   });
 
-  it('passes through the matched displayName on a match', async () => {
-    mockAddHouseholdMemberByPhone.mockResolvedValue({ ok: true, matched: true, displayName: 'Bob' });
+  it('passes through the matched displayName and pushToken on a match', async () => {
+    mockAddHouseholdMemberByPhone.mockResolvedValue({
+      ok: true,
+      matched: true,
+      displayName: 'Bob',
+      pushToken: 'ExponentPushToken[abc]',
+    });
     const result = await addByPhone(baseArgs);
-    expect(result).toEqual({ ok: true, matched: true, displayName: 'Bob' });
+    expect(result).toEqual({
+      ok: true,
+      matched: true,
+      displayName: 'Bob',
+      pushToken: 'ExponentPushToken[abc]',
+    });
   });
 
-  it('passes through a null displayName on a match', async () => {
-    mockAddHouseholdMemberByPhone.mockResolvedValue({ ok: true, matched: true, displayName: null });
+  it('passes through a null displayName/pushToken on a match', async () => {
+    mockAddHouseholdMemberByPhone.mockResolvedValue({
+      ok: true,
+      matched: true,
+      displayName: null,
+      pushToken: null,
+    });
     const result = await addByPhone(baseArgs);
-    expect(result).toEqual({ ok: true, matched: true, displayName: null });
+    expect(result).toEqual({ ok: true, matched: true, displayName: null, pushToken: null });
   });
 
   it('builds an invite text with inviter name and household name on no-match', async () => {

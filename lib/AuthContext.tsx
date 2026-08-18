@@ -33,9 +33,13 @@ import {
   subscribeToHouseholdBudgets,
   subscribeToHouseholdReceipts,
   subscribeToHouseholdSettlements,
+  subscribeToPendingInvite,
+  subscribeToPhoneInvite,
   syncPushTokenToCloud,
   setEmailIndex,
+  setPhoneIndex,
   type HouseholdMembership,
+  type PendingInvite,
 } from './cloudSync';
 import {
   getOnboardingSeen,
@@ -230,6 +234,55 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const phoneInviteCheckedForUidRef = useRef<string | null>(null);
   // Same one-per-session guard for the recurring-expense processor.
   const recurringProcessedForUidRef = useRef<string | null>(null);
+  // Tracks the last invite actually presented as an Alert, so the live
+  // listener below (subscribeToPendingInvite) and the once-per-session
+  // sign-in check don't both pop the same invite twice — Firestore can
+  // re-deliver the identical doc snapshot (e.g. local-cache-then-server)
+  // and each delivery would otherwise re-trigger the alert.
+  const lastAlertedInviteKeyRef = useRef<string | null>(null);
+
+  const presentInviteAlert = useCallback(
+    (invite: PendingInvite, uid: string) => {
+      const key = `${invite.householdId}:${invite.invitedByUid}:${invite.createdAt}`;
+      if (lastAlertedInviteKeyRef.current === key) return;
+      lastAlertedInviteKeyRef.current = key;
+      const inviterLabel = invite.invitedByName || invite.invitedByEmail || 'Someone';
+      Alert.alert(
+        'Household invite',
+        `${inviterLabel} invited you to join their household${
+          invite.householdName ? ` "${invite.householdName}"` : ''
+        }.`,
+        [
+          {
+            text: 'Decline',
+            style: 'cancel',
+            onPress: () => {
+              declineInvite({ invite }).catch(() => {
+                // Best-effort — a failed decline just leaves the
+                // invite pending for next launch.
+              });
+            },
+          },
+          {
+            text: 'Accept',
+            onPress: async () => {
+              try {
+                const res = await acceptInvite({ invite, uid });
+                if (!res.ok) return;
+                await runHouseholdSwitch(uid, res.newHouseholdId);
+                Alert.alert('Joined household', `You're now part of ${inviterLabel}'s household.`);
+              } catch {
+                // Cloud sync is optional-by-design throughout this
+                // codebase — a failed accept just leaves the invite
+                // pending for the user to retry.
+              }
+            },
+          },
+        ],
+      );
+    },
+    [runHouseholdSwitch],
+  );
 
   const checkPendingInvite = useCallback(
     (u: AuthUser) => {
@@ -239,47 +292,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       getPendingInviteForEmail(u.email)
         .then((invite) => {
           if (!invite) return;
-          const inviterLabel = invite.invitedByName || invite.invitedByEmail || 'Someone';
-          Alert.alert(
-            'Household invite',
-            `${inviterLabel} invited you to join their household${
-              invite.householdName ? ` "${invite.householdName}"` : ''
-            }.`,
-            [
-              {
-                text: 'Decline',
-                style: 'cancel',
-                onPress: () => {
-                  declineInvite({ invite }).catch(() => {
-                    // Best-effort — a failed decline just leaves the
-                    // invite pending for next launch.
-                  });
-                },
-              },
-              {
-                text: 'Accept',
-                onPress: async () => {
-                  try {
-                    const res = await acceptInvite({ invite, uid: u.uid });
-                    if (!res.ok) return;
-                    await runHouseholdSwitch(u.uid, res.newHouseholdId);
-                    Alert.alert('Joined household', `You're now part of ${inviterLabel}'s household.`);
-                  } catch {
-                    // Cloud sync is optional-by-design throughout this
-                    // codebase — a failed accept just leaves the invite
-                    // pending for the user to retry.
-                  }
-                },
-              },
-            ],
-          );
+          presentInviteAlert(invite, u.uid);
         })
         .catch(() => {
           // No pending invite / lookup failed — skip silently.
         });
     },
-    [runHouseholdSwitch],
+    [presentInviteAlert],
   );
+
+  // Live-listens for a NEW email invite while the app is already open —
+  // checkPendingInvite above only runs once per uid per JS session, so
+  // without this, someone who invites a signed-in-and-idle user by
+  // email would only surface once that user restarts the app.
+  useEffect(() => {
+    if (!user?.uid || !user.email) return;
+    const uid = user.uid;
+    const unsub = subscribeToPendingInvite(user.email, (invite) => {
+      presentInviteAlert(invite, uid);
+    });
+    return () => unsub?.();
+  }, [user?.uid, user?.email, presentInviteAlert]);
 
   // A signed-in user's verified phone number may have been invited to a
   // household (by an existing member adding a contact, or by SMS before
@@ -308,6 +341,72 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [runHouseholdSwitch],
   );
 
+  // checkPendingPhoneInvite above only runs once per uid per JS session
+  // (right after sign-in) — if this device was already signed in and
+  // running when someone else's contacts-sync created the invite, that
+  // one-shot check would never re-fire, and the join would silently
+  // wait for a full app restart. This keeps a live Firestore listener
+  // on the user's own phoneInvites doc for as long as they have a
+  // verified phone, so a new invite created while the app is open
+  // still gets accepted right away.
+  useEffect(() => {
+    if (!user?.uid || !profile?.phone || !profile.phoneVerified) return;
+    const uid = user.uid;
+    const phone = profile.phone;
+    const unsub = subscribeToPhoneInvite(uid, phone, (householdId) => {
+      runHouseholdSwitch(uid, householdId).catch(() => {
+        // Best-effort, same as checkPendingPhoneInvite's sign-in path —
+        // a failed switch here just leaves the join to be picked up
+        // (already joined server-side) the next time this device
+        // bootstraps its household list.
+      });
+    });
+    return () => unsub?.();
+  }, [user?.uid, profile?.phone, profile?.phoneVerified, runHouseholdSwitch]);
+
+  // Keeps phoneIndex/emailIndex's displayName + pushToken current so a
+  // household-mate's contacts sync can push an actual OS notification
+  // the moment they add/invite this user (lib/contactsSync.ts reads
+  // pushToken straight off these index docs — users/{uid} itself is
+  // unreadable cross-household, so the token has to live somewhere any
+  // signed-in user CAN read, same reasoning as displayName living here
+  // too). Re-syncs whenever uid/email/phone/displayName change; safe to
+  // call with a stale/null token since it's a merge write.
+  // emailIndex is still gated on emailVerified — see setEmailIndex's own
+  // doc comment for why (prevents an unverified signup from claiming
+  // someone else's email slot).
+  useEffect(() => {
+    if (!user?.uid) return;
+    const uid = user.uid;
+    const displayName = user.displayName ?? null;
+    const email = user.email;
+    const emailVerified = user.emailVerified;
+    const phone = profile?.phone ?? null;
+    const phoneVerified = profile?.phoneVerified ?? false;
+    let cancelled = false;
+    (async () => {
+      // registerForPushNotificationsAsync's own permission check
+      // (lib/notifications.ts's getNotificationPermissionGranted) can
+      // throw on a build where expo-notifications isn't linked yet.
+      // On error, pushToken stays `undefined` (not `null`) so
+      // setEmailIndex/setPhoneIndex below omit the field entirely
+      // instead of clobbering a real token with null — `null` is
+      // reserved for "checked, there genuinely isn't one."
+      let pushToken: string | null | undefined;
+      try {
+        pushToken = await registerForPushNotificationsAsync();
+      } catch {
+        // Best-effort — see comment above.
+      }
+      if (cancelled) return;
+      if (email && emailVerified) void setEmailIndex(uid, email, { displayName, pushToken });
+      if (phone && phoneVerified) void setPhoneIndex(uid, phone, { displayName, pushToken });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.uid, user?.email, user?.emailVerified, user?.displayName, profile?.phone, profile?.phoneVerified]);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(async (u) => {
       setUser(u);
@@ -331,15 +430,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (u?.uid) {
-        // Keep the contacts-sync email pointer current every sign-in —
-        // cheap, idempotent. Gated on emailVerified (true automatically
-        // for Google/Apple sign-in; only true for email/password once a
-        // verification flow exists) so an attacker can't sign up with
-        // someone else's email and hijack their emailIndex slot — same
-        // "verified ownership required before indexing" rule the phone
-        // flow already enforces via setPhoneIndex/phoneVerification.ts.
-        if (u.email && u.emailVerified) void setEmailIndex(u.uid, u.email);
-
         // Silent household bootstrap so split/reports have a real (if
         // solo) household to read from, and receipt photos sync across
         // this user's own devices.

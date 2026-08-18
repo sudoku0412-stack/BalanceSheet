@@ -17,7 +17,7 @@ import type { BudgetsSnapshot } from './secureStorage';
  * Messages/WhatsApp/etc — free, no third-party SMS account needed.
  */
 export type AddByPhoneResult =
-  | { ok: true; matched: true; displayName: string | null }
+  | { ok: true; matched: true; displayName: string | null; pushToken: string | null }
   | { ok: true; matched: false; inviteText: string }
   | { ok: false; reason: string };
 
@@ -32,7 +32,7 @@ export async function addByPhone(args: {
   const result = await addHouseholdMemberByPhone(args);
   if (!result.ok) return result;
   if (result.matched) {
-    return { ok: true, matched: true, displayName: result.displayName };
+    return { ok: true, matched: true, displayName: result.displayName, pushToken: result.pushToken };
   }
   const inviterLabel = args.invitedByName?.trim() || 'Someone';
   const householdLabel = args.householdName?.trim() || 'their household';

@@ -12,6 +12,7 @@ import { getBudgetsSnapshot, type BudgetsSnapshot } from '../lib/secureStorage';
 import { withTimeout } from '../lib/withTimeout';
 import { inviteUserToHousehold } from '../lib/cloudSync';
 import { addByPhone } from '../lib/phoneInvite';
+import { sendExpoPushNotifications } from '../lib/notifications';
 import {
   isContactsSyncAvailable,
   readAllContacts,
@@ -36,7 +37,7 @@ export default function ContactsSyncScreen() {
   const styles = useContactsSyncStyles();
   const router = useRouter();
   const toast = useToast();
-  const { user, profile, refreshMemberships } = useAuth();
+  const { user, profile, memberships, refreshMemberships } = useAuth();
 
   const [phase, setPhase] = useState<'idle' | 'loading' | 'done'>('idle');
   const [matched, setMatched] = useState<MatchedContact[]>([]);
@@ -50,6 +51,9 @@ export default function ContactsSyncScreen() {
   const [budgets, setBudgets] = useState<BudgetsSnapshot | undefined>(undefined);
 
   const inviterName = profile ? `${profile.firstName} ${profile.lastName}`.trim() : null;
+  const inviterLabel = inviterName?.trim() || 'Someone';
+  const householdName =
+    memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name?.trim() || 'their household';
 
   const startSync = useCallback(async () => {
     if (!isContactsSyncAvailable()) {
@@ -122,10 +126,19 @@ export default function ContactsSyncScreen() {
         setAddedUids((prev) => new Set(prev).add(item.uid));
         await refreshMemberships();
         // No accept tap needed, but the join itself happens on THEIR
-        // device the next time it checks phoneInvites (see
-        // lib/cloudSync.ts's addHouseholdMemberByPhone) — not the
-        // instant this toast fires. Household member list here won't
-        // show them until that happens.
+        // device — either right away if lib/AuthContext.tsx's live
+        // phoneInvites listener is running (app open), or the next
+        // time it checks (app closed/backgrounded). This push is what
+        // makes "right away" actually visible to them even if the app
+        // isn't in the foreground.
+        if (res.pushToken) {
+          void sendExpoPushNotifications(
+            [res.pushToken],
+            'Added to a household',
+            `${inviterLabel} added you to ${householdName} on NestExpenseTracker`,
+            { screen: 'home' },
+          );
+        }
         toast.show({
           kind: 'success',
           message: `${item.displayName || item.contact.name} will join automatically once their app is open`,
@@ -151,6 +164,19 @@ export default function ContactsSyncScreen() {
         // inviteUserToHousehold / acceptInvite. They already have the
         // app, so no share sheet needed here.
         setAddedUids((prev) => new Set(prev).add(item.uid));
+        // Unlike phone, this needs an actual accept tap — the push is
+        // what tells them there's something to accept, since checking
+        // for a pending invite otherwise only happens at sign-in
+        // (lib/AuthContext.tsx's checkPendingInvite) or via its live
+        // listener while the app happens to already be open.
+        if (item.pushToken) {
+          void sendExpoPushNotifications(
+            [item.pushToken],
+            'Household invite',
+            `${inviterLabel} invited you to join ${householdName} — open the app to accept`,
+            { screen: 'home' },
+          );
+        }
         toast.show({
           kind: 'success',
           message: `Invited ${item.displayName || item.contact.name} — they'll join once they open the app`,
@@ -188,6 +214,14 @@ export default function ContactsSyncScreen() {
           // "added" rather than the generic invite-sent toast below.
           setUnmatched((prev) => prev.filter((c) => c.id !== contact.id));
           await refreshMemberships();
+          if (res.pushToken) {
+            void sendExpoPushNotifications(
+              [res.pushToken],
+              'Added to a household',
+              `${inviterLabel} added you to ${householdName} on NestExpenseTracker`,
+              { screen: 'home' },
+            );
+          }
           toast.show({
             kind: 'success',
             message: `${res.displayName || contact.name} will join automatically once their app is open`,

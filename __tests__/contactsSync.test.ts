@@ -82,13 +82,14 @@ describe('matchContacts', () => {
 
   it('splits contacts into matched (phone preferred over email) and unmatched', async () => {
     mockLookupUserByPhone.mockImplementation(async (phone: string) => {
-      if (phone === '+14165551111') return { uid: 'u1', displayName: 'Phone User' };
-      if (phone === '+14165553333') return { uid: 'u3', displayName: 'Both User' };
+      if (phone === '+14165551111') return { uid: 'u1', displayName: 'Phone User', pushToken: 'tok-1' };
+      if (phone === '+14165553333') return { uid: 'u3', displayName: 'Both User', pushToken: 'tok-3' };
       return null;
     });
     mockLookupUserByEmail.mockImplementation(async (email: string) => {
-      if (email === 'found@example.com') return { uid: 'u2', displayName: 'Email User' };
-      if (email === 'also-found@example.com') return { uid: 'u3-email', displayName: 'Should Not Win' };
+      if (email === 'found@example.com') return { uid: 'u2', displayName: 'Email User', pushToken: 'tok-2' };
+      if (email === 'also-found@example.com')
+        return { uid: 'u3-email', displayName: 'Should Not Win', pushToken: 'tok-should-not-win' };
       return null;
     });
 
@@ -98,10 +99,10 @@ describe('matchContacts', () => {
     expect(result.matched).toHaveLength(3);
 
     const byId = new Map(result.matched.map((m) => [m.contact.id, m]));
-    expect(byId.get('1')).toMatchObject({ matchedVia: 'phone', uid: 'u1' });
-    expect(byId.get('2')).toMatchObject({ matchedVia: 'email', uid: 'u2' });
+    expect(byId.get('1')).toMatchObject({ matchedVia: 'phone', uid: 'u1', pushToken: 'tok-1' });
+    expect(byId.get('2')).toMatchObject({ matchedVia: 'email', uid: 'u2', pushToken: 'tok-2' });
     // Contact 3 matches on both — phone must win, not the email index hit.
-    expect(byId.get('3')).toMatchObject({ matchedVia: 'phone', uid: 'u3' });
+    expect(byId.get('3')).toMatchObject({ matchedVia: 'phone', uid: 'u3', pushToken: 'tok-3' });
   });
 
   it('dedupes lookups for a value shared by multiple contacts', async () => {

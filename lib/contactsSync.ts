@@ -1,5 +1,5 @@
 import { normalizePhoneE164 } from './phone';
-import { lookupUserByEmail, lookupUserByPhone } from './cloudSync';
+import { lookupUserByEmail, lookupUserByPhone, type DiscoveryIndexMatch } from './cloudSync';
 import { loadContacts } from './expoContacts';
 
 export function isContactsSyncAvailable(): boolean {
@@ -53,6 +53,7 @@ export type MatchedContact = {
   matchedValue: string;
   uid: string;
   displayName: string | null;
+  pushToken: string | null;
 };
 
 export type ContactSyncResult = {
@@ -99,8 +100,8 @@ export async function matchContacts(contacts: DeviceContact[]): Promise<ContactS
     mapWithConcurrency(uniqueEmails, LOOKUP_CONCURRENCY, async (email) => [email, await lookupUserByEmail(email)] as const),
   ]);
 
-  const phoneMatches = new Map(phoneResults.filter(([, m]) => m !== null) as [string, { uid: string; displayName: string | null }][]);
-  const emailMatches = new Map(emailResults.filter(([, m]) => m !== null) as [string, { uid: string; displayName: string | null }][]);
+  const phoneMatches = new Map(phoneResults.filter(([, m]) => m !== null) as [string, DiscoveryIndexMatch][]);
+  const emailMatches = new Map(emailResults.filter(([, m]) => m !== null) as [string, DiscoveryIndexMatch][]);
 
   const matched: MatchedContact[] = [];
   const unmatched: DeviceContact[] = [];
@@ -109,13 +110,27 @@ export async function matchContacts(contacts: DeviceContact[]): Promise<ContactS
     const phoneHit = contact.phones.find((p) => phoneMatches.has(p));
     if (phoneHit) {
       const m = phoneMatches.get(phoneHit)!;
-      matched.push({ contact, matchedVia: 'phone', matchedValue: phoneHit, uid: m.uid, displayName: m.displayName });
+      matched.push({
+        contact,
+        matchedVia: 'phone',
+        matchedValue: phoneHit,
+        uid: m.uid,
+        displayName: m.displayName,
+        pushToken: m.pushToken,
+      });
       continue;
     }
     const emailHit = contact.emails.find((e) => emailMatches.has(e));
     if (emailHit) {
       const m = emailMatches.get(emailHit)!;
-      matched.push({ contact, matchedVia: 'email', matchedValue: emailHit, uid: m.uid, displayName: m.displayName });
+      matched.push({
+        contact,
+        matchedVia: 'email',
+        matchedValue: emailHit,
+        uid: m.uid,
+        displayName: m.displayName,
+        pushToken: m.pushToken,
+      });
       continue;
     }
     unmatched.push(contact);

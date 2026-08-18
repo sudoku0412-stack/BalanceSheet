@@ -1075,6 +1075,37 @@ export async function inviteUserToHousehold(args: {
  * Called by AuthContext after bootstrap so a fresh sign-in can
  * surface a join prompt.
  */
+/** Shared by getPendingInviteForEmail and subscribeToPendingInvite —
+ *  parses an invites/{email} doc snapshot into a PendingInvite, or
+ *  null if it doesn't exist or has expired. */
+function parseInviteSnapshot(
+  snap: { exists: boolean; data: () => Record<string, unknown> | undefined },
+  fallbackEmail: string,
+): PendingInvite | null {
+  if (!snap.exists) return null;
+  const d = snap.data() ?? {};
+  const rawExpiresAt = d.expiresAt as { toDate?: () => Date } | string | undefined;
+  const expiresAt =
+    rawExpiresAt && typeof rawExpiresAt === 'object' && rawExpiresAt.toDate
+      ? rawExpiresAt.toDate()
+      : new Date(rawExpiresAt as string);
+  if (Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+    return null;
+  }
+  const rawCreatedAt = d.createdAt as { toDate?: () => Date } | undefined;
+  return {
+    email: (d.email as string) ?? fallbackEmail.toLowerCase(),
+    householdId: d.householdId as string,
+    householdName: (d.householdName as string | null) ?? null,
+    invitedByUid: d.invitedByUid as string,
+    invitedByName: (d.invitedByName as string | null) ?? null,
+    invitedByEmail: (d.invitedByEmail as string | null) ?? null,
+    budgets: (d.budgets as BudgetsSnapshot | null) ?? null,
+    createdAt: rawCreatedAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
+    expiresAt: expiresAt.toISOString(),
+  };
+}
+
 export async function getPendingInviteForEmail(
   email: string | null,
 ): Promise<PendingInvite | null> {
@@ -1086,27 +1117,42 @@ export async function getPendingInviteForEmail(
       .collection('invites')
       .doc(normalizeEmail(email))
       .get();
-    if (!snap.exists) return null;
-    const d = snap.data() ?? {};
-    const expiresAt = d.expiresAt?.toDate
-      ? (d.expiresAt.toDate() as Date)
-      : new Date(d.expiresAt as string);
-    if (Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
-      return null;
-    }
-    return {
-      email: (d.email as string) ?? email.toLowerCase(),
-      householdId: d.householdId as string,
-      householdName: (d.householdName as string | null) ?? null,
-      invitedByUid: d.invitedByUid as string,
-      invitedByName: (d.invitedByName as string | null) ?? null,
-      invitedByEmail: (d.invitedByEmail as string | null) ?? null,
-      budgets: (d.budgets as BudgetsSnapshot | null) ?? null,
-      createdAt:
-        d.createdAt?.toDate?.()?.toISOString() ?? new Date().toISOString(),
-      expiresAt: expiresAt.toISOString(),
-    };
+    return parseInviteSnapshot(snap, email);
   } catch {
+    return null;
+  }
+}
+
+/**
+ * Live-watches this user's own invites/{email} doc so a household
+ * invite sent while the app is already open surfaces immediately,
+ * instead of only being caught by checkPendingInvite's once-per-
+ * session check right after sign-in (AuthContext.tsx). Mirrors
+ * subscribeToPhoneInvite's reasoning below for the phone-invite side.
+ */
+export function subscribeToPendingInvite(
+  email: string,
+  onInvite: (invite: PendingInvite) => void,
+): (() => void) | null {
+  const firestore = loadFirestore();
+  if (!firestore || !email) return null;
+  try {
+    const db = firestore();
+    const ref = db.collection('invites').doc(normalizeEmail(email));
+    const unsub = ref.onSnapshot(
+      (snapshot) => {
+        const invite = parseInviteSnapshot(snapshot, email);
+        if (invite) onInvite(invite);
+      },
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloudSync] pending-invite listener errored:', err?.message);
+      },
+    );
+    return unsub;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] subscribeToPendingInvite failed:', (e as Error)?.message);
     return null;
   }
 }
@@ -1217,32 +1263,93 @@ export type PendingPhoneInvite = {
   expiresAt: string;
 };
 
-/** Written by lib/phoneVerification.ts right after a phone number is
- *  verified — the ONLY write to this collection, always by the owning
- *  uid for their own number. */
-export async function setPhoneIndex(uid: string, phoneE164: string): Promise<void> {
+export type DiscoveryIndexMatch = { uid: string; displayName: string | null; pushToken: string | null };
+
+/** Shared write/clear/lookup for phoneIndex and emailIndex — both are
+ *  "does a verified NestExpenseTracker user already own this contact
+ *  value" pointer docs, readable by any authenticated user (unlike
+ *  users/{uid}, which is restricted to self-or-same-household — that
+ *  restriction is exactly why displayName/pushToken live HERE instead
+ *  of being read off the matched uid's users/{uid} doc: a genuinely
+ *  new contact who doesn't yet share a household with the looker
+ *  would fail that read and the whole match would silently resolve to
+ *  "not found"). */
+async function setDiscoveryIndexEntry(
+  collection: 'phoneIndex' | 'emailIndex',
+  key: string,
+  entry: { uid: string; displayName?: string | null; pushToken?: string | null },
+): Promise<void> {
   const firestore = loadFirestore();
   if (!firestore) return;
   try {
-    await firestore().collection('phoneIndex').doc(phoneE164).set({
-      uid,
+    // `merge: true` only PRESERVES a field the write omits entirely —
+    // it does NOT distinguish "caller passed null" from "caller didn't
+    // mention this field," so a bare setPhoneIndex(uid, phone) call
+    // (no `extra`, e.g. every call site in lib/phoneVerification.ts)
+    // must not include displayName/pushToken in the payload at all,
+    // or it would overwrite whatever lib/AuthContext.tsx's discovery-
+    // index-sync effect had already written for this same doc.
+    const data: Record<string, unknown> = {
+      uid: entry.uid,
       updatedAt: firestore.FieldValue.serverTimestamp(),
-    });
+    };
+    if (entry.displayName !== undefined) data.displayName = entry.displayName;
+    if (entry.pushToken !== undefined) data.pushToken = entry.pushToken;
+    await firestore().collection(collection).doc(key).set(data, { merge: true });
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn('[cloudSync] setPhoneIndex failed:', (e as Error)?.message);
+    console.warn(`[cloudSync] set${collection} failed:`, (e as Error)?.message);
   }
 }
 
-export async function clearPhoneIndex(phoneE164: string): Promise<void> {
+async function clearDiscoveryIndexEntry(collection: 'phoneIndex' | 'emailIndex', key: string): Promise<void> {
   const firestore = loadFirestore();
   if (!firestore) return;
   try {
-    await firestore().collection('phoneIndex').doc(phoneE164).delete();
+    await firestore().collection(collection).doc(key).delete();
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.warn('[cloudSync] clearPhoneIndex failed:', (e as Error)?.message);
+    console.warn(`[cloudSync] clear${collection} failed:`, (e as Error)?.message);
   }
+}
+
+async function lookupDiscoveryIndexEntry(
+  collection: 'phoneIndex' | 'emailIndex',
+  key: string,
+): Promise<DiscoveryIndexMatch | null> {
+  const firestore = loadFirestore();
+  if (!firestore) return null;
+  try {
+    const snap = await firestore().collection(collection).doc(key).get();
+    if (!snap.exists) return null;
+    const d = snap.data() ?? {};
+    const uid = d.uid as string | undefined;
+    if (!uid) return null;
+    return {
+      uid,
+      displayName: (d.displayName as string | null) ?? null,
+      pushToken: (d.pushToken as string | null) ?? null,
+    };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn(`[cloudSync] lookup${collection} failed:`, (e as Error)?.message);
+    return null;
+  }
+}
+
+/** Written by lib/phoneVerification.ts right after a phone number is
+ *  verified — the ONLY write to this collection, always by the owning
+ *  uid for their own number. */
+export async function setPhoneIndex(
+  uid: string,
+  phoneE164: string,
+  extra?: { displayName?: string | null; pushToken?: string | null },
+): Promise<void> {
+  return setDiscoveryIndexEntry('phoneIndex', phoneE164, { uid, ...extra });
+}
+
+export async function clearPhoneIndex(phoneE164: string): Promise<void> {
+  return clearDiscoveryIndexEntry('phoneIndex', phoneE164);
 }
 
 /** Written on every sign-in (lib/AuthContext.tsx) — the ONLY write to
@@ -1251,78 +1358,33 @@ export async function clearPhoneIndex(phoneE164: string): Promise<void> {
  *  "verification" step since Firebase Auth's email is already the
  *  identity, so this can run unconditionally on sign-in rather than
  *  waiting for a dedicated verification flow. */
-export async function setEmailIndex(uid: string, email: string): Promise<void> {
-  const firestore = loadFirestore();
-  if (!firestore) return;
+export async function setEmailIndex(
+  uid: string,
+  email: string,
+  extra?: { displayName?: string | null; pushToken?: string | null },
+): Promise<void> {
   const key = normalizeEmail(email);
   if (!key || !key.includes('@')) return;
-  try {
-    await firestore().collection('emailIndex').doc(key).set({
-      uid,
-      updatedAt: firestore.FieldValue.serverTimestamp(),
-    });
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[cloudSync] setEmailIndex failed:', (e as Error)?.message);
-  }
+  return setDiscoveryIndexEntry('emailIndex', key, { uid, ...extra });
 }
 
 export async function clearEmailIndex(email: string): Promise<void> {
-  const firestore = loadFirestore();
-  if (!firestore) return;
-  try {
-    await firestore().collection('emailIndex').doc(normalizeEmail(email)).delete();
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[cloudSync] clearEmailIndex failed:', (e as Error)?.message);
-  }
+  return clearDiscoveryIndexEntry('emailIndex', normalizeEmail(email));
 }
 
 /** Does a verified NestExpenseTracker user already own this email?
  *  Same contact-discovery shape as lookupUserByPhone below. */
-export async function lookupUserByEmail(
-  email: string,
-): Promise<{ uid: string; displayName: string | null } | null> {
-  const firestore = loadFirestore();
-  if (!firestore) return null;
+export async function lookupUserByEmail(email: string): Promise<DiscoveryIndexMatch | null> {
   const key = normalizeEmail(email);
   if (!key || !key.includes('@')) return null;
-  try {
-    const db = firestore();
-    const indexSnap = await db.collection('emailIndex').doc(key).get();
-    if (!indexSnap.exists) return null;
-    const uid = indexSnap.data()?.uid as string | undefined;
-    if (!uid) return null;
-    const userSnap = await db.collection('users').doc(uid).get();
-    return { uid, displayName: (userSnap.data()?.displayName as string | null) ?? null };
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[cloudSync] lookupUserByEmail failed:', (e as Error)?.message);
-    return null;
-  }
+  return lookupDiscoveryIndexEntry('emailIndex', key);
 }
 
 /** Does a verified NestExpenseTracker user already own this phone number?
- *  Returns just uid/displayName — never email or anything else, since
- *  this is a contact-discovery surface (see lib/phoneInvite.ts). */
-export async function lookupUserByPhone(
-  phoneE164: string,
-): Promise<{ uid: string; displayName: string | null } | null> {
-  const firestore = loadFirestore();
-  if (!firestore) return null;
-  try {
-    const db = firestore();
-    const indexSnap = await db.collection('phoneIndex').doc(phoneE164).get();
-    if (!indexSnap.exists) return null;
-    const uid = indexSnap.data()?.uid as string | undefined;
-    if (!uid) return null;
-    const userSnap = await db.collection('users').doc(uid).get();
-    return { uid, displayName: (userSnap.data()?.displayName as string | null) ?? null };
-  } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('[cloudSync] lookupUserByPhone failed:', (e as Error)?.message);
-    return null;
-  }
+ *  This is a contact-discovery surface (see lib/phoneInvite.ts) — never
+ *  exposes anything beyond uid/displayName/pushToken. */
+export async function lookupUserByPhone(phoneE164: string): Promise<DiscoveryIndexMatch | null> {
+  return lookupDiscoveryIndexEntry('phoneIndex', phoneE164);
 }
 
 /**
@@ -1354,7 +1416,7 @@ export async function addHouseholdMemberByPhone(args: {
    *  once acceptPhoneInviteIfAny joins them. */
   budgets?: BudgetsSnapshot;
 }): Promise<
-  | { ok: true; matched: true; displayName: string | null }
+  | { ok: true; matched: true; displayName: string | null; pushToken: string | null }
   | { ok: true; matched: false }
   | { ok: false; reason: string }
 > {
@@ -1379,7 +1441,7 @@ export async function addHouseholdMemberByPhone(args: {
       status: 'pending',
     });
     return match
-      ? { ok: true, matched: true, displayName: match.displayName }
+      ? { ok: true, matched: true, displayName: match.displayName, pushToken: match.pushToken }
       : { ok: true, matched: false };
   } catch (e) {
     return { ok: false, reason: (e as Error)?.message ?? 'unknown' };
@@ -1400,26 +1462,49 @@ export async function acceptPhoneInviteIfAny(
   try {
     const db = firestore();
     const inviteRef = db.collection('phoneInvites').doc(phoneE164);
-    const snap = await inviteRef.get();
-    if (!snap.exists) return { joined: false };
-    const d = snap.data() ?? {};
-    const expiresAt = d.expiresAt?.toDate ? (d.expiresAt.toDate() as Date) : new Date(d.expiresAt as string);
-    if (Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
-      await inviteRef.delete();
-      return { joined: false };
-    }
-    const householdId = d.householdId as string;
-    const householdRef = db.collection('households').doc(householdId);
-    const userRef = db.collection('users').doc(uid);
-    const membershipRef = userRef.collection('memberships').doc(householdId);
+    // Cheap, non-transactional pre-check purely to skip opening a
+    // transaction when there's obviously nothing to do — NOT relied on
+    // for correctness. checkPendingPhoneInvite (sign-in) and
+    // subscribeToPhoneInvite (live listener) can both call this for
+    // the same uid+phone at nearly the same moment, and a SECOND
+    // inviter could have overwritten this same doc for a DIFFERENT
+    // household in between. Every real decision below — expiry,
+    // which household, budgets — is re-read fresh INSIDE the
+    // transaction so it can't act on stale data from this pre-check.
+    const precheck = await inviteRef.get();
+    if (!precheck.exists) return { joined: false };
+
+    let outcome: { joined: boolean; householdId?: string; budgets?: BudgetsSnapshot | null } = {
+      joined: false,
+    };
     await db.runTransaction(async (tx) => {
+      const freshInviteSnap = await tx.get(inviteRef);
+      // Doc is gone — either a concurrent call already completed the
+      // join (that call reports joined:true; this one correctly does
+      // nothing and reports joined:false, so runHouseholdSwitch only
+      // fires once) or it expired/was declined. Either way, nothing
+      // for THIS call to do.
+      if (!freshInviteSnap.exists) return;
+      const d = freshInviteSnap.data() ?? {};
+      const expiresAt = d.expiresAt?.toDate ? (d.expiresAt.toDate() as Date) : new Date(d.expiresAt as string);
+      if (Number.isFinite(expiresAt.getTime()) && expiresAt.getTime() < Date.now()) {
+        tx.delete(inviteRef);
+        return;
+      }
+      const householdId = d.householdId as string;
+      const householdRef = db.collection('households').doc(householdId);
+      const userRef = db.collection('users').doc(uid);
+      const membershipRef = userRef.collection('memberships').doc(householdId);
       const householdSnap = await tx.get(householdRef);
       if (!householdSnap.exists) throw new Error('household no longer exists');
-      tx.update(householdRef, {
-        memberUids: firestore.FieldValue.arrayUnion(uid),
-        memberCount: firestore.FieldValue.increment(1),
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      });
+      const memberUids = (householdSnap.data()?.memberUids as string[] | undefined) ?? [];
+      if (!memberUids.includes(uid)) {
+        tx.update(householdRef, {
+          memberUids: firestore.FieldValue.arrayUnion(uid),
+          memberCount: firestore.FieldValue.increment(1),
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+        });
+      }
       tx.set(userRef, { householdId, updatedAt: firestore.FieldValue.serverTimestamp() }, { merge: true });
       tx.set(membershipRef, {
         householdId,
@@ -1428,20 +1513,66 @@ export async function acceptPhoneInviteIfAny(
         isDefault: false,
       });
       tx.delete(inviteRef);
+      outcome = { joined: true, householdId, budgets: (d.budgets as BudgetsSnapshot | null) ?? null };
     });
-    const budgets = (d.budgets as BudgetsSnapshot | null) ?? null;
-    if (budgets) {
+    if (!outcome.joined || !outcome.householdId) return { joined: false };
+    if (outcome.budgets) {
       try {
-        await applyBudgetsSnapshot(householdId, budgets);
+        await applyBudgetsSnapshot(outcome.householdId, outcome.budgets);
       } catch {
         // Best-effort — joining already succeeded.
       }
     }
-    return { joined: true, householdId };
+    return { joined: true, householdId: outcome.householdId };
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[cloudSync] acceptPhoneInviteIfAny failed:', (e as Error)?.message);
     return { joined: false };
+  }
+}
+
+/**
+ * Live-watches this user's OWN phoneInvites/{phoneE164} doc so a new
+ * invite gets accepted while the app is already open, not just at the
+ * next cold sign-in. Without this, AuthContext.tsx's
+ * checkPendingPhoneInvite (gated to run once per uid per JS session)
+ * is the only trigger — if the invitee's session started before the
+ * invite was created, they'd never see it join until they fully
+ * restart the app. Every snapshot (including the one from our own
+ * tx.delete inside acceptPhoneInviteIfAny) re-runs the same
+ * exists/expiry checks, so this is safe to fire on every change.
+ */
+export function subscribeToPhoneInvite(
+  uid: string,
+  phoneE164: string,
+  onJoined: (householdId: string) => void,
+): (() => void) | null {
+  const firestore = loadFirestore();
+  if (!firestore || !phoneE164) return null;
+  try {
+    const db = firestore();
+    const ref = db.collection('phoneInvites').doc(phoneE164);
+    const unsub = ref.onSnapshot(
+      async (snapshot) => {
+        if (!snapshot?.exists) return;
+        try {
+          const result = await acceptPhoneInviteIfAny(uid, phoneE164);
+          if (result.joined && result.householdId) onJoined(result.householdId);
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[cloudSync] subscribeToPhoneInvite accept failed:', (e as Error)?.message);
+        }
+      },
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloudSync] phoneInvite listener errored:', err?.message);
+      },
+    );
+    return unsub;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] subscribeToPhoneInvite failed:', (e as Error)?.message);
+    return null;
   }
 }
 
