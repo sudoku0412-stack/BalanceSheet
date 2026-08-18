@@ -1245,6 +1245,63 @@ export async function clearPhoneIndex(phoneE164: string): Promise<void> {
   }
 }
 
+/** Written on every sign-in (lib/AuthContext.tsx) — the ONLY write to
+ *  this collection, always by the owning uid for their own email.
+ *  Mirrors setPhoneIndex above; unlike phone there's no separate
+ *  "verification" step since Firebase Auth's email is already the
+ *  identity, so this can run unconditionally on sign-in rather than
+ *  waiting for a dedicated verification flow. */
+export async function setEmailIndex(uid: string, email: string): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore) return;
+  const key = normalizeEmail(email);
+  if (!key || !key.includes('@')) return;
+  try {
+    await firestore().collection('emailIndex').doc(key).set({
+      uid,
+      updatedAt: firestore.FieldValue.serverTimestamp(),
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] setEmailIndex failed:', (e as Error)?.message);
+  }
+}
+
+export async function clearEmailIndex(email: string): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore) return;
+  try {
+    await firestore().collection('emailIndex').doc(normalizeEmail(email)).delete();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] clearEmailIndex failed:', (e as Error)?.message);
+  }
+}
+
+/** Does a verified NestExpenseTracker user already own this email?
+ *  Same contact-discovery shape as lookupUserByPhone below. */
+export async function lookupUserByEmail(
+  email: string,
+): Promise<{ uid: string; displayName: string | null } | null> {
+  const firestore = loadFirestore();
+  if (!firestore) return null;
+  const key = normalizeEmail(email);
+  if (!key || !key.includes('@')) return null;
+  try {
+    const db = firestore();
+    const indexSnap = await db.collection('emailIndex').doc(key).get();
+    if (!indexSnap.exists) return null;
+    const uid = indexSnap.data()?.uid as string | undefined;
+    if (!uid) return null;
+    const userSnap = await db.collection('users').doc(uid).get();
+    return { uid, displayName: (userSnap.data()?.displayName as string | null) ?? null };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] lookupUserByEmail failed:', (e as Error)?.message);
+    return null;
+  }
+}
+
 /** Does a verified NestExpenseTracker user already own this phone number?
  *  Returns just uid/displayName — never email or anything else, since
  *  this is a contact-discovery surface (see lib/phoneInvite.ts). */
@@ -1537,6 +1594,7 @@ export async function deleteCloudUserData(args: {
   uid: string;
   householdId: string | null;
   email: string | null;
+  phoneE164?: string | null;
 }): Promise<{ receiptsDeleted: number; soloHouseholdDeleted: boolean }> {
   const firestore = loadFirestore();
   if (!firestore) {
@@ -1544,6 +1602,12 @@ export async function deleteCloudUserData(args: {
   }
   let receiptsDeleted = 0;
   let soloHouseholdDeleted = false;
+  // Otherwise these pointer docs outlive the account they name — a
+  // household-mate's contacts sync (lib/contactsSync.ts) would keep
+  // matching this email/phone to a uid whose users/{uid} doc no longer
+  // exists.
+  if (args.email) void clearEmailIndex(args.email);
+  if (args.phoneE164) void clearPhoneIndex(args.phoneE164);
   try {
     const db = firestore();
 

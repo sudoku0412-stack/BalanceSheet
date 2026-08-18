@@ -155,6 +155,19 @@ service cloud.firestore {
         && request.auth.uid == resource.data.uid;
     }
 
+    // Contacts-sync phase — mirrors /phoneIndex/{phone} above, keyed by
+    // lowercased email instead of E.164 phone. Same access model: a
+    // user writes only their own pointer doc, any signed-in user can
+    // read any doc to match a contact's email against an existing
+    // account (lib/cloudSync.ts's lookupUserByEmail).
+    match /emailIndex/{emailKey} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == request.resource.data.uid;
+      allow delete: if request.auth != null
+        && request.auth.uid == resource.data.uid;
+    }
+
     // Phone-invite phase — mirrors /invites/{emailKey} above, keyed by
     // E.164 phone instead of email. No public (unauthenticated) read —
     // unlike email invites, this app has no web landing page for phone

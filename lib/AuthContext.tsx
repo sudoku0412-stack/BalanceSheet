@@ -34,6 +34,7 @@ import {
   subscribeToHouseholdReceipts,
   subscribeToHouseholdSettlements,
   syncPushTokenToCloud,
+  setEmailIndex,
   type HouseholdMembership,
 } from './cloudSync';
 import {
@@ -330,6 +331,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (u?.uid) {
+        // Keep the contacts-sync email pointer current every sign-in —
+        // cheap, idempotent. Gated on emailVerified (true automatically
+        // for Google/Apple sign-in; only true for email/password once a
+        // verification flow exists) so an attacker can't sign up with
+        // someone else's email and hijack their emailIndex slot — same
+        // "verified ownership required before indexing" rule the phone
+        // flow already enforces via setPhoneIndex/phoneVerification.ts.
+        if (u.email && u.emailVerified) void setEmailIndex(u.uid, u.email);
+
         // Silent household bootstrap so split/reports have a real (if
         // solo) household to read from, and receipt photos sync across
         // this user's own devices.
@@ -436,6 +446,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             uid,
             householdId,
             email: user?.email ?? null,
+            phoneE164: user?.phoneNumber ?? null,
           });
         } catch {
           // Even on cloud-cleanup failure we proceed with local + auth
