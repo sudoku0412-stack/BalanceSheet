@@ -3,7 +3,6 @@ import {
   Alert,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Switch,
   Text,
@@ -48,8 +47,6 @@ import {
 } from '../lib/cloudSync';
 import { receiptsToCsv } from '../lib/reports';
 import { RECURRING_BUDGET_KEY } from '../lib/recurring';
-import { pickContactWithPhone, isContactPickerAvailable } from '../lib/contactPicker';
-import { addByPhone } from '../lib/phoneInvite';
 import { withTimeout } from '../lib/withTimeout';
 import { LegalLinksRow } from '../components/ui/LegalLinksRow';
 import {
@@ -372,7 +369,6 @@ export default function SettingsScreen() {
   const [members, setMembers] = useState<HouseholdMember[] | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [invitingSending, setInviteSending] = useState(false);
-  const [addingByPhone, setAddingByPhone] = useState(false);
   const [leavingHousehold, setLeavingHousehold] = useState(false);
   // Local-only echo of the last invite this device successfully sent —
   // NOT a query of pending invites (Firestore only tracks one pending
@@ -425,51 +421,6 @@ export default function SettingsScreen() {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't send invite" });
     } finally {
       setInviteSending(false);
-    }
-  };
-
-  const addMemberByPhone = async () => {
-    const householdId = getCurrentHouseholdId();
-    if (!householdId || !user?.uid || addingByPhone) return;
-    if (!isContactPickerAvailable()) {
-      toast.show({
-        kind: 'error',
-        message: "This app needs an update before phone invites work — try again after updating.",
-      });
-      return;
-    }
-    setAddingByPhone(true);
-    try {
-      const contact = await pickContactWithPhone();
-      if (!contact) return; // cancelled, or no usable phone number
-      const result = await addByPhone({
-        phoneE164: contact.phoneE164,
-        householdId,
-        householdName: null,
-        invitedByUid: user.uid,
-        invitedByName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null,
-        budgets: await getBudgetsSnapshot(householdId),
-      });
-      if (!result.ok) {
-        toast.show({ kind: 'error', message: result.reason || "Couldn't add by phone" });
-      } else if (result.matched) {
-        await loadMembers();
-        toast.show({ kind: 'success', message: `${result.displayName || contact.name} added` });
-      } else {
-        // No existing account matched this number — hand off to the
-        // OS's own share sheet so the user sends the invite text
-        // themselves (iMessage/SMS/WhatsApp/etc), free, no Twilio.
-        try {
-          await Share.share({ message: result.inviteText });
-        } catch {
-          // User backed out of the share sheet — the invite doc is
-          // already saved regardless, so it's not a failure.
-        }
-      }
-    } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't add by phone" });
-    } finally {
-      setAddingByPhone(false);
     }
   };
 
@@ -824,22 +775,6 @@ export default function SettingsScreen() {
           )}
 
           <Pressable
-            onPress={addMemberByPhone}
-            disabled={addingByPhone}
-            style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}
-          >
-            <Text
-              style={{
-                color: addingByPhone ? theme.colors.textMuted : theme.colors.accent,
-                fontSize: theme.font.sm,
-                fontFamily: theme.fonts.display.bold,
-              }}
-            >
-              {addingByPhone ? 'Adding…' : 'Add by phone contact'}
-            </Text>
-          </Pressable>
-
-          <Pressable
             onPress={() => router.push('/contacts-sync')}
             style={{ paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm }}
           >
@@ -850,7 +785,7 @@ export default function SettingsScreen() {
                 fontFamily: theme.fonts.display.bold,
               }}
             >
-              Add from contacts
+              Add by phone contact
             </Text>
           </Pressable>
 

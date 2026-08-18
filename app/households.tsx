@@ -413,6 +413,20 @@ export default function HouseholdsScreen() {
                         </Pressable>
                       )}
                     </View>
+                    {m.name && m.role === 'owner' && (
+                      <Pressable
+                        onPress={() => startRename(m.householdId, m.name as string)}
+                        disabled={nameItDisabled}
+                        hitSlop={8}
+                        style={styles.renameIconBtn}
+                      >
+                        <Ionicons
+                          name="pencil"
+                          size={16}
+                          color={nameItDisabled ? theme.colors.textMuted : theme.colors.accent}
+                        />
+                      </Pressable>
+                    )}
                     {switchingTo === m.householdId ? (
                       <ActivityIndicator color={theme.colors.accent} />
                     ) : isActive ? (
@@ -538,6 +552,10 @@ function useHouseholdsStyles() {
       fontFamily: theme.fonts.display.bold,
       fontSize: theme.font.sm,
       marginTop: 4,
+    },
+    renameIconBtn: {
+      padding: 6,
+      marginRight: 4,
     },
     activeBadge: {
       backgroundColor: theme.colors.accent,

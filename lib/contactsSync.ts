@@ -14,10 +14,9 @@ export type DeviceContact = {
 };
 
 /** Requests full contacts read access (a real OS permission prompt on
- *  both platforms — unlike lib/contactPicker.ts's native picker, which
- *  only needs a grant on Android) and returns every contact that has
- *  at least one usable phone number or email. Returns null if the
- *  native module isn't linked, or the user denies/cancels. */
+ *  both platforms) and returns every contact that has at least one
+ *  usable phone number or email. Returns null if the native module
+ *  isn't linked, or the user denies/cancels. */
 export async function readAllContacts(): Promise<DeviceContact[] | null> {
   const Contacts = loadContacts();
   if (!Contacts) return null;

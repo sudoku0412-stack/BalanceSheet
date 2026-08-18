@@ -8,10 +8,7 @@ export type ContactsModule = typeof import('expo-contacts');
  *  imports this file loads, crashing outright on an un-rebuilt binary.
  *  Lazy-require it instead, mirroring lib/cloudSync.ts's
  *  loadFirestore/loadStorage pattern, so the app stays usable and any
- *  contacts feature just no-ops until rebuilt. Shared by
- *  lib/contactPicker.ts (single-pick) and lib/contactsSync.ts (full
- *  sync) so both hit the same cache instead of loading the module
- *  twice. */
+ *  contacts feature just no-ops until rebuilt. */
 let cachedContacts: ContactsModule | null | undefined;
 
 export function loadContacts(): ContactsModule | null {

@@ -27,8 +27,9 @@ const REQUEST_TIMEOUT_MS = 15000;
  * email, matches each against phoneIndex/emailIndex, and splits them
  * into "On NestExpenseTracker" (tap to add straight to the household)
  * vs "Invite" (tap to send the join link via the OS share sheet).
- * Complements lib/contactPicker.ts's single-contact picker (still used
- * by Settings' "Add by phone contact") rather than replacing it.
+ * Settings' "Add by phone contact" button opens this screen — it used
+ * to open a single-contact native picker instead, replaced by this
+ * bulk sync so there's one entry point, not two.
  */
 export default function ContactsSyncScreen() {
   const theme = useTheme();
@@ -120,7 +121,15 @@ export default function ContactsSyncScreen() {
         }
         setAddedUids((prev) => new Set(prev).add(item.uid));
         await refreshMemberships();
-        toast.show({ kind: 'success', message: `${item.displayName || item.contact.name} added` });
+        // No accept tap needed, but the join itself happens on THEIR
+        // device the next time it checks phoneInvites (see
+        // lib/cloudSync.ts's addHouseholdMemberByPhone) — not the
+        // instant this toast fires. Household member list here won't
+        // show them until that happens.
+        toast.show({
+          kind: 'success',
+          message: `${item.displayName || item.contact.name} will join automatically once their app is open`,
+        });
       } else {
         const res = await withTimeout(
           inviteUserToHousehold({
@@ -179,7 +188,10 @@ export default function ContactsSyncScreen() {
           // "added" rather than the generic invite-sent toast below.
           setUnmatched((prev) => prev.filter((c) => c.id !== contact.id));
           await refreshMemberships();
-          toast.show({ kind: 'success', message: `${res.displayName || contact.name} added` });
+          toast.show({
+            kind: 'success',
+            message: `${res.displayName || contact.name} will join automatically once their app is open`,
+          });
           return;
         }
         try {

@@ -3,9 +3,9 @@ import { render, fireEvent, waitFor, screen, act } from '@testing-library/react-
 import { Alert } from 'react-native';
 
 // NOTE: mocks that return plain object literals (expo-router, expo-file-
-// system, lib/database, lib/secureStorage, lib/notifications, lib/cloudSync,
-// lib/contactPicker, lib/phoneInvite) build their jest.fn()s inline rather
-// than closing over outer consts — those factories run EAGERLY at first
+// system, lib/database, lib/secureStorage, lib/notifications, lib/cloudSync)
+// build their jest.fn()s inline rather than closing over outer consts —
+// those factories run EAGERLY at first
 // require (which, via ES import hoisting, can happen before an outer
 // `const mock... = jest.fn()` in this file is actually assigned). We
 // recover references to the created fns afterwards via the (now-mocked)
@@ -78,15 +78,6 @@ jest.mock('../../lib/cloudSync', () => ({
 
 jest.mock('../../lib/reports', () => ({
   receiptsToCsv: jest.fn(() => 'store,amount\n'),
-}));
-
-jest.mock('../../lib/contactPicker', () => ({
-  pickContactWithPhone: jest.fn(async () => null),
-  isContactPickerAvailable: jest.fn(() => true),
-}));
-
-jest.mock('../../lib/phoneInvite', () => ({
-  addByPhone: jest.fn(async () => ({ ok: true, matched: false, inviteText: 'join me' })),
 }));
 
 jest.mock('uuid', () => ({
