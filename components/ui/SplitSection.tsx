@@ -18,7 +18,7 @@ function initialFor(label: string): string {
   return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
 }
 
-export type SplitMethod = 'equal' | 'percent' | 'amount';
+export type SplitMethod = 'equal' | 'percent' | 'amount' | 'shares';
 
 /**
  * Splitwise-style "split this expense" card — participant picker,
@@ -41,6 +41,11 @@ export function SplitSection(props: {
   onChangePercent: (key: string, value: string) => void;
   splitAmounts: Record<string, string>;
   onChangeAmount: (key: string, value: string) => void;
+  /** Share COUNT per participant (method='shares') — e.g. 2 vs. 1 splits
+   *  the total 2:1, Splitwise-style. Keyed the same way as splitPercents/
+   *  splitAmounts. */
+  splitShares: Record<string, string>;
+  onChangeShare: (key: string, value: string) => void;
   /** USD-canonical, matching Receipt.totalAmount. */
   totalAmountUsd: number;
   currencyCode: CurrencyCode;
@@ -62,6 +67,8 @@ export function SplitSection(props: {
     onChangePercent,
     splitAmounts,
     onChangeAmount,
+    splitShares,
+    onChangeShare,
     totalAmountUsd,
     currencyCode,
     lineItems,
@@ -73,6 +80,9 @@ export function SplitSection(props: {
   let yourShare = 0;
   let owedToYou = 0;
   let splitWarning: string | null = null;
+  // Only meaningful for method === 'shares' — how many shares are in
+  // play in total, used for each participant's per-share $ preview.
+  let totalShares = 0;
 
   if (method === 'equal') {
     yourShare = participantCount > 0 ? totalAmountUsd / participantCount : totalAmountUsd;
@@ -89,7 +99,7 @@ export function SplitSection(props: {
     if (Math.abs(sumPct - 100) > 0.01) {
       splitWarning = `Percentages add up to ${sumPct.toFixed(0)}%, not 100%.`;
     }
-  } else {
+  } else if (method === 'amount') {
     const yourAmt = parseFloat(splitAmounts.self || '0') || 0;
     const othersAmt = selectedOthers.reduce(
       (s, m) => s + (parseFloat(splitAmounts[m.uid] || '0') || 0),
@@ -100,6 +110,18 @@ export function SplitSection(props: {
     owedToYou = othersAmt;
     if (Math.abs(sumAmt - totalAmountUsd) > 0.01) {
       splitWarning = `Amounts add up to ${formatCurrency(sumAmt, currencyCode)}, not ${formatCurrency(totalAmountUsd, currencyCode)}.`;
+    }
+  } else {
+    const yourShares = parseFloat(splitShares.self || '0') || 0;
+    const othersShares = selectedOthers.reduce(
+      (s, m) => s + (parseFloat(splitShares[m.uid] || '0') || 0),
+      0,
+    );
+    totalShares = yourShares + othersShares;
+    yourShare = totalShares > 0 ? (yourShares / totalShares) * totalAmountUsd : 0;
+    owedToYou = totalShares > 0 ? (othersShares / totalShares) * totalAmountUsd : 0;
+    if (totalShares <= 0) {
+      splitWarning = 'Enter at least one share.';
     }
   }
 
@@ -202,9 +224,10 @@ export function SplitSection(props: {
           )}
 
           <View style={styles.segmented}>
-            {(['equal', 'percent', 'amount'] as const).map((m) => {
+            {(['equal', 'percent', 'amount', 'shares'] as const).map((m) => {
               const active = method === m;
-              const label = m === 'equal' ? 'Equal' : m === 'percent' ? '%' : '$';
+              const label =
+                m === 'equal' ? 'Equal' : m === 'percent' ? '%' : m === 'amount' ? '$' : 'Shares';
               return (
                 <Pressable
                   key={m}
@@ -250,6 +273,24 @@ export function SplitSection(props: {
                   placeholderTextColor={theme.colors.textMuted}
                 />
               )}
+              {method === 'shares' && (
+                <View style={styles.participantInputRow}>
+                  <TextInput
+                    style={styles.participantInput}
+                    value={splitShares.self ?? ''}
+                    onChangeText={(v) => onChangeShare('self', v)}
+                    keyboardType="number-pad"
+                    placeholder="1"
+                    placeholderTextColor={theme.colors.textMuted}
+                  />
+                  <Text style={styles.participantComputed}>
+                    {formatCurrency(
+                      totalShares > 0 ? ((parseFloat(splitShares.self || '0') || 0) / totalShares) * totalAmountUsd : 0,
+                      currencyCode,
+                    )}
+                  </Text>
+                </View>
+              )}
             </View>
 
             {selectedOthers.map((m) => {
@@ -286,6 +327,26 @@ export function SplitSection(props: {
                       placeholder="0.00"
                       placeholderTextColor={theme.colors.textMuted}
                     />
+                  )}
+                  {method === 'shares' && (
+                    <View style={styles.participantInputRow}>
+                      <TextInput
+                        style={styles.participantInput}
+                        value={splitShares[m.uid] ?? ''}
+                        onChangeText={(v) => onChangeShare(m.uid, v)}
+                        keyboardType="number-pad"
+                        placeholder="1"
+                        placeholderTextColor={theme.colors.textMuted}
+                      />
+                      <Text style={styles.participantComputed}>
+                        {formatCurrency(
+                          totalShares > 0
+                            ? ((parseFloat(splitShares[m.uid] || '0') || 0) / totalShares) * totalAmountUsd
+                            : 0,
+                          currencyCode,
+                        )}
+                      </Text>
+                    </View>
                   )}
                 </View>
               );

@@ -57,7 +57,7 @@ import { ALL_CATEGORIES } from '../../constants/categories';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../components/ui/Toast';
-import { SplitSection } from '../../components/ui/SplitSection';
+import { SplitSection, SplitMethod } from '../../components/ui/SplitSection';
 import { PaidBySection } from '../../components/ui/PaidBySection';
 import { DateField } from '../../components/ui/DateField';
 import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
@@ -830,10 +830,11 @@ export default function ScanScreen() {
   // manually-added expense be split at SAVE TIME instead of requiring a
   // separate add-then-edit round trip just to turn splitting on.
   const [splitEnabled, setSplitEnabled] = useState(false);
-  const [splitMethod, setSplitMethod] = useState<'equal' | 'percent' | 'amount'>('equal');
+  const [splitMethod, setSplitMethod] = useState<SplitMethod>('equal');
   const [selectedOtherUids, setSelectedOtherUids] = useState<Set<string>>(new Set());
   const [splitPercents, setSplitPercents] = useState<Record<string, string>>({});
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
+  const [splitShares, setSplitShares] = useState<Record<string, string>>({});
   const [paidBy, setPaidBy] = useState<string>('self');
 
   const otherMembers = useMemo(
@@ -1035,6 +1036,7 @@ export default function ScanScreen() {
       setSelectedOtherUids(new Set());
       setSplitPercents({});
       setSplitAmounts({});
+      setSplitShares({});
       setPaidBy('self');
       setScanState('review');
     }
@@ -1087,6 +1089,7 @@ export default function ScanScreen() {
     setSelectedOtherUids(new Set());
     setSplitPercents({});
     setSplitAmounts({});
+    setSplitShares({});
     setPaidBy('self');
     setScanState('review');
   };
@@ -1279,7 +1282,11 @@ export default function ScanScreen() {
                   ? Object.fromEntries(
                       Object.entries(splitAmounts).map(([k, v]) => [normalizeForSave(k), parseFloat(v) || 0]),
                     )
-                  : undefined,
+                  : splitMethod === 'shares'
+                    ? Object.fromEntries(
+                        Object.entries(splitShares).map(([k, v]) => [normalizeForSave(k), parseFloat(v) || 0]),
+                      )
+                    : undefined,
           }
         : undefined;
 
@@ -1439,6 +1446,7 @@ export default function ScanScreen() {
     setSelectedOtherUids(new Set());
     setSplitPercents({});
     setSplitAmounts({});
+    setSplitShares({});
     setPaidBy('self');
   };
 
@@ -2159,6 +2167,8 @@ export default function ScanScreen() {
         onChangePercent={(key, v) => setSplitPercents((prev) => ({ ...prev, [key]: v }))}
         splitAmounts={splitAmounts}
         onChangeAmount={(key, v) => setSplitAmounts((prev) => ({ ...prev, [key]: v }))}
+        splitShares={splitShares}
+        onChangeShare={(key, v) => setSplitShares((prev) => ({ ...prev, [key]: v }))}
         totalAmountUsd={convertToUsd(parseFloat(amount.replace(',', '.')) || 0, currencyCode)}
         currencyCode={currencyCode}
         lineItems={items}

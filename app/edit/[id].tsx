@@ -50,7 +50,7 @@ import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { CategoryTagsPicker } from '../../components/ui/CategoryTagsPicker';
 import { ErrorBoundary } from '../../components/ui/ErrorBoundary';
-import { SplitSection } from '../../components/ui/SplitSection';
+import { SplitSection, SplitMethod } from '../../components/ui/SplitSection';
 import { PaidBySection } from '../../components/ui/PaidBySection';
 import { DateField } from '../../components/ui/DateField';
 import { sanitizeAmountInput, parseAmountInput } from '../../lib/amountValidation';
@@ -643,12 +643,13 @@ function EditReceiptScreen() {
   // save (see handleSave) — this is now real, persisted state.
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[] | null>(null);
   const [splitEnabled, setSplitEnabled] = useState(false);
-  const [splitMethod, setSplitMethod] = useState<'equal' | 'percent' | 'amount'>('equal');
+  const [splitMethod, setSplitMethod] = useState<SplitMethod>('equal');
   const [selectedOtherUids, setSelectedOtherUids] = useState<Set<string>>(new Set());
   // Keyed by 'self' for the always-included "You" and by household
   // member uid for everyone else — matches Receipt.split.values keys.
   const [splitPercents, setSplitPercents] = useState<Record<string, string>>({});
   const [splitAmounts, setSplitAmounts] = useState<Record<string, string>>({});
+  const [splitShares, setSplitShares] = useState<Record<string, string>>({});
   // Who fronted the money (Receipt.paidBy) — 'self' in the UI, resolved
   // to the signed-in user's real uid at save time (lib/balances.ts needs
   // a real uid, not the 'self' placeholder split.participantIds uses).
@@ -774,6 +775,12 @@ function EditReceiptScreen() {
             amt[normalizeKey(k)] = String(v);
           }
           setSplitAmounts(amt);
+        } else if (r.split.method === 'shares') {
+          const shares: Record<string, string> = {};
+          for (const [k, v] of Object.entries(r.split.values ?? {})) {
+            shares[normalizeKey(k)] = String(v);
+          }
+          setSplitShares(shares);
         }
       }
       // r.paidBy is a real uid ('self' is never persisted there) — map
@@ -952,7 +959,14 @@ function EditReceiptScreen() {
                         parseFloat(v) || 0,
                       ]),
                     )
-                  : undefined,
+                  : splitMethod === 'shares'
+                    ? Object.fromEntries(
+                        Object.entries(splitShares).map(([k, v]) => [
+                          normalizeForSave(k),
+                          parseFloat(v) || 0,
+                        ]),
+                      )
+                    : undefined,
           }
         : { enabled: false, method: splitMethod, participantIds: [selfUidForSave] };
 
@@ -1669,6 +1683,8 @@ function EditReceiptScreen() {
         onChangePercent={(key, v) => setSplitPercents((prev) => ({ ...prev, [key]: v }))}
         splitAmounts={splitAmounts}
         onChangeAmount={(key, v) => setSplitAmounts((prev) => ({ ...prev, [key]: v }))}
+        splitShares={splitShares}
+        onChangeShare={(key, v) => setSplitShares((prev) => ({ ...prev, [key]: v }))}
         totalAmountUsd={totalAmountVal}
         currencyCode={currencyCode}
         lineItems={items}

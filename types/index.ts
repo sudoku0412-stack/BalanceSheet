@@ -71,9 +71,11 @@ export interface Receipt {
    *  included) plus household member uids from cloudSync.getHouseholdMembers. */
   split?: {
     enabled: boolean;
-    method: 'equal' | 'percent' | 'amount';
+    method: 'equal' | 'percent' | 'amount' | 'shares';
     participantIds: string[];
-    /** Per-participant % (method='percent') or $ amount (method='amount'). Keyed by participantId. */
+    /** Per-participant % (method='percent'), $ amount (method='amount'),
+     *  or share count (method='shares', Splitwise-style — e.g. 2 shares
+     *  vs. 1 share splits the total 2:1). Keyed by participantId. */
     values?: Record<string, number>;
   };
   /** Who actually fronted the money for this receipt — a real Firebase

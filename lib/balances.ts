@@ -59,6 +59,16 @@ export function computeReceiptShare(
       return receipt.totalAmount * ((split.values?.[key] ?? 0) / 100);
     case 'amount':
       return split.values?.[key] ?? 0;
+    case 'shares': {
+      // Splitwise-style weighted shares — e.g. participant A holds 2
+      // shares and B holds 1, so the total splits 2:1 between them.
+      const totalShares = split.participantIds.reduce(
+        (sum, pid) => sum + (split.values?.[pid] ?? 0),
+        0,
+      );
+      if (totalShares <= 0) return 0;
+      return receipt.totalAmount * ((split.values?.[key] ?? 0) / totalShares);
+    }
     default:
       return 0;
   }

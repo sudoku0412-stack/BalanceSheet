@@ -94,6 +94,46 @@ describe('computeReceiptShare', () => {
     expect(computeReceiptShare(r, SELF, SELF)).toBe(50);
   });
 
+  it('shares split divides the total proportionally by share count (Splitwise-style)', () => {
+    const r = baseReceipt({
+      totalAmount: 300,
+      split: {
+        enabled: true,
+        method: 'shares',
+        participantIds: ['self', BOB],
+        values: { self: 1, [BOB]: 2 },
+      },
+    });
+    // 1:2 shares of 300 -> 100 / 200
+    expect(computeReceiptShare(r, SELF, SELF)).toBeCloseTo(100, 5);
+    expect(computeReceiptShare(r, BOB, SELF)).toBeCloseTo(200, 5);
+  });
+
+  it('shares split with a third participant divides proportionally across all three', () => {
+    const r = baseReceipt({
+      totalAmount: 500,
+      split: {
+        enabled: true,
+        method: 'shares',
+        participantIds: ['self', BOB, CAROL],
+        values: { self: 2, [BOB]: 1, [CAROL]: 2 },
+      },
+    });
+    // 2:1:2 shares of 500 -> 200 / 100 / 200
+    expect(computeReceiptShare(r, SELF, SELF)).toBeCloseTo(200, 5);
+    expect(computeReceiptShare(r, BOB, SELF)).toBeCloseTo(100, 5);
+    expect(computeReceiptShare(r, CAROL, SELF)).toBeCloseTo(200, 5);
+  });
+
+  it('shares split defaults to 0 when no shares are set for anyone', () => {
+    const r = baseReceipt({
+      totalAmount: 200,
+      split: { enabled: true, method: 'shares', participantIds: ['self', BOB], values: {} },
+    });
+    expect(computeReceiptShare(r, BOB, SELF)).toBe(0);
+    expect(computeReceiptShare(r, SELF, SELF)).toBe(0);
+  });
+
   it('line-item splitWith overrides take priority over the receipt-level method', () => {
     const lineItems: LineItem[] = [
       { id: '1', name: 'Milk', amount: 40, category: 'Groceries', splitWith: ['self', BOB] },
