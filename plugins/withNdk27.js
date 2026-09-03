@@ -28,7 +28,17 @@ const NEW_NDK_VERSION = '27.1.12297006';
  * a module's `android {}` block never sets `ndkVersion` explicitly
  * (AGP 8.6.0's own bundled default happens to be the same old 26.1).
  * The `subprojects` block below forces EVERY module's `android.ndkVersion`
- * after the fact, closing that gap for modules we don't control.
+ * after the fact, closing that gap for modules we don't control. Uses
+ * `plugins.withId(...)` rather than `afterEvaluate` — react-native's own
+ * root-project plugin (`com.facebook.react.rootproject`, applied above
+ * this block) forces early evaluation of at least the app module as
+ * part of autolinking, so a plain `subproject.afterEvaluate { ... }`
+ * registered here threw "Cannot run Project.afterEvaluate(Closure)
+ * when the project is already evaluated" (hit this in CI — see git
+ * history on this file). `plugins.withId` fires the moment the given plugin is
+ * applied to that module (right at the top of ITS OWN build.gradle,
+ * long before "evaluated" state is reached), so it isn't gated by
+ * evaluation state at all.
  */
 const FORCE_NDK_BLOCK_MARKER = '// withNdk27: force every module onto the same NDK';
 
@@ -55,8 +65,8 @@ ${FORCE_NDK_BLOCK_MARKER} (rootProject.ext.ndkVersion alone only
 // reaches modules whose own build.gradle explicitly reads it — see
 // plugins/withNdk27.js for why this exists).
 subprojects { subproject ->
-    afterEvaluate {
-        if (subproject.hasProperty('android')) {
+    ['com.android.library', 'com.android.application'].each { pluginId ->
+        subproject.plugins.withId(pluginId) {
             subproject.android.ndkVersion = "${NEW_NDK_VERSION}"
         }
     }
