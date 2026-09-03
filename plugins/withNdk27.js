@@ -17,7 +17,21 @@ const NEW_NDK_VERSION = '27.1.12297006';
  * flagged in Play Console's Policy status), which is the actual reason
  * this plugin exists: apply the exact same patch Expo's own compat
  * plugin would, minus the react-native-version gate.
+ *
+ * That root `ext.ndkVersion` replace alone isn't enough, though — it
+ * only takes effect for modules whose OWN build.gradle explicitly
+ * references `rootProject.ext.ndkVersion` (react-native's own module,
+ * and the app module itself, both via the RN gradle plugin template).
+ * Expo modules with native code (confirmed via CI logs: expo-sqlite,
+ * and by extension likely others) don't reference that at all — they
+ * just fall back to whatever NDK version AGP itself defaults to when
+ * a module's `android {}` block never sets `ndkVersion` explicitly
+ * (AGP 8.6.0's own bundled default happens to be the same old 26.1).
+ * The `subprojects` block below forces EVERY module's `android.ndkVersion`
+ * after the fact, closing that gap for modules we don't control.
  */
+const FORCE_NDK_BLOCK_MARKER = '// withNdk27: force every module onto the same NDK';
+
 module.exports = function withNdk27(config) {
   return withProjectBuildGradle(config, (cfg) => {
     if (cfg.modResults.language !== 'groovy') {
@@ -35,6 +49,20 @@ module.exports = function withNdk27(config) {
       new RegExp(`(ndkVersion\\s*=\\s*['"])${OLD_NDK_VERSION}(['"])`, 'g'),
       `$1${NEW_NDK_VERSION}$2`,
     );
+    if (!cfg.modResults.contents.includes(FORCE_NDK_BLOCK_MARKER)) {
+      cfg.modResults.contents += `
+${FORCE_NDK_BLOCK_MARKER} (rootProject.ext.ndkVersion alone only
+// reaches modules whose own build.gradle explicitly reads it — see
+// plugins/withNdk27.js for why this exists).
+subprojects { subproject ->
+    afterEvaluate {
+        if (subproject.hasProperty('android')) {
+            subproject.android.ndkVersion = "${NEW_NDK_VERSION}"
+        }
+    }
+}
+`;
+    }
     return cfg;
   });
 };
