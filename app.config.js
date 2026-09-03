@@ -187,6 +187,14 @@ module.exports = ({ config }) => {
             compileSdkVersion: 36,
             targetSdkVersion: 36,
             buildToolsVersion: '36.0.0',
+            // Google Play also requires 16 KB memory page size support
+            // (enforced since Oct 31 2025) — flagged alongside the API
+            // 36 target in Policy status. The CI build was defaulting
+            // to NDK 26.1.10909125, which predates 16 KB page alignment
+            // (the linker only started defaulting to it in NDK r28; r27
+            // supports it too). Bumped explicitly rather than relying on
+            // whatever RN 0.76.5/Expo SDK 52 pick by default.
+            ndkVersion: '27.1.12297006',
             // Expo SDK 52 ships Kotlin 1.9.24 but bundles a Compose
             // Compiler (1.5.15) that requires 1.9.25 — the build
             // fails with a "not known to be compatible" error
