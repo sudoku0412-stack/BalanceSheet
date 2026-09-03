@@ -1138,12 +1138,17 @@ export default function ScanScreen() {
     requestCameraPermission();
   }, [scanState, cameraPermission, requestCameraPermission]);
 
+  // No requestMediaLibraryPermissionsAsync call here on purpose —
+  // launchImageLibraryAsync opens the OS's own system photo picker
+  // (Android's Photo Picker on API 33+, PHPickerViewController on iOS),
+  // which grants access only to the one photo the user taps and needs
+  // no broad READ_MEDIA_IMAGES/READ_EXTERNAL_STORAGE permission at all.
+  // Requesting that permission first is exactly what Google Play's
+  // photo/video permissions policy flags — apps must use the system
+  // picker instead of requesting broad media access when the picker is
+  // sufficient, which it is here (the app only ever needs ONE photo per
+  // pick, never a library-wide query).
   const pickFromGallery = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Photo library access is needed to import receipts.');
-      return;
-    }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.85,

@@ -92,10 +92,19 @@ module.exports = ({ config }) => {
         // device mask crops past the foreground.
         backgroundColor: '#3F5691',
       },
+      // READ_MEDIA_IMAGES was here until Google Play's review flagged it
+      // (v1.0.4 review, versionCode 12) — Play policy only allows broad
+      // photo/video permissions when the system picker is technically
+      // insufficient, and it isn't here (see pickFromGallery in
+      // app/(tabs)/scan.tsx, which never requests it and relies on
+      // launchImageLibraryAsync's own system picker instead). Dropped
+      // this app's own explicit READ_EXTERNAL_STORAGE too, since it was
+      // always redundant — expo-image-picker's own AndroidManifest.xml
+      // already declares it for pre-API-33 fallback regardless of what's
+      // listed here, so removing it from THIS array doesn't change the
+      // final merged manifest, just this app's own (unnecessary) ask.
       permissions: [
         'android.permission.CAMERA',
-        'android.permission.READ_EXTERNAL_STORAGE',
-        'android.permission.READ_MEDIA_IMAGES',
         'android.permission.USE_BIOMETRIC',
         'android.permission.USE_FINGERPRINT',
       ],
@@ -103,7 +112,7 @@ module.exports = ({ config }) => {
       // Kept in sync BY HAND before each release build — see the
       // buildNumber comment above (autoIncrement is off; this literal
       // is the one actually used).
-      versionCode: 13,
+      versionCode: 14,
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       // Phase 3 magic-link invites: paired with the iOS associated
       // domain above. autoVerify=true makes Android verify the
