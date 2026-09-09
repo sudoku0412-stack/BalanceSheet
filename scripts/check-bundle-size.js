@@ -17,7 +17,6 @@
  */
 
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
@@ -75,7 +74,13 @@ function saveBaseline(entry) {
 
 function main() {
   const shouldUpdate = process.argv.includes('--update');
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bundle-size-'));
+  // expo export (SDK53+) rejects an --output-dir outside the project
+  // directory ("--output-dir must be a subdirectory of the project
+  // directory"), so the scratch dir has to live under ROOT_DIR rather
+  // than the system temp dir this used before.
+  const scratchParent = path.join(ROOT_DIR, '.bundle-size-tmp');
+  fs.mkdirSync(scratchParent, { recursive: true });
+  const tmpDir = fs.mkdtempSync(path.join(scratchParent, 'export-'));
 
   console.log(`Running "expo export --platform ${PLATFORM}" (this can take a minute)...`);
   try {
