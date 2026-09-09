@@ -1,9 +1,8 @@
 const withGooglePlayAdiToken = require('./plugins/withGooglePlayAdiToken');
 const withGradleJvmHeap = require('./plugins/withGradleJvmHeap');
-const withNdk27 = require('./plugins/withNdk27');
 
 module.exports = ({ config }) => {
-  return withNdk27(withGradleJvmHeap(withGooglePlayAdiToken({
+  return withGradleJvmHeap(withGooglePlayAdiToken({
     ...config,
     // Matches the App Store Connect listing name — "Receiptly" wasn't
     // available there, so this is the name going forward on both
@@ -142,6 +141,7 @@ module.exports = ({ config }) => {
       ],
     },
     plugins: [
+      'expo-asset',
       'expo-router',
       'expo-secure-store',
       '@react-native-firebase/app',
@@ -190,18 +190,23 @@ module.exports = ({ config }) => {
             buildToolsVersion: '36.0.0',
             // Google Play also requires 16 KB memory page size support
             // (enforced since Oct 31 2025) — flagged alongside the API
-            // 36 target in Policy status. NOT fixable here — this
-            // plugin's PluginConfigTypeAndroid has no `ndkVersion`
-            // option at all, so setting one here is silently ignored
-            // (confirmed in CI logs: NDK stayed 26.1.10909125 despite
-            // it). See plugins/withNdk27.js, wired in below, for the
-            // actual fix — it patches android/build.gradle directly.
-            // Expo SDK 52 ships Kotlin 1.9.24 but bundles a Compose
-            // Compiler (1.5.15) that requires 1.9.25 — the build
-            // fails with a "not known to be compatible" error
-            // unless we bump Kotlin explicitly. 1.9.25 is the
-            // minimum that satisfies both.
-            kotlinVersion: '1.9.25',
+            // 36 target in Policy status. Was NOT fixable here under
+            // SDK52 (this plugin's PluginConfigTypeAndroid has no
+            // `ndkVersion` option, so setting one here was silently
+            // ignored) — needed a hand-written config plugin
+            // (plugins/withNdk27.js) that patched android/build.gradle
+            // directly. As of the SDK53/RN0.79 upgrade, react-native
+            // itself now pins ndkVersion 27.1.12297006 (16 KB-aligned)
+            // by default via its own libs.versions.toml, so that plugin
+            // is gone — no override needed here or anywhere else.
+            //
+            // No explicit kotlinVersion override either, as of the same
+            // upgrade: the old override (1.9.25, needed for SDK52's
+            // Compose Compiler mismatch) started failing SDK53's
+            // expo-updates KSP task with a ChangedFiles/KspTaskJvm
+            // NoSuchMethodError — the bundled KSP now expects a newer
+            // Kotlin than 1.9.25 provides. SDK53's own default already
+            // satisfies every consumer that needed bumping under SDK52.
             // R8/shrinking off by default in Expo builds — Play
             // Console flagged "App optimization: Low" with no
             // shrink/obfuscation numbers. Enabling both turns on R8.
@@ -261,5 +266,5 @@ module.exports = ({ config }) => {
       smsWorkerEndpoint: process.env.SMS_WORKER_ENDPOINT,
       smsWorkerSecret: process.env.SMS_WORKER_SECRET,
     },
-  })));
+  }));
 };
