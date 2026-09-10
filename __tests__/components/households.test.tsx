@@ -14,11 +14,29 @@ const mockRefreshMemberships = jest.fn(async () => {});
 const mockSetActiveHousehold = jest.fn(async () => {});
 const mockToastShow = jest.fn();
 
+const mockRouterPush = jest.fn();
+
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ back: jest.fn(), push: jest.fn() }),
+  useRouter: () => ({ back: jest.fn(), push: (...args: unknown[]) => mockRouterPush(...args) }),
   useFocusEffect: (cb: () => void) => {
     require('react').useEffect(cb, []);
   },
+}));
+
+// Defaults to Premium so the pre-existing "Create household" tests
+// below keep exercising the real create-form flow unchanged; the
+// gate test overrides this per-test via mockIsPremium.
+const mockIsPremium = jest.fn(() => true);
+
+jest.mock('../../lib/EntitlementsContext', () => ({
+  useEntitlements: () => ({
+    loading: false,
+    isPremium: mockIsPremium(),
+    offerings: null,
+    refreshOfferings: jest.fn(),
+    purchasePackage: jest.fn(),
+    restorePurchases: jest.fn(),
+  }),
 }));
 
 jest.mock('@expo/vector-icons', () => ({
@@ -131,6 +149,24 @@ describe('HouseholdsScreen', () => {
     await waitFor(() => {
       expect(mockSetActiveHousehold).toHaveBeenCalledWith('hh-new');
     });
+  });
+
+  it('routes a free-tier user to the paywall instead of opening the create form, without touching createHousehold', async () => {
+    mockIsPremium.mockReturnValue(false);
+    try {
+      render(<HouseholdsScreen />);
+      await waitFor(() => screen.getByText('Our Home'));
+
+      fireEvent.press(screen.getByLabelText('Create household'));
+
+      expect(mockRouterPush).toHaveBeenCalledWith('/paywall');
+      expect(screen.queryByPlaceholderText('Household name')).toBeNull();
+      expect(mockCreateHousehold).not.toHaveBeenCalled();
+    } finally {
+      // Restore the default — jest.clearAllMocks() (beforeEach) clears
+      // call data but not a previously-set mockReturnValue.
+      mockIsPremium.mockReturnValue(true);
+    }
   });
 
   it('naming an unnamed household calls renameHousehold with that household\'s id, not createHousehold', async () => {

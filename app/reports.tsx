@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { addMonths, endOfMonth, format, isSameMonth, startOfMonth } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as FileSystem from 'expo-file-system';
 import Svg, { Circle, G } from 'react-native-svg';
@@ -29,6 +29,7 @@ import { computeStats } from '../lib/dashboardStats';
 import { filterReceiptsInRange, receiptsToCsv } from '../lib/reports';
 import { generateReceiptsPdf, isPdfExportAvailable } from '../lib/pdfExport';
 import { getCurrency } from '../lib/secureStorage';
+import { useEntitlements } from '../lib/EntitlementsContext';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { CategorySummary, MonthlyStats, Receipt, Category } from '../types';
 
@@ -64,6 +65,7 @@ export function ReportsScreenEmbedded() {
 function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const theme = useTheme();
   const styles = useReportsStyles();
+  const { isPremium } = useEntitlements();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
@@ -177,6 +179,11 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
       );
       return;
     }
+    // PDF export is a Premium feature — CSV export (above) stays free.
+    if (!isPremium) {
+      router.push('/paywall');
+      return;
+    }
     // expo-print may not be linked in older/preview APKs — the OTA
     // ships JS only, so we can't assume the native module is loaded
     // until the user installs a fresh build.
@@ -207,7 +214,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     } finally {
       setExportingPdf(false);
     }
-  }, [monthReceipts, exportingPdf, monthStart, monthEnd, shareFile]);
+  }, [monthReceipts, exportingPdf, isPremium, monthStart, monthEnd, shareFile]);
 
   return (
     <SafeAreaView style={styles.root} edges={embedded ? ['bottom'] : ['top', 'bottom']}>
@@ -307,7 +314,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
               style={styles.exportButton}
             />
             <Button
-              label="Export PDF"
+              label={isPremium ? 'Export PDF' : 'Export PDF · Premium'}
               variant="secondary"
               onPress={exportPdf}
               loading={exportingPdf}

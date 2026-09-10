@@ -1,6 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert } from 'react-native';
+import { router } from 'expo-router';
 import Constants from 'expo-constants';
+// Deliberately the plain lib/entitlements.ts functions, NOT
+// EntitlementsContext's useEntitlements() hook — EntitlementsProvider
+// is nested INSIDE AuthProvider (it needs the signed-in uid), so a
+// hook call here would be backwards. lib/entitlements.ts has no
+// dependency on this file, so this import direction is safe.
+import { getIsPremium } from './entitlements';
 import {
   AuthUser,
   configureGoogleSignIn,
@@ -266,6 +273,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           {
             text: 'Accept',
             onPress: async () => {
+              // Household SHARING stays free — this only gates
+              // belonging to more than one household at a time.
+              // Declining/ignoring this invite leaves it pending, so
+              // the user can still accept later after upgrading.
+              if (memberships.length >= 1) {
+                const premium = await getIsPremium().catch(() => false);
+                if (!premium) {
+                  Alert.alert(
+                    'Upgrade to join another household',
+                    'Belonging to more than one household at a time is a Premium feature.',
+                    [
+                      { text: 'Not now', style: 'cancel' },
+                      { text: 'Upgrade', onPress: () => router.push('/paywall') },
+                    ],
+                  );
+                  return;
+                }
+              }
               try {
                 const res = await acceptInvite({ invite, uid });
                 if (!res.ok) return;
@@ -281,7 +306,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ],
       );
     },
-    [runHouseholdSwitch],
+    [runHouseholdSwitch, memberships],
   );
 
   const checkPendingInvite = useCallback(

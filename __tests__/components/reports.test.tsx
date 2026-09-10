@@ -10,10 +10,29 @@ import type { Receipt } from '../../types';
 // actually been assigned. References are recovered afterwards via the
 // (now-mocked) module's exports.
 
+const mockRouterPush = jest.fn();
+
 jest.mock('expo-router', () => ({
   useFocusEffect: (cb: () => void) => {
     require('react').useEffect(cb, []);
   },
+  router: { push: (...args: unknown[]) => mockRouterPush(...args) },
+}));
+
+// Defaults to Premium so the pre-existing "tapping Export PDF..." test
+// below keeps exercising the real export path unchanged; the
+// free-tier-gate test overrides this per-test via mockIsPremium.
+const mockIsPremium = jest.fn(() => true);
+
+jest.mock('../../lib/EntitlementsContext', () => ({
+  useEntitlements: () => ({
+    loading: false,
+    isPremium: mockIsPremium(),
+    offerings: null,
+    refreshOfferings: jest.fn(),
+    purchasePackage: jest.fn(),
+    restorePurchases: jest.fn(),
+  }),
 }));
 
 jest.mock('@expo/vector-icons', () => ({
@@ -115,5 +134,28 @@ describe('ReportsScreen', () => {
     await waitFor(() => {
       expect(mockGenerateReceiptsPdf).toHaveBeenCalled();
     });
+  });
+
+  it('routes a free-tier user to the paywall instead of exporting PDF', async () => {
+    mockIsPremium.mockReturnValue(false);
+    try {
+      mockGetAllReceipts.mockResolvedValue([makeReceipt({ id: 'r1', totalAmount: 15 })]);
+      render(<ReportsScreen />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Export PDF · Premium')).toBeTruthy();
+      });
+      fireEvent.press(screen.getByText('Export PDF · Premium'));
+
+      await waitFor(() => {
+        expect(mockRouterPush).toHaveBeenCalledWith('/paywall');
+      });
+      expect(mockGenerateReceiptsPdf).not.toHaveBeenCalled();
+    } finally {
+      // Restore the default so later test files/re-runs in this process
+      // aren't affected — jest.clearAllMocks() (beforeEach) clears call
+      // data but not a previously-set mockReturnValue.
+      mockIsPremium.mockReturnValue(true);
+    }
   });
 });

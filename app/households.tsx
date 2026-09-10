@@ -9,6 +9,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { useStyles, useTheme } from '../constants/theme';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../lib/AuthContext';
+import { useEntitlements } from '../lib/EntitlementsContext';
 import {
   deleteAllRowsForHousehold,
   getAllReceiptsForHousehold,
@@ -45,6 +46,7 @@ export default function HouseholdsScreen() {
   const router = useRouter();
   const toast = useToast();
   const { user, memberships, refreshMemberships, setActiveHousehold, editInProgress } = useAuth();
+  const { isPremium } = useEntitlements();
 
   const [loading, setLoading] = useState(true);
   const [switchingTo, setSwitchingTo] = useState<string | null>(null);
@@ -326,6 +328,15 @@ export default function HouseholdsScreen() {
           {
             icon: 'add',
             onPress: () => {
+              // Belonging to a household stays free — this only gates
+              // belonging to a SECOND (or more) one. Checked here,
+              // before the form state machine, rather than inside
+              // saveNewHousehold — see the module comment above about
+              // why that state is fragile to touch.
+              if (!isPremium && memberships.length >= 1) {
+                router.push('/paywall');
+                return;
+              }
               setForm((f) => (f.mode === 'create' ? { mode: 'none' } : { mode: 'create', value: '', saving: false }));
             },
             disabled: formBusy,
