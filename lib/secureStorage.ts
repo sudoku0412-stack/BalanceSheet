@@ -24,6 +24,11 @@ const Keys = {
   // read even though the legacy data was never meant for it.
   legacyBudgetsMigrated: 'bs.budgets.legacyMigrated',
   themePreference: 'bs.theme.preference',
+  // Free-tier AI-parse quota (lib/entitlements.ts). Suffixed per uid AND
+  // per calendar month (`.${uid}.${yyyy-MM}`) so the count naturally
+  // resets every month without a separate rollover job, and each user
+  // on a shared device gets their own quota.
+  aiParseCount: 'bs.aiParse.count',
 } as const;
 
 export async function getOnboardingSeen(): Promise<boolean> {
@@ -222,6 +227,26 @@ export async function getThemePreference(): Promise<ThemePreference> {
 
 export async function setThemePreference(pref: ThemePreference): Promise<void> {
   await SecureStore.setItemAsync(Keys.themePreference, pref);
+}
+
+function currentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+/** How many AI receipt parses this user has used in the current
+ *  calendar month — gates lib/entitlements.ts's free-tier quota. Reads
+ *  as 0 for a month that's never been touched, so no separate
+ *  reset/rollover step is needed. */
+export async function getAiParseCountThisMonth(uid: string): Promise<number> {
+  const v = await SecureStore.getItemAsync(`${Keys.aiParseCount}.${uid}.${currentYearMonth()}`);
+  return v ? parseInt(v, 10) || 0 : 0;
+}
+
+export async function incrementAiParseCount(uid: string): Promise<number> {
+  const next = (await getAiParseCountThisMonth(uid)) + 1;
+  await SecureStore.setItemAsync(`${Keys.aiParseCount}.${uid}.${currentYearMonth()}`, String(next));
+  return next;
 }
 
 export async function resetAllSecureStorage(): Promise<void> {

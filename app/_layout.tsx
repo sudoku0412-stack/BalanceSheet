@@ -22,6 +22,7 @@ import { RobotoMono_400Regular, RobotoMono_500Medium } from '@expo-google-fonts/
 import { initDatabase } from '../lib/database';
 import { ThemeProvider, useTheme, getBootstrapTheme } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/AuthContext';
+import { EntitlementsProvider } from '../lib/EntitlementsContext';
 import { ToastProvider } from '../components/ui/Toast';
 import { pickTarget, targetToHref } from '../lib/routeGuard';
 
@@ -79,8 +80,10 @@ export default function RootLayout() {
       <ThemeProvider>
         <ToastProvider>
           <AuthProvider>
-            <ThemedStatusBar />
-            <RootStack />
+            <EntitlementsProvider>
+              <ThemedStatusBar />
+              <RootStack />
+            </EntitlementsProvider>
           </AuthProvider>
         </ToastProvider>
       </ThemeProvider>

@@ -243,6 +243,15 @@ module.exports = ({ config }) => {
       // this app's package + SHA-1 so an extracted key can't be abused
       // outside the app.
       geminiApiKey: process.env.GEMINI_API_KEY,
+      // RevenueCat public SDK keys — these are public by design (RC's
+      // own docs: safe to embed client-side, distinct from the secret
+      // key used only in RC's own dashboard/API). Android and iOS use
+      // different keys because they're scoped to separate RC "apps"
+      // within the same project. Empty/undefined is a valid
+      // not-configured-for-this-platform state — lib/entitlements.ts's
+      // configurePurchases no-ops on it rather than throwing.
+      revenueCatApiKeyAndroid: process.env.REVENUECAT_API_KEY_ANDROID,
+      revenueCatApiKeyIos: process.env.REVENUECAT_API_KEY_IOS,
       // Optional: a Cloudflare Worker that wraps Workers AI as a free
       // fallback when the shared Gemini quota is exhausted. Set
       // PARSE_ENDPOINT to e.g. https://...workers.dev/parse and

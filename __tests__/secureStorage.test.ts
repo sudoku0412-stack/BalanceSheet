@@ -13,7 +13,12 @@ jest.mock('expo-secure-store', () => {
 });
 
 import * as SecureStore from 'expo-secure-store';
-import { getOnboardingSeen, setOnboardingSeen } from '../lib/secureStorage';
+import {
+  getOnboardingSeen,
+  setOnboardingSeen,
+  getAiParseCountThisMonth,
+  incrementAiParseCount,
+} from '../lib/secureStorage';
 
 const mockedStore = (SecureStore as unknown as { __store: Map<string, string> }).__store;
 
@@ -35,6 +40,26 @@ describe('onboarding flag', () => {
   it('persists under a stable key (do not rename without a migration)', async () => {
     await setOnboardingSeen();
     expect(mockedStore.get('bs.onboarding.seen')).toBe('1');
+  });
+});
+
+describe('AI parse quota', () => {
+  it('starts at 0 for a user who has never parsed', async () => {
+    expect(await getAiParseCountThisMonth('uid-1')).toBe(0);
+  });
+
+  it('increments and persists per call', async () => {
+    expect(await incrementAiParseCount('uid-1')).toBe(1);
+    expect(await incrementAiParseCount('uid-1')).toBe(2);
+    expect(await getAiParseCountThisMonth('uid-1')).toBe(2);
+  });
+
+  it('tracks each uid independently', async () => {
+    await incrementAiParseCount('uid-1');
+    await incrementAiParseCount('uid-1');
+    await incrementAiParseCount('uid-2');
+    expect(await getAiParseCountThisMonth('uid-1')).toBe(2);
+    expect(await getAiParseCountThisMonth('uid-2')).toBe(1);
   });
 });
 
