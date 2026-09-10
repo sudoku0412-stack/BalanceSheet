@@ -259,6 +259,13 @@ function RootStack() {
           headerShown: false,
         }}
       />
+      <Stack.Screen
+        name="paywall"
+        options={{
+          headerShown: false,
+          presentation: 'modal',
+        }}
+      />
     </Stack>
   );
 }

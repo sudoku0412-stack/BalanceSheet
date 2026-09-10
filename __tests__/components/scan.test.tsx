@@ -79,6 +79,17 @@ jest.mock('../../lib/AuthContext', () => ({
   }),
 }));
 
+jest.mock('../../lib/EntitlementsContext', () => ({
+  useEntitlements: () => ({
+    loading: false,
+    isPremium: false,
+    offerings: null,
+    refreshOfferings: jest.fn(),
+    purchasePackage: jest.fn(),
+    restorePurchases: jest.fn(),
+  }),
+}));
+
 jest.mock('../../lib/receiptPhoto', () => ({
   persistReceiptImage: jest.fn(async (uri: string) => uri),
 }));

@@ -34,7 +34,12 @@ export type GeminiErrorKind =
   | 'server'
   | 'parse'
   | 'empty'
-  | 'unknown';
+  | 'unknown'
+  // Not a real Gemini/backend error — set locally in scan.tsx when the
+  // free-tier monthly AI-parse quota (lib/secureStorage.ts) is used up
+  // and the user isn't Premium. Kept in this union so aiErrorMessage's
+  // switch stays exhaustive-by-convention with the rest of the kinds.
+  | 'quota';
 
 export type GeminiParseResult =
   | { ok: true; receipt: GeminiReceipt }

@@ -48,7 +48,8 @@ import {
   parseGeminiPayload,
 } from '../../lib/geminiParseReceipt';
 import { parseReceiptWithCloudflare } from '../../lib/cloudflareReceiptParse';
-import { getGeminiApiKey, getCurrency } from '../../lib/secureStorage';
+import { getGeminiApiKey, getCurrency, getAiParseCountThisMonth, incrementAiParseCount } from '../../lib/secureStorage';
+import { useEntitlements } from '../../lib/EntitlementsContext';
 import { CURRENCIES, CURRENCY_SYMBOLS, CurrencyCode, convertToUsd, formatCurrency } from '../../lib/currency';
 import { advance as advanceRecurringDate, computeRecurringEndDate } from '../../lib/recurring';
 import { ParsedReceipt, Category, LineItem, Receipt } from '../../types';
@@ -80,6 +81,12 @@ type ScanState = 'idle' | 'processing' | 'review';
 // design export (not a theme token) — the capture UI is always
 // near-black regardless of the app's light/dark theme.
 const CAMERA_BG = '#0B0B0C';
+
+// Free-tier monthly cap on AI-assisted parsing (using the app's own
+// Gemini key/Worker) — see runAiParse's gate below. Premium is
+// unlimited; a user's own Gemini key (BYOK) is exempt since it's their
+// own cost, not the app's.
+const FREE_AI_PARSE_MONTHLY_LIMIT = 20;
 
 /**
  * Pick the receipt-level category that best represents this set of
@@ -765,6 +772,7 @@ export default function ScanScreen() {
 
   // ─── Per-item "Split with" (Review Receipt + Add Expense) ──────────────
   const { user, profile, setEditInProgress } = useAuth();
+  const { isPremium } = useEntitlements();
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
 
   // Gates the household switcher (app/households.tsx) while this screen
@@ -1584,6 +1592,22 @@ export default function ScanScreen() {
         }
       }
 
+      // Free-tier monthly cap on AI parsing — only applies when this
+      // parse would use the APP's own key/worker (shared cost); a
+      // user's own Gemini key (BYOK) is their own cost, so it's exempt.
+      // Premium is unlimited. Checked after the cache-hit above so a
+      // repeat scan of the same receipt never counts against it.
+      if (!userGeminiKey && !isPremium && user?.uid) {
+        const usedThisMonth = await getAiParseCountThisMonth(user.uid);
+        if (usedThisMonth >= FREE_AI_PARSE_MONTHLY_LIMIT) {
+          setAiError({
+            kind: 'quota',
+            message: `You've used all ${FREE_AI_PARSE_MONTHLY_LIMIT} free AI scans this month.`,
+          });
+          return;
+        }
+      }
+
       // Pull up to 2 prior user-corrections for whatever store the
       // regex parser thinks this is. The selected backend (Gemini or
       // the Worker) sees these as few-shot examples and tends to
@@ -1669,6 +1693,12 @@ export default function ScanScreen() {
       }
       applyAiResult(ai);
       setAiApplied(true);
+      if (!userGeminiKey && !isPremium && user?.uid) {
+        incrementAiParseCount(user.uid).catch(() => {
+          // Best-effort — a failed increment just means one free parse
+          // this month goes untracked, not worth failing the scan over.
+        });
+      }
       // Cache the successful response so a re-scan of the same OCR
       // doesn't burn another quota request. We serialize the validated
       // shape (not the raw Gemini envelope) so the read path can use
@@ -1721,6 +1751,8 @@ export default function ScanScreen() {
         return 'AI not configured.';
       case 'empty':
         return 'AI returned nothing — using basic parser. Tap to retry.';
+      case 'quota':
+        return `You've used all ${FREE_AI_PARSE_MONTHLY_LIMIT} free AI scans this month — using basic parser. Tap to upgrade for unlimited.`;
       case 'parse':
       case 'unknown':
       default:
@@ -1873,7 +1905,7 @@ export default function ScanScreen() {
         )}
         {!aiPending && aiError != null && (
           <TouchableOpacity
-            onPress={() => runAiParse(rawText)}
+            onPress={() => (aiError.kind === 'quota' ? router.push('/paywall') : runAiParse(rawText))}
             style={styles.aiChipError}
           >
             <Ionicons
