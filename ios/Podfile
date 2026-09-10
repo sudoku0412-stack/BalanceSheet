@@ -62,5 +62,45 @@ target 'ReceiptScanner' do
         end
       end
     end
+
+    # fmt 11.0.2 (pulled in transitively via RCT-Folly) hits a known
+    # fmt/Clang bug on newer Xcode toolchains: FMT_STRING's consteval
+    # basic_format_string constructor isn't accepted as a constant
+    # expression ("Call to consteval function ... is not a constant
+    # expression", in ios/Pods/fmt/include/fmt/format-inl.h and other
+    # fmt headers — 17 call sites total).
+    #
+    # A GCC_PREPROCESSOR_DEFINITIONS override for FMT_CONSTEVAL or
+    # FMT_USE_CONSTEVAL does NOT work — verified locally with a
+    # standalone clang++ compile — fmt/include/fmt/base.h unconditionally
+    # #defines both itself with no #ifndef guard, so it just clobbers
+    # whatever the command line set. The actual fix: patch FMT_STRING's
+    # own macro definition (format.h) to a plain passthrough instead of
+    # building fmt's compile-time-checked wrapper type — every call
+    # site that uses FMT_STRING is then unaffected by the buggy
+    # consteval path, with identical runtime behavior (the format
+    # strings here are all trivial literals; only compile-time
+    # validation is skipped). Verified this compiles clean with
+    # `clang++ -std=c++20` standalone, including every fmt header that
+    # uses FMT_STRING, before wiring it in here. Re-applying is a no-op
+    # once patched (gsub just won't match), so this is safe to run on
+    # every `pod install`, which re-vendors fmt's sources from scratch.
+    fmt_pod_dir = installer.sandbox.pod_dir('fmt')
+    fmt_format_h = fmt_pod_dir ? File.join(fmt_pod_dir, 'include', 'fmt', 'format.h') : nil
+    if fmt_format_h && File.exist?(fmt_format_h)
+      original = File.read(fmt_format_h)
+      patched = original.gsub(
+        '#define FMT_STRING(s) FMT_STRING_IMPL(s, fmt::detail::compile_string, )',
+        '#define FMT_STRING(s) (s)',
+      )
+      if patched != original
+        # CocoaPods installs vendored headers read-only (by design, to
+        # discourage hand-edits that'd be silently lost on the next
+        # `pod install`) — this patch re-applies fresh every install,
+        # so that's not a concern here, just needs write access first.
+        File.chmod(0644, fmt_format_h)
+        File.write(fmt_format_h, patched)
+      end
+    end
   end
 end
