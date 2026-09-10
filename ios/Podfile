@@ -102,5 +102,41 @@ target 'ReceiptScanner' do
         File.write(fmt_format_h, patched)
       end
     end
+
+    # Hermes ships as a prebuilt release .xcframework with debug info
+    # fully stripped from the binary (confirmed locally: `dsymutil`
+    # against Pods/hermes-engine's ios-arm64 slice warns "no debug
+    # symbols in executable") — and unlike targets Xcode compiles
+    # itself, nothing generates a dSYM for a vendored framework like
+    # this during archiving. App Store Connect's own upload validation
+    # still requires ONE to exist with the matching UUID regardless of
+    # whether it holds real DWARF data ("The archive did not include a
+    # dSYM for the hermes.framework with the UUIDs [...]") — Hermes
+    # crash symbolication is a separate, source-map-based mechanism
+    # anyway, so a structurally-valid-but-empty dSYM is the accepted
+    # fix. Adds a Release-only Run Script build phase to the app target
+    # that generates it on every archive build; idempotent (checked by
+    # phase name) so re-running `pod install` doesn't duplicate it.
+    app_project_path = Dir.glob(File.join(__dir__, '*.xcodeproj')).first
+    if app_project_path
+      app_project = Xcodeproj::Project.open(app_project_path)
+      app_target = app_project.targets.find { |t| t.name == 'ReceiptScanner' }
+      phase_name = 'Generate Hermes dSYM'
+      if app_target && !app_target.shell_script_build_phases.any? { |p| p.name == phase_name }
+        phase = app_target.new_shell_script_build_phase(phase_name)
+        phase.shell_script = <<~SCRIPT
+          if [ "$CONFIGURATION" = "Release" ]; then
+            HERMES_BINARY="${PODS_ROOT}/hermes-engine/destroot/Library/Frameworks/universal/hermes.xcframework/ios-arm64/hermes.framework/hermes"
+            if [ -f "$HERMES_BINARY" ]; then
+              mkdir -p "${DWARF_DSYM_FOLDER_PATH}"
+              dsymutil "$HERMES_BINARY" -o "${DWARF_DSYM_FOLDER_PATH}/hermes.framework.dSYM" || true
+            else
+              echo "warning: Generate Hermes dSYM: no binary at $HERMES_BINARY — hermes-engine's xcframework layout may have changed, update ios/Podfile"
+            fi
+          fi
+        SCRIPT
+        app_project.save
+      end
+    end
   end
 end
