@@ -47,6 +47,21 @@ jest.mock('../../components/ui/Toast', () => ({
   useToast: () => ({ show: mockToastShow, dismiss: jest.fn() }),
 }));
 
+jest.mock('../../lib/EntitlementsContext', () => ({
+  useEntitlements: () => ({
+    loading: false,
+    isPremium: false,
+    offerings: null,
+    refreshOfferings: jest.fn(),
+    purchasePackage: jest.fn(),
+    restorePurchases: jest.fn(),
+  }),
+}));
+
+jest.mock('../../lib/entitlements', () => ({
+  getManagementUrl: jest.fn(async () => null),
+}));
+
 jest.mock('../../lib/database', () => ({
   getAllReceipts: jest.fn(async () => []),
   getCurrentHouseholdId: jest.fn(() => 'hh1'),

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,6 +26,8 @@ import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { ALL_CATEGORIES } from '../constants/categories';
 import { useAuth } from '../lib/AuthContext';
+import { useEntitlements } from '../lib/EntitlementsContext';
+import { getManagementUrl } from '../lib/entitlements';
 import {
   getBudgetAlertsEnabled,
   getBudgetsSnapshot,
@@ -373,7 +376,26 @@ export default function SettingsScreen() {
   const styles = useSettingsStyles();
   const router = useRouter();
   const { user, profile, signOut, deleteAccount, refreshProfile, setActiveHousehold } = useAuth();
+  const { isPremium } = useEntitlements();
   const toast = useToast();
+  const [openingManageSubscription, setOpeningManageSubscription] = useState(false);
+
+  const onManageSubscription = async () => {
+    if (openingManageSubscription) return;
+    setOpeningManageSubscription(true);
+    try {
+      const url = await getManagementUrl();
+      if (url) {
+        await Linking.openURL(url);
+      } else {
+        toast.show({ kind: 'error', message: "Couldn't find your subscription — try again shortly." });
+      }
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't open subscription management." });
+    } finally {
+      setOpeningManageSubscription(false);
+    }
+  };
 
   // Per-category budget amounts (canonical USD) and the "notify near
   // limit" toggle are persisted via lib/secureStorage
@@ -725,6 +747,30 @@ export default function SettingsScreen() {
             >
               <Text style={styles.leaveHouseholdText}>Edit profile</Text>
             </Pressable>
+          </View>
+        </Section>
+
+        <Section title="Premium">
+          <View style={{ padding: theme.spacing.md, gap: theme.spacing.sm }}>
+            <Text style={styles.profileMeta}>
+              {isPremium
+                ? 'You have unlimited AI scans, PDF export, and multiple households.'
+                : 'Unlock unlimited AI scans, PDF export, and multiple households.'}
+            </Text>
+            {isPremium ? (
+              <Pressable
+                onPress={onManageSubscription}
+                disabled={openingManageSubscription}
+                style={[styles.leaveHouseholdBtn, { borderTopWidth: 0 }]}
+                hitSlop={4}
+              >
+                <Text style={styles.leaveHouseholdText}>
+                  {openingManageSubscription ? 'Opening…' : 'Manage subscription'}
+                </Text>
+              </Pressable>
+            ) : (
+              <Button label="Upgrade to Premium" onPress={() => router.push('/paywall')} size="lg" />
+            )}
           </View>
         </Section>
 

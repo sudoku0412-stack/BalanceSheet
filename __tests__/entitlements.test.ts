@@ -29,6 +29,7 @@ import {
   loginPurchases,
   logoutPurchases,
   getIsPremium,
+  getManagementUrl,
   purchasePackage,
   restorePurchases,
   subscribeToEntitlementChanges,
@@ -89,6 +90,18 @@ describe('getIsPremium', () => {
   it('reflects the active entitlement map', async () => {
     mockGetCustomerInfo.mockResolvedValue(customerInfoWith([PREMIUM_ENTITLEMENT_ID]));
     expect(await getIsPremium()).toBe(true);
+  });
+});
+
+describe('getManagementUrl', () => {
+  it('returns the managementURL from CustomerInfo', async () => {
+    mockGetCustomerInfo.mockResolvedValue({ ...customerInfoWith([]), managementURL: 'https://play.google.com/store/account/subscriptions' });
+    expect(await getManagementUrl()).toBe('https://play.google.com/store/account/subscriptions');
+  });
+
+  it('returns null when there is nothing to manage', async () => {
+    mockGetCustomerInfo.mockResolvedValue({ ...customerInfoWith([]), managementURL: null });
+    expect(await getManagementUrl()).toBeNull();
   });
 });
 

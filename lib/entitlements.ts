@@ -79,6 +79,17 @@ export async function getIsPremium(): Promise<boolean> {
   return isPremiumFromInfo(info);
 }
 
+/** URL to the platform's own subscription-management page for this
+ *  user — Play Store or App Store depending on where they subscribed.
+ *  Null if there's no active subscription (nothing to manage) or the
+ *  module isn't linked. */
+export async function getManagementUrl(): Promise<string | null> {
+  const Purchases = loadPurchases();
+  if (!Purchases) return null;
+  const info = await Purchases.getCustomerInfo();
+  return info.managementURL;
+}
+
 export async function getOfferings(): Promise<PurchasesOfferings | null> {
   const Purchases = loadPurchases();
   if (!Purchases) return null;
