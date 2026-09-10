@@ -23,6 +23,16 @@ import {
 } from '../lib/contactsSync';
 
 const REQUEST_TIMEOUT_MS = 15000;
+// matchContacts fires one Firestore lookup per unique phone/email across
+// the WHOLE device contact list (chunked at concurrency 20, see
+// lib/contactsSync.ts) — a flat 15s timeout was firing on real address
+// books of a few hundred contacts even though the sync was still
+// progressing normally, not actually hung. Scale with list size instead;
+// contacts.length is an upper bound on the unique-value count matchContacts
+// actually looks up, so this stays generous without needing to duplicate
+// its dedup logic here.
+const MATCH_TIMEOUT_MS_PER_CONTACT = 150;
+const MATCH_TIMEOUT_MAX_MS = 90000;
 
 /**
  * Full contacts sync: reads every device contact with a phone or
@@ -79,8 +89,12 @@ export default function ContactsSyncScreen() {
         setPhase('denied');
         return;
       }
+      const matchTimeoutMs = Math.min(
+        MATCH_TIMEOUT_MAX_MS,
+        Math.max(REQUEST_TIMEOUT_MS, contacts.length * MATCH_TIMEOUT_MS_PER_CONTACT),
+      );
       const [result, budgetsSnapshot] = await Promise.all([
-        withTimeout(matchContacts(contacts), REQUEST_TIMEOUT_MS),
+        withTimeout(matchContacts(contacts), matchTimeoutMs),
         getBudgetsSnapshot(householdId),
       ]);
       setMatched(result.matched);
