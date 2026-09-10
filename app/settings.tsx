@@ -376,7 +376,7 @@ export default function SettingsScreen() {
   const styles = useSettingsStyles();
   const router = useRouter();
   const { user, profile, signOut, deleteAccount, refreshProfile, setActiveHousehold } = useAuth();
-  const { isPremium } = useEntitlements();
+  const { isPremium, promoRedemption } = useEntitlements();
   const toast = useToast();
   const [openingManageSubscription, setOpeningManageSubscription] = useState(false);
 
@@ -754,20 +754,29 @@ export default function SettingsScreen() {
           <View style={{ padding: theme.spacing.md, gap: theme.spacing.sm }}>
             <Text style={styles.profileMeta}>
               {isPremium
-                ? 'You have unlimited AI scans, PDF export, and multiple households.'
+                ? promoRedemption
+                  ? promoRedemption.grantsPro
+                    ? 'Premium unlocked via promo code.'
+                    : `Premium via promo code until ${promoRedemption.freeUntil?.toLocaleDateString()}.`
+                  : 'You have unlimited AI scans, PDF export, and multiple households.'
                 : 'Unlock unlimited AI scans, PDF export, and multiple households.'}
             </Text>
             {isPremium ? (
-              <Pressable
-                onPress={onManageSubscription}
-                disabled={openingManageSubscription}
-                style={[styles.leaveHouseholdBtn, { borderTopWidth: 0 }]}
-                hitSlop={4}
-              >
-                <Text style={styles.leaveHouseholdText}>
-                  {openingManageSubscription ? 'Opening…' : 'Manage subscription'}
-                </Text>
-              </Pressable>
+              // A promo-only grant has no real store subscription to
+              // manage — only show the link when Premium is actually
+              // coming from a subscription.
+              !promoRedemption && (
+                <Pressable
+                  onPress={onManageSubscription}
+                  disabled={openingManageSubscription}
+                  style={[styles.leaveHouseholdBtn, { borderTopWidth: 0 }]}
+                  hitSlop={4}
+                >
+                  <Text style={styles.leaveHouseholdText}>
+                    {openingManageSubscription ? 'Opening…' : 'Manage subscription'}
+                  </Text>
+                </Pressable>
+              )
             ) : (
               <Button label="Upgrade to Premium" onPress={() => router.push('/paywall')} size="lg" />
             )}

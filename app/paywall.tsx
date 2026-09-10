@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -29,11 +29,13 @@ export default function PaywallScreen() {
   const theme = useTheme();
   const styles = usePaywallStyles();
   const toast = useToast();
-  const { isPremium, offerings, refreshOfferings, purchasePackage, restorePurchases } = useEntitlements();
+  const { isPremium, offerings, refreshOfferings, purchasePackage, restorePurchases, redeemCode } = useEntitlements();
 
   const [loadingOfferings, setLoadingOfferings] = useState(true);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [promoCode, setPromoCode] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -78,6 +80,25 @@ export default function PaywallScreen() {
       // effect above, which shows its own toast and navigates back.
     } finally {
       setPurchasingId(null);
+    }
+  };
+
+  const onRedeem = async () => {
+    if (redeeming || !promoCode.trim()) return;
+    setRedeeming(true);
+    try {
+      const result = await redeemCode(promoCode);
+      if (!result.ok) {
+        toast.show({ kind: 'error', message: result.reason });
+        return;
+      }
+      setPromoCode('');
+      // Success (isPremium becoming true) is handled by the effect
+      // above, which shows its own toast and navigates back.
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't redeem that code." });
+    } finally {
+      setRedeeming(false);
     }
   };
 
@@ -143,6 +164,27 @@ export default function PaywallScreen() {
             })}
           </View>
         )}
+
+        <View style={styles.promoRow}>
+          <TextInput
+            value={promoCode}
+            onChangeText={setPromoCode}
+            placeholder="Promo code"
+            placeholderTextColor={theme.colors.textMuted}
+            autoCapitalize="characters"
+            autoCorrect={false}
+            style={styles.promoInput}
+            editable={!redeeming}
+          />
+          <Button
+            label={redeeming ? 'Applying…' : 'Apply'}
+            onPress={onRedeem}
+            variant="secondary"
+            size="md"
+            loading={redeeming}
+            disabled={redeeming || !promoCode.trim()}
+          />
+        </View>
 
         <Button
           label={restoring ? 'Restoring…' : 'Restore purchases'}
@@ -231,6 +273,19 @@ function usePaywallStyles() {
       marginTop: 2,
     },
     planButton: { marginTop: t.spacing.sm },
+    promoRow: { flexDirection: 'row', gap: t.spacing.sm, alignItems: 'center' },
+    promoInput: {
+      flex: 1,
+      color: t.colors.textPrimary,
+      fontSize: t.font.sm,
+      fontFamily: t.fonts.body.regular,
+      backgroundColor: t.colors.surface,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      borderRadius: t.radius.md,
+      paddingHorizontal: t.spacing.md,
+      paddingVertical: 10,
+    },
     restoreButton: { alignSelf: 'center' },
     legalText: {
       color: t.colors.textMuted,

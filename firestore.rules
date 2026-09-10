@@ -185,5 +185,35 @@ service cloud.firestore {
         && (resource.data.invitedByUid == request.auth.uid
             || resource.data.phone == request.auth.token.phone_number);
     }
+
+    // Promo/discount codes (lib/promoCode.ts). Docs are admin-managed
+    // only — seeded by hand in the Firebase console, never written by
+    // the app (no backend to run a proper admin script against, same
+    // Spark-plan constraint as everywhere else in this file) — so
+    // there's no create/update/delete rule for this collection at all;
+    // the default (no matching allow) already denies every client
+    // write. Read-only, any signed-in user, same as phoneIndex/
+    // emailIndex — the app needs to check a code's active/grantsPro/
+    // freeDays fields before letting the user redeem it.
+    match /promoCodes/{code} {
+      allow read: if request.auth != null;
+    }
+
+    // One redemption record per user, keyed by their own uid — doc id
+    // equals the redeeming uid so `allow create` only ever lets a user
+    // write THEIR OWN record. `allow update: if false` means a second
+    // redemption attempt (the doc already exists) is always rejected —
+    // by design, one promo code per account, ever, no stacking. The
+    // create rule cross-checks the referenced code is currently active
+    // via get() so a client can't redeem an expired/disabled code by
+    // constructing the write directly.
+    match /promoRedemptions/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null
+        && request.auth.uid == uid
+        && request.resource.data.uid == uid
+        && get(/databases/$(database)/documents/promoCodes/$(request.resource.data.code)).data.active == true;
+      allow update, delete: if false;
+    }
   }
 }
