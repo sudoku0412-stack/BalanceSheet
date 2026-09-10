@@ -4,6 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, useColorScheme, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts } from 'expo-font';
 import {
@@ -76,18 +77,20 @@ export default function RootLayout() {
   }
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <ToastProvider>
-          <AuthProvider>
-            <EntitlementsProvider>
-              <ThemedStatusBar />
-              <RootStack />
-            </EntitlementsProvider>
-          </AuthProvider>
-        </ToastProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <EntitlementsProvider>
+                <ThemedStatusBar />
+                <RootStack />
+              </EntitlementsProvider>
+            </AuthProvider>
+          </ToastProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -101,7 +104,7 @@ function ThemedStatusBar() {
 // `target` resolves to `(tabs)` and the user is on one of these, leave
 // them alone — the guard's job is to force users to the auth gate, not
 // to drag them back to /(tabs) every time they open a modal.
-const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'edit-profile', 'reports', 'balances', 'shared-expenses', 'recurring', 'households', 'contacts-sync']);
+const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'edit-profile', 'reports', 'balances', 'shared-expenses', 'recurring', 'households', 'contacts-sync', 'paywall']);
 
 function RootStack() {
   const theme = useTheme();
