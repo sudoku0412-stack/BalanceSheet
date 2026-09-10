@@ -58,7 +58,7 @@ module.exports = ({ config }) => {
       // precedence over app.json's ios.buildNumber, which is kept in
       // sync here purely for a human reader, not because anything
       // reads it.
-      buildNumber: '13',
+      buildNumber: '19',
       googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
         NSCameraUsageDescription:
