@@ -222,8 +222,8 @@ function EditReceiptScreen() {
       borderColor: t.colors.border,
     },
     currencyPillActive: {
-      backgroundColor: t.colors.primary,
-      borderColor: t.isDark ? t.colors.borderLight : t.colors.primary,
+      backgroundColor: t.colors.success,
+      borderColor: t.isDark ? t.colors.borderLight : t.colors.success,
     },
     currencyPillText: {
       fontSize: t.font.xs,
@@ -294,7 +294,6 @@ function EditReceiptScreen() {
     },
     fieldCard: {
       gap: t.spacing.sm,
-      borderRadius: t.radius.lg,
     },
     sectionLabel: {
       fontFamily: t.fonts.display.extraBold,
@@ -568,10 +567,13 @@ function EditReceiptScreen() {
       maxWidth: 400,
       maxHeight: '85%',
       backgroundColor: t.colors.surface,
-      borderRadius: t.radius.lg,
+      borderRadius: 20,
       padding: t.spacing.md,
-      borderWidth: 1,
-      borderColor: t.colors.border,
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: t.isDark ? 0.45 : 0.14,
+      shadowRadius: 14,
+      elevation: 8,
     },
     itemModalTitle: {
       color: t.colors.textPrimary,

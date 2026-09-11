@@ -32,7 +32,7 @@ export function Button({
   const theme = useTheme();
   const styles = useStyles((t) => ({
     base: {
-      borderRadius: t.radius.md,
+      borderRadius: 16,
       alignItems: 'center',
       justifyContent: 'center',
     },
@@ -62,7 +62,7 @@ export function Button({
     disabled: {
       opacity: 0.45,
     },
-    size_sm: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: t.radius.sm },
+    size_sm: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 12 },
     size_md: { paddingHorizontal: 20, paddingVertical: 12 },
     size_lg: { paddingHorizontal: 28, paddingVertical: 16 },
     text: {

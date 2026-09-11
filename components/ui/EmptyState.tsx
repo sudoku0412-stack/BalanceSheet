@@ -88,7 +88,7 @@ export function EmptyState({
       marginTop: t.spacing.md,
       paddingHorizontal: t.spacing.lg,
       paddingVertical: 12,
-      borderRadius: t.radius.md,
+      borderRadius: 16,
       backgroundColor: accent,
     },
     ctaText: {

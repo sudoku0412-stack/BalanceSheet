@@ -5,6 +5,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { Receipt } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
+import { CATEGORY_ICONS } from '../../constants/categories';
 
 interface Props {
   receipt: Receipt;
@@ -30,11 +31,14 @@ export function ReceiptCard({ receipt, onDelete }: Props) {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: t.colors.surface,
-      borderRadius: t.radius.lg,
+      borderRadius: 20,
       padding: t.spacing.md,
-      borderWidth: 1,
-      borderColor: t.colors.border,
       justifyContent: 'space-between',
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     left: {
       flexDirection: 'row',
@@ -43,17 +47,15 @@ export function ReceiptCard({ receipt, onDelete }: Props) {
       flex: 1,
     },
     avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: t.radius.full,
+      width: 44,
+      height: 44,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
     },
     avatarText: {
-      fontFamily: t.fonts.display.bold,
-      fontSize: t.font.md,
-      color: '#fff',
+      fontSize: 20,
     },
     info: {
       flex: 1,
@@ -91,8 +93,10 @@ export function ReceiptCard({ receipt, onDelete }: Props) {
       style={styles.card}
     >
       <View style={styles.left}>
-        <View style={[styles.avatar, { backgroundColor: color }]}>
-          <Text style={styles.avatarText}>{receipt.storeName.charAt(0).toUpperCase()}</Text>
+        <View style={[styles.avatar, { backgroundColor: `${color}26` }]}>
+          <Text style={styles.avatarText}>
+            {CATEGORY_ICONS[receipt.category as keyof typeof CATEGORY_ICONS] ?? '🧾'}
+          </Text>
         </View>
         <View style={styles.info}>
           <Text style={styles.storeName} numberOfLines={1}>

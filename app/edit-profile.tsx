@@ -148,7 +148,7 @@ const makeStyles = (theme: Theme) => ({
   input: {
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.radius.lg,
+    borderRadius: 14,
     paddingHorizontal: theme.spacing.md,
     paddingVertical: 12,
     color: theme.colors.textPrimary,

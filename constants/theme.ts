@@ -119,7 +119,7 @@ export const darkTheme = {
 export const lightTheme = {
   isDark: false,
   colors: {
-    background: '#F7F7F8', // paper-2
+    background: '#F0EDE6', // paper-2 — warm off-white/cream, matches the reference design
     surface: '#FFFFFF', // paper-1
     surfaceHigh: '#EEEEEE', // paper-3
     border: '#E4E4E7', // rule-1

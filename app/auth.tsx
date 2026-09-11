@@ -500,9 +500,10 @@ const makeStyles = (t: Theme) => ({
     borderRadius: t.radius.sm,
   },
   tabBtnActive: {
-    backgroundColor: t.colors.primary,
-    // Dark-navy fill blends into the dark-mode "tabs" pill container;
-    // a light-toned border in dark mode keeps the active tab readable.
+    backgroundColor: t.colors.success,
+    // Dark-mode green fill is already high-contrast against the dark
+    // "tabs" pill container, but keep the same light-border treatment
+    // for consistency with the app's other active-pill states.
     borderWidth: t.isDark ? 1 : 0,
     borderColor: t.isDark ? t.colors.borderLight : 'transparent',
   },

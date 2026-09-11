@@ -263,7 +263,7 @@ export default function ScanScreen() {
     reviewContent: {
       padding: t.spacing.md,
       gap: t.spacing.sm,
-      paddingBottom: 40,
+      paddingBottom: 100,
     },
     receiptThumb: {
       width: '100%',
@@ -392,11 +392,6 @@ export default function ScanScreen() {
     },
     fieldCard: {
       gap: t.spacing.sm,
-      // Cards are sm/lg radius per the design export — not the large
-      // rounded corners the shared Card component's default (t.radius.lg)
-      // currently renders at, so it's overridden to the spec's literal
-      // 4px here until theme.ts's radius scale is corrected.
-      borderRadius: t.radius.lg,
     },
     fieldLabel: {
       color: t.colors.textSecondary,
@@ -463,8 +458,8 @@ export default function ScanScreen() {
       borderColor: t.colors.border,
     },
     currencyPillActive: {
-      backgroundColor: t.colors.primary,
-      borderColor: t.isDark ? t.colors.borderLight : t.colors.primary,
+      backgroundColor: t.colors.success,
+      borderColor: t.isDark ? t.colors.borderLight : t.colors.success,
     },
     currencyPillText: {
       fontSize: t.font.xs,
@@ -608,10 +603,13 @@ export default function ScanScreen() {
       maxWidth: 400,
       maxHeight: '85%',
       backgroundColor: t.colors.surface,
-      borderRadius: t.radius.lg,
+      borderRadius: 20,
       padding: t.spacing.md,
-      borderWidth: 1,
-      borderColor: t.colors.border,
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: t.isDark ? 0.45 : 0.14,
+      shadowRadius: 14,
+      elevation: 8,
     },
     itemModalTitle: {
       color: t.colors.textPrimary,

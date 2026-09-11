@@ -16,7 +16,7 @@ import { getCurrency } from '../../lib/secureStorage';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { Receipt, Category } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
-import { ALL_CATEGORIES } from '../../constants/categories';
+import { ALL_CATEGORIES, CATEGORY_ICONS } from '../../constants/categories';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ReceiptListSkeleton } from '../../components/ui/Skeleton';
 import { receiptMatchesCategory } from '../../lib/receiptFilter';
@@ -93,7 +93,7 @@ export default function HistoryScreen() {
       marginBottom: t.spacing.sm,
       paddingHorizontal: 12,
       backgroundColor: t.colors.surface,
-      borderRadius: t.radius.lg,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: t.colors.border,
     },
@@ -122,10 +122,10 @@ export default function HistoryScreen() {
       borderColor: t.colors.border,
     },
     chipActive: {
-      backgroundColor: t.colors.primary,
+      backgroundColor: t.colors.success,
       // In dark mode, override the border so the chip's shape stays
       // visible against the dark-mode page instead of blending in.
-      borderColor: t.isDark ? t.colors.borderLight : t.colors.primary,
+      borderColor: t.isDark ? t.colors.borderLight : t.colors.success,
     },
     chipLabel: {
       fontFamily: t.fonts.display.bold,
@@ -138,7 +138,7 @@ export default function HistoryScreen() {
     },
     listContent: {
       paddingHorizontal: t.spacing.md,
-      paddingBottom: 32,
+      paddingBottom: 100,
       flexGrow: 1,
     },
     sectionHeaderText: {
@@ -150,11 +150,14 @@ export default function HistoryScreen() {
     },
     card: {
       backgroundColor: t.colors.surface,
-      borderRadius: t.radius.lg,
-      borderWidth: 1,
-      borderColor: t.colors.border,
+      borderRadius: 20,
       overflow: 'hidden',
       marginBottom: t.spacing.sm,
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     row: {
       flexDirection: 'row',
@@ -167,17 +170,15 @@ export default function HistoryScreen() {
       borderBottomColor: t.colors.border,
     },
     avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: t.radius.full,
+      width: 44,
+      height: 44,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
     },
     avatarText: {
-      fontFamily: t.fonts.display.bold,
-      fontSize: t.font.md,
-      color: '#FFFFFF',
+      fontSize: 20,
     },
     rowInfo: {
       flex: 1,
@@ -404,11 +405,11 @@ export default function HistoryScreen() {
                       <View
                         style={[
                           styles.avatar,
-                          { backgroundColor: theme.colors.category[r.category] },
+                          { backgroundColor: `${theme.colors.category[r.category]}26` },
                         ]}
                       >
                         <Text style={styles.avatarText}>
-                          {r.storeName.charAt(0).toUpperCase()}
+                          {CATEGORY_ICONS[r.category as keyof typeof CATEGORY_ICONS] ?? '🧾'}
                         </Text>
                       </View>
                       <View style={styles.rowInfo}>

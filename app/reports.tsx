@@ -461,16 +461,19 @@ function useReportsStyles() {
   content: {
     padding: theme.spacing.md,
     gap: theme.spacing.md,
-    paddingBottom: 40,
+    paddingBottom: 100,
   },
   summaryCard: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.lg,
+    borderRadius: 20,
     padding: theme.spacing.lg,
     alignItems: 'stretch',
     gap: theme.spacing.sm,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
+    shadowColor: theme.isDark ? '#000' : '#0C0F24',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: theme.isDark ? 0.4 : 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
   summaryTopRow: {
     flexDirection: 'row',
@@ -501,9 +504,14 @@ function useReportsStyles() {
   },
   sectionBody: {
     backgroundColor: theme.colors.surface,
-    borderRadius: theme.radius.md,
+    borderRadius: 20,
     padding: theme.spacing.sm,
     gap: theme.spacing.xs,
+    shadowColor: theme.isDark ? '#000' : '#0C0F24',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: theme.isDark ? 0.4 : 0.08,
+    shadowRadius: 10,
+    elevation: 2,
   },
   row: {
     flexDirection: 'row',
@@ -545,7 +553,7 @@ function useReportsStyles() {
   exportButton: {
     flex: 1,
     height: 44,
-    borderRadius: theme.radius.lg,
+    borderRadius: 16,
   },
   }));
 }

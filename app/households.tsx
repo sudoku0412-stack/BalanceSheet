@@ -535,13 +535,17 @@ function useHouseholdsStyles() {
     },
     card: {
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      borderRadius: 20,
       marginBottom: theme.spacing.sm,
+      shadowColor: theme.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: theme.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     cardActive: {
-      borderColor: theme.colors.accent,
+      borderWidth: 2,
+      borderColor: theme.colors.success,
     },
     row: {
       flexDirection: 'row',
@@ -585,8 +589,8 @@ function useHouseholdsStyles() {
       alignItems: 'center',
       width: 84,
       marginBottom: theme.spacing.sm,
-      borderTopRightRadius: theme.radius.lg,
-      borderBottomRightRadius: theme.radius.lg,
+      borderTopRightRadius: 20,
+      borderBottomRightRadius: 20,
       gap: 2,
     },
     deleteActionText: {

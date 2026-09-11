@@ -14,13 +14,24 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { computeStats } from '../../lib/dashboardStats';
 import { RECURRING_BUDGET_KEY, isRecurringExpense } from '../../lib/recurring';
 import { useAuth } from '../../lib/AuthContext';
+import type { Profile } from '../../lib/profile';
 import { onLocalDataChanged } from '../../lib/dataSync';
+import { CATEGORY_ICONS } from '../../constants/categories';
 
-function greeting(): string {
+function greeting(firstName: string | null): string {
   const h = new Date().getHours();
-  if (h < 12) return 'Good morning';
-  if (h < 18) return 'Good afternoon';
-  return 'Good evening';
+  const base = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  return firstName ? `${base}, ${firstName}` : base;
+}
+
+// Firebase Auth's displayName is already auto-populated from Google/Apple
+// sign-in (see lib/auth.ts) and backfilled for email/password accounts
+// from the local profile (see AuthContext.tsx) — this just picks whichever
+// is available and takes the first token, since the greeting has no room
+// for a full name.
+function firstNameOf(displayName: string | null | undefined, profile: Profile | null): string | null {
+  const full = displayName?.trim() || (profile ? `${profile.firstName} ${profile.lastName}`.trim() : '');
+  return full ? full.split(/\s+/)[0] : null;
 }
 
 function dateLabel(date: Date): string {
@@ -43,13 +54,13 @@ function budgetStatus(spent: number, limit: number): BudgetStatus {
 
 export default function DashboardScreen() {
   const theme = useTheme();
-  const { memberships } = useAuth();
+  const { memberships, user, profile } = useAuth();
   const styles = useStyles((t) => ({
     screen: { flex: 1, backgroundColor: t.colors.background },
     content: {
       paddingHorizontal: 20,
       paddingTop: t.spacing.lg,
-      paddingBottom: 32,
+      paddingBottom: 100,
       gap: t.spacing.lg,
     },
     householdRow: {
@@ -79,12 +90,17 @@ export default function DashboardScreen() {
     },
 
     heroCard: {
-      borderRadius: t.radius.lg,
+      borderRadius: 24,
       paddingHorizontal: 22,
       paddingVertical: 20,
       backgroundColor: t.colors.primary,
       overflow: 'hidden',
       position: 'relative',
+      shadowColor: '#0C0F24',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.25,
+      shadowRadius: 14,
+      elevation: 4,
     },
     heroDecorCircle: {
       position: 'absolute',
@@ -155,17 +171,21 @@ export default function DashboardScreen() {
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
-      height: 44,
-      borderRadius: t.radius.sm,
-      borderWidth: 1,
-      borderColor: t.colors.border,
+      gap: 6,
+      paddingVertical: 14,
+      borderRadius: 16,
       backgroundColor: t.colors.surface,
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: t.isDark ? 0.35 : 0.06,
+      shadowRadius: 8,
+      elevation: 1,
     },
     actionBtnText: {
       color: t.colors.textPrimary,
       fontFamily: t.fonts.display.bold,
-      fontSize: t.font.sm,
-      letterSpacing: 0.3,
+      fontSize: t.font.xs,
+      letterSpacing: 0.2,
     },
 
     section: { gap: t.spacing.sm },
@@ -189,10 +209,13 @@ export default function DashboardScreen() {
 
     budgetCard: {
       backgroundColor: t.colors.surface,
-      borderRadius: t.radius.lg,
-      borderWidth: 1,
-      borderColor: t.colors.border,
+      borderRadius: 20,
       overflow: 'hidden',
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     budgetRow: {
       flexDirection: 'row',
@@ -231,11 +254,14 @@ export default function DashboardScreen() {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: t.colors.surface,
-      borderRadius: t.radius.lg,
+      borderRadius: 20,
       padding: t.spacing.md,
-      borderWidth: 1,
-      borderColor: t.colors.border,
       justifyContent: 'space-between',
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     rowLeft: {
       flexDirection: 'row',
@@ -244,17 +270,15 @@ export default function DashboardScreen() {
       flex: 1,
     },
     avatar: {
-      width: 40,
-      height: 40,
-      borderRadius: t.radius.full,
+      width: 44,
+      height: 44,
+      borderRadius: 14,
       alignItems: 'center',
       justifyContent: 'center',
       flexShrink: 0,
     },
     avatarText: {
-      fontFamily: t.fonts.display.bold,
-      fontSize: t.font.md,
-      color: '#fff',
+      fontSize: 20,
     },
     rowInfo: { flex: 1, gap: 2 },
     merchantName: {
@@ -427,7 +451,7 @@ export default function DashboardScreen() {
         <View style={styles.heroCard}>
           <View style={styles.heroDecorCircle} />
           <Ionicons name="receipt" size={120} color="#fff" style={styles.heroDecorWatermark} />
-          <Text style={styles.heroLabel}>{greeting()}</Text>
+          <Text style={styles.heroLabel}>{greeting(firstNameOf(user?.displayName, profile))}</Text>
           <Text style={styles.heroAmount}>{formatCurrency(stats.totalSpent, currency)}</Text>
           <View style={styles.monthNavRow}>
             <TouchableOpacity
@@ -478,12 +502,15 @@ export default function DashboardScreen() {
             style={styles.actionBtn}
             onPress={() => router.push('/(tabs)/scan?mode=manual' as never)}
           >
-            <Text style={styles.actionBtnText}>+ Add manually</Text>
+            <Ionicons name="add-circle-outline" size={20} color={theme.colors.textPrimary} />
+            <Text style={styles.actionBtnText}>Add manually</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/recurring' as never)}>
+            <Ionicons name="repeat-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Recurring</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/balances' as never)}>
+            <Ionicons name="wallet-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Balances</Text>
           </TouchableOpacity>
         </View>
@@ -555,8 +582,10 @@ export default function DashboardScreen() {
                     onPress={() => router.push(`/edit/${r.id}` as never)}
                   >
                     <View style={styles.rowLeft}>
-                      <View style={[styles.avatar, { backgroundColor: color }]}>
-                        <Text style={styles.avatarText}>{r.storeName.charAt(0).toUpperCase()}</Text>
+                      <View style={[styles.avatar, { backgroundColor: `${color}26` }]}>
+                        <Text style={styles.avatarText}>
+                          {CATEGORY_ICONS[r.category as keyof typeof CATEGORY_ICONS] ?? '🧾'}
+                        </Text>
                       </View>
                       <View style={styles.rowInfo}>
                         <Text style={styles.merchantName} numberOfLines={1}>

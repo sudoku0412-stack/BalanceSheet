@@ -69,7 +69,7 @@ function useSettingsStyles() {
     scroll: {
       paddingHorizontal: theme.spacing.lg,
       paddingTop: theme.spacing.lg,
-      paddingBottom: theme.spacing.xl,
+      paddingBottom: 100,
     },
     screenTitle: {
       color: theme.colors.textPrimary,
@@ -91,10 +91,13 @@ function useSettingsStyles() {
     },
     card: {
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      borderRadius: 20,
       overflow: 'hidden',
+      shadowColor: theme.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: theme.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     profileHeader: {
       flexDirection: 'row',
@@ -154,10 +157,10 @@ function useSettingsStyles() {
       paddingVertical: 8,
     },
     currencyPillActive: {
-      backgroundColor: theme.colors.primary,
+      backgroundColor: theme.colors.success,
       // In dark mode, override the border so the pill's shape stays
       // visible against the dark-mode page instead of blending in.
-      borderColor: theme.isDark ? theme.colors.borderLight : theme.colors.primary,
+      borderColor: theme.isDark ? theme.colors.borderLight : theme.colors.success,
     },
     currencyPillText: {
       color: theme.colors.textPrimary,
