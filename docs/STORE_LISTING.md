@@ -1,4 +1,4 @@
-# Google Play Store Listing — Receipt Scanner
+# Google Play Store Listing — NestExpenseTracker
 
 Copy/paste these fields into the Play Console when creating the store listing.
 
