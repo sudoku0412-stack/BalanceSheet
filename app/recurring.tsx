@@ -11,6 +11,7 @@ import { getCurrency } from '../lib/secureStorage';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { parseYmdLocal } from '../lib/parser';
 import { Receipt } from '../types';
+import { CATEGORY_ICONS } from '../constants/categories';
 
 type Template = { receipt: Receipt; nextDueDate: string; endDate: string; frequency: string };
 
@@ -79,11 +80,18 @@ export default function RecurringScreen() {
             <TouchableOpacity
               key={r.id}
               activeOpacity={0.7}
-              style={styles.card}
+              style={[styles.card, { borderLeftColor: theme.colors.category[r.category] }]}
               onPress={() => router.push(`/edit/${r.id}`)}
             >
               <View style={styles.row}>
-                <View style={[styles.categoryDot, { backgroundColor: theme.colors.category[r.category] }]} />
+                <View
+                  style={[
+                    styles.categoryIcon,
+                    { backgroundColor: `${theme.colors.category[r.category]}26` },
+                  ]}
+                >
+                  <Text style={styles.categoryIconGlyph}>{CATEGORY_ICONS[r.category] ?? '🔁'}</Text>
+                </View>
                 <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
                   <Text style={styles.name} numberOfLines={1}>{r.storeName}</Text>
                   <Text style={styles.meta}>
@@ -111,10 +119,14 @@ function useRecurringStyles() {
     },
     card: {
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      borderRadius: 20,
       marginBottom: theme.spacing.sm,
+      borderLeftWidth: 3,
+      shadowColor: theme.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: theme.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     row: {
       flexDirection: 'row',
@@ -122,10 +134,16 @@ function useRecurringStyles() {
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.md,
     },
-    categoryDot: {
-      width: 12,
-      height: 12,
-      borderRadius: theme.radius.full,
+    categoryIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    categoryIconGlyph: {
+      fontSize: 17,
     },
     name: {
       color: theme.colors.textPrimary,
@@ -146,7 +164,7 @@ function useRecurringStyles() {
     },
     amount: {
       fontSize: theme.font.md,
-      fontFamily: theme.fonts.display.extraBold,
+      fontFamily: theme.fonts.mono.medium,
       color: theme.colors.textPrimary,
     },
   }));

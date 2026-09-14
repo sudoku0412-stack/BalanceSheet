@@ -206,7 +206,7 @@ export default function BalancesScreen() {
                   style={styles.row}
                   onPress={() => router.push(`/shared-expenses/${b.memberUid}`)}
                 >
-                  <View style={styles.avatar}>
+                  <View style={[styles.avatar, { backgroundColor: statusColor }]}>
                     <Text style={styles.avatarInitials}>{initialFor(label)}</Text>
                   </View>
                   <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
@@ -297,11 +297,14 @@ function useBalancesStyles() {
     },
     card: {
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      borderRadius: 20,
       marginBottom: theme.spacing.sm,
       overflow: 'hidden',
+      shadowColor: theme.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: theme.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     row: {
       flexDirection: 'row',
@@ -363,7 +366,7 @@ function useBalancesStyles() {
       fontFamily: theme.fonts.mono.regular,
       fontSize: theme.font.md,
       backgroundColor: theme.colors.surfaceHigh,
-      borderRadius: theme.radius.sm,
+      borderRadius: 10,
       borderWidth: 1,
       borderColor: theme.colors.border,
       paddingHorizontal: 10,
@@ -371,7 +374,7 @@ function useBalancesStyles() {
     },
     partialConfirmBtn: {
       backgroundColor: theme.colors.accent,
-      borderRadius: theme.radius.sm,
+      borderRadius: 10,
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
@@ -411,7 +414,7 @@ function useBalancesStyles() {
     },
     amount: {
       fontSize: theme.font.md,
-      fontFamily: theme.fonts.display.extraBold,
+      fontFamily: theme.fonts.mono.medium,
     },
   }));
 }

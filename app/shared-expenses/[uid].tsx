@@ -120,7 +120,10 @@ export default function SharedExpensesScreen() {
               <Text
                 style={[
                   styles.totalAmount,
-                  { color: totalOwesYou ? theme.colors.success : theme.colors.error },
+                  // Light tints (not the plain success/error colors) so the
+                  // owed-to-you/you-owe cue stays readable against the dark
+                  // navy hero card — same convention as Home's trend pill.
+                  { color: totalOwesYou ? '#9FE0C8' : '#F0B4B6' },
                 ]}
               >
                 {formatCurrency(Math.abs(totalNet), currency)}
@@ -203,31 +206,37 @@ function useSharedExpensesStyles() {
       paddingBottom: theme.spacing.xl,
     },
     totalCard: {
-      backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
-      paddingHorizontal: theme.spacing.md,
-      paddingVertical: theme.spacing.md,
+      backgroundColor: theme.colors.primary,
+      borderRadius: 20,
+      paddingHorizontal: theme.spacing.lg,
+      paddingVertical: theme.spacing.lg,
       marginBottom: theme.spacing.md,
       alignItems: 'center',
+      shadowColor: '#0C0F24',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.3,
+      shadowRadius: 14,
+      elevation: 4,
     },
     totalLabel: {
-      color: theme.colors.textSecondary,
+      color: 'rgba(255,255,255,0.65)',
       fontSize: theme.font.sm,
       fontFamily: theme.fonts.body.regular,
       marginBottom: 4,
     },
     totalAmount: {
-      fontSize: theme.font.xxl,
-      fontFamily: theme.fonts.display.extraBold,
+      fontSize: 30,
+      fontFamily: theme.fonts.mono.medium,
     },
     card: {
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.lg,
-      borderWidth: 1,
-      borderColor: theme.colors.border,
+      borderRadius: 20,
       overflow: 'hidden',
+      shadowColor: theme.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: theme.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
     },
     row: {
       flexDirection: 'row',
@@ -270,7 +279,7 @@ function useSharedExpensesStyles() {
     },
     rowAmount: {
       fontSize: theme.font.md,
-      fontFamily: theme.fonts.display.extraBold,
+      fontFamily: theme.fonts.mono.medium,
       flexShrink: 0,
       textAlign: 'right',
     },
