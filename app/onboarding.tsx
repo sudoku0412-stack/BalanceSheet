@@ -187,7 +187,14 @@ function SlideView({ slide, width }: { slide: Slide; width: number }) {
         <View style={[styles.decorCircleOuter, { backgroundColor: `${tileColor}14` }]} />
         <View style={[styles.decorCircleInner, { backgroundColor: `${tileColor}22` }]} />
         <Animated.View
-          style={[styles.iconTile, { backgroundColor: tileColor, transform: [{ scale: pulse }] }]}
+          style={[
+            styles.iconTile,
+            {
+              backgroundColor: tileColor,
+              transform: [{ scale: pulse }],
+              shadowColor: tileColor,
+            },
+          ]}
         >
           <Ionicons name={slide.icon} size={48} color="#fff" />
         </Animated.View>
@@ -241,9 +248,16 @@ const makeStyles = (t: Theme) => ({
   iconTile: {
     width: 108,
     height: 108,
-    borderRadius: t.radius.lg,
+    // 28px keeps the same ~26% radius-to-size ratio as the approved
+    // prototype's 82px/22px tile — t.radius.lg (4px) is the stale
+    // "mostly-square" token and would regress this to a near-square.
+    borderRadius: 28,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 16,
+    elevation: 6,
   },
   title: {
     color: t.colors.textPrimary,
@@ -275,7 +289,9 @@ const makeStyles = (t: Theme) => ({
     backgroundColor: t.colors.border,
   },
   dotActive: {
-    width: 6,
+    // Widen into a pill for the active step, matching the prototype's
+    // 18px active-dot treatment.
+    width: 18,
     backgroundColor: t.colors.success,
     borderWidth: t.isDark ? 1 : 0,
     borderColor: t.isDark ? t.colors.borderLight : 'transparent',
