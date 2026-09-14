@@ -520,7 +520,7 @@ export default function DashboardScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Budgets</Text>
-              <TouchableOpacity onPress={() => router.push('/settings' as never)} hitSlop={8}>
+              <TouchableOpacity onPress={() => router.push('/settings?section=budgets' as never)} hitSlop={8}>
                 <Text style={styles.sectionLink}>Manage</Text>
               </TouchableOpacity>
             </View>

@@ -1,6 +1,24 @@
 import React from 'react';
 import { render, waitFor, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import type { Receipt } from '../../types';
+
+/** Climbs the rendered-instance parent chain from `node` until it finds
+ *  one whose flattened style carries an `elevation` key (the card-style
+ *  wrapper), rather than assuming a fixed number of parent hops — which
+ *  would silently point at the wrong node the next time this section's
+ *  JSX nesting changes. */
+function nearestCardAncestorStyle(node: { parent: any; props?: Record<string, unknown> }) {
+  let current: any = node;
+  while (current) {
+    const flattened = StyleSheet.flatten(current.props?.style);
+    if (flattened && Object.prototype.hasOwnProperty.call(flattened, 'elevation')) {
+      return flattened;
+    }
+    current = current.parent;
+  }
+  throw new Error('No ancestor with an `elevation` style key was found.');
+}
 
 // NOTE: mocks below that return plain object literals (expo-router,
 // lib/database, lib/secureStorage, lib/notifications) build their
@@ -128,5 +146,50 @@ describe('DashboardScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('No receipts yet')).toBeTruthy();
     });
+  });
+
+  // app/(tabs)/index.tsx gives its card surfaces (budgetCard, the
+  // recent-expenses row, etc.) BOTH an iOS shadow key set
+  // (shadowColor/shadowOffset/shadowOpacity/shadowRadius) and Android's
+  // `elevation` on the same style object — RN itself picks the relevant
+  // half per platform at native render time, so there's no Platform.OS
+  // branch in JS to assert per-OS. What the restyle CAN silently drop is
+  // one half of that pair; this pins down that both are still present
+  // together, asserting only that the right keys exist (not their
+  // literal shadow/elevation values).
+  it('gives both the budget card and the recent-expenses row the full cross-platform shadow key set', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Groceries: 100 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({ id: 'r1', totalAmount: 40, storeName: 'Coffee Shop', category: 'Groceries' }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeTruthy();
+    });
+
+    const budgetCardStyle = nearestCardAncestorStyle(screen.getByText('Groceries'));
+    expect(budgetCardStyle).toEqual(
+      expect.objectContaining({
+        shadowColor: expect.anything(),
+        shadowOffset: expect.anything(),
+        shadowOpacity: expect.anything(),
+        shadowRadius: expect.anything(),
+        elevation: expect.anything(),
+      }),
+    );
+
+    const rowCardStyle = nearestCardAncestorStyle(screen.getByText('Coffee Shop'));
+    expect(rowCardStyle).toEqual(
+      expect.objectContaining({
+        shadowColor: expect.anything(),
+        shadowOffset: expect.anything(),
+        shadowOpacity: expect.anything(),
+        shadowRadius: expect.anything(),
+        elevation: expect.anything(),
+      }),
+    );
   });
 });
