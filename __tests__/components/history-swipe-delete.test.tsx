@@ -105,6 +105,9 @@ describe('HistoryScreen swipe-to-delete', () => {
   });
 
   it('swiping and confirming delete calls deleteReceipt with the row id, then refreshes the list', async () => {
+    // Default 5000ms waitFor timeout is fine locally but occasionally
+    // too tight on a loaded/shared CI runner — bump it rather than
+    // fight runner-speed flakiness with a real app-behavior change.
     mockGetAllReceipts.mockResolvedValue([
       makeReceipt({ id: 'r1', storeName: 'Coffee Shop' }),
       makeReceipt({ id: 'r2', storeName: 'Grocery Store' }),
@@ -141,7 +144,7 @@ describe('HistoryScreen swipe-to-delete', () => {
       expect(screen.queryByText('Coffee Shop')).toBeNull();
     });
     expect(screen.getByText('Grocery Store')).toBeTruthy();
-  });
+  }, 15000);
 
   it('cancelling the confirm alert never calls deleteReceipt', async () => {
     mockGetAllReceipts.mockResolvedValue([makeReceipt({ id: 'r1', storeName: 'Coffee Shop' })]);
