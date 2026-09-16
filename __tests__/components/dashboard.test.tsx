@@ -70,10 +70,11 @@ jest.mock('uuid', () => ({
 
 import DashboardScreen from '../../app/(tabs)/index';
 import { getReceiptsByMonth } from '../../lib/database';
-import { getCategoryBudgets } from '../../lib/secureStorage';
+import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 
 const mockGetReceiptsByMonth = getReceiptsByMonth as jest.Mock;
 const mockGetCategoryBudgets = getCategoryBudgets as jest.Mock;
+const mockGetCurrency = getCurrency as jest.Mock;
 
 function makeReceipt(overrides: Partial<Receipt>): Receipt {
   return {
@@ -90,6 +91,7 @@ describe('DashboardScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetCategoryBudgets.mockResolvedValue({});
+    mockGetCurrency.mockResolvedValue('USD');
     // First call = current month, second call (inside load()) = previous
     // month for the trend comparison — default both to empty unless a
     // test overrides.
@@ -178,6 +180,42 @@ describe('DashboardScreen', () => {
     });
     // 40 spent of a 100 total configured budget = 40%.
     expect(screen.getByText('40%')).toBeTruthy();
+  });
+
+  // Regression test for e1c552b: a large converted total (e.g. "CA$11726.55")
+  // used to overflow the fixed-width hero row and clip/overlap the pace
+  // ring. The fix wraps the amount in a shrinkable container and lets the
+  // Text scale its own font down — this pins both halves of that fix:
+  // the ring still renders fully, and the amount Text still carries the
+  // shrink-to-fit props, so neither regresses silently later.
+  it('shrinks the hero amount to fit instead of clipping the pace ring, for a large converted total', async () => {
+    mockGetCurrency.mockResolvedValue('CAD');
+    mockGetCategoryBudgets.mockResolvedValue({ Groceries: 8497.5 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([makeReceipt({ id: 'r1', totalAmount: 8497.5, category: 'Groceries' })])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    // 8497.5 USD * 1.38 CAD/USD = CA$11726.55 — the exact large total from
+    // the real device screenshot that exposed this bug. The same string
+    // also shows up in the budget row and the recent-expenses row (same
+    // amount, unrelated Text nodes), so disambiguate by picking the one
+    // wrapped in adjustsFontSizeToFit — that's the hero amount.
+    await waitFor(() => {
+      expect(screen.getAllByText('CA$11726.55').length).toBeGreaterThan(0);
+    });
+    const amountText = screen
+      .getAllByText('CA$11726.55')
+      .find((node) => node.props.adjustsFontSizeToFit);
+    expect(amountText).toBeTruthy();
+    expect(amountText!.props.numberOfLines).toBe(1);
+    expect(amountText!.props.adjustsFontSizeToFit).toBe(true);
+
+    // The pace ring (spent == budget, so 100% of budget) must still be
+    // fully rendered alongside the shrunk amount, not clipped or hidden.
+    expect(screen.getByTestId('pace-ring')).toBeTruthy();
+    expect(screen.getByText('100%')).toBeTruthy();
+    expect(screen.getByText('of budget')).toBeTruthy();
   });
 
   it('shows the "Where it went" composition bar only when there is category spend', async () => {
