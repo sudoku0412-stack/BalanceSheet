@@ -183,6 +183,10 @@ export default function DashboardScreen() {
       fontSize: 38,
       marginTop: 4,
     },
+    heroAmountShrinkWrap: {
+      flexShrink: 1,
+      minWidth: 0,
+    },
     heroAmountRow: {
       flexDirection: 'row',
       alignItems: 'flex-end',
@@ -601,7 +605,16 @@ export default function DashboardScreen() {
           <Ionicons name="receipt" size={120} color="#fff" style={styles.heroDecorWatermark} />
           <Text style={styles.heroLabel}>{greeting(firstNameOf(user?.displayName, profile))}</Text>
           <View style={styles.heroAmountRow}>
-            <Text style={styles.heroAmount}>{formatCurrency(stats.totalSpent, currency)}</Text>
+            <View style={styles.heroAmountShrinkWrap}>
+              <Text
+                style={styles.heroAmount}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.5}
+              >
+                {formatCurrency(stats.totalSpent, currency)}
+              </Text>
+            </View>
             {showPaceRing && (
               <View style={styles.paceRingWrap}>
                 <View style={styles.paceRingCircleWrap}>
