@@ -3,6 +3,10 @@ import { render, waitFor, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import type { Receipt } from '../../types';
 
+// react-native-svg's mocked/native renderer doesn't matter here — these
+// tests only assert that a ring (SVG) with the expected testID is present
+// or absent, not anything about how it draws.
+
 /** Climbs the rendered-instance parent chain from `node` until it finds
  *  one whose flattened style carries an `elevation` key (the card-style
  *  wrapper), rather than assuming a fixed number of parent hops — which
@@ -146,6 +150,72 @@ describe('DashboardScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('No receipts yet')).toBeTruthy();
     });
+  });
+
+  it('shows the hero pace ring only when at least one budget is configured', async () => {
+    // No budgets configured at all (default mock) — the pace ring has
+    // nothing meaningful to show a percentage of, so it should be hidden.
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([makeReceipt({ id: 'r1', totalAmount: 20 })])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('1 expense this month')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('pace-ring')).toBeNull();
+  });
+
+  it('shows the hero pace ring once a budget exists', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Groceries: 100 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([makeReceipt({ id: 'r1', totalAmount: 40, category: 'Groceries' })])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pace-ring')).toBeTruthy();
+    });
+    // 40 spent of a 100 total configured budget = 40%.
+    expect(screen.getByText('40%')).toBeTruthy();
+  });
+
+  it('shows the "Where it went" composition bar only when there is category spend', async () => {
+    mockGetReceiptsByMonth.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No receipts yet')).toBeTruthy();
+    });
+    expect(screen.queryByText('Where it went')).toBeNull();
+
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({ id: 'r1', totalAmount: 20, category: 'Dining' }),
+        makeReceipt({ id: 'r2', totalAmount: 30, category: 'Groceries' }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Where it went')[0]).toBeTruthy();
+    });
+  });
+
+  it('renders each budget as its own ring chip instead of a linear bar', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Groceries: 100, Dining: 50 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({ id: 'r1', totalAmount: 40, category: 'Groceries' }),
+        makeReceipt({ id: 'r2', totalAmount: 10, category: 'Dining' }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeTruthy();
+    });
+    expect(screen.getAllByTestId('budget-ring')).toHaveLength(2);
   });
 
   // app/(tabs)/index.tsx gives its card surfaces (budgetCard, the
