@@ -8,13 +8,13 @@
 
 /* Begin PBXBuildFile section */
 		0EA4A5606D500AE3150B1223 /* Pods_ReceiptScanner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = B1227359478CB4C3DBE8E17A /* Pods_ReceiptScanner.framework */; };
-		13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.mm */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
 		36D3E87551134C529ACDC9C2 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 0C8B87E88827482DA885578F /* GoogleService-Info.plist */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
 		47FB7B4412870BD26846C274 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = F4D4EE3B0443C066E4E4F430 /* PrivacyInfo.xcprivacy */; };
 		AD0A78720751417BB922B3E4 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBA64FA8D1FD4989BC428A68 /* noop-file.swift */; };
+		AE0317A4BE79DA2BFF28C84F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F4149B45639655DA002FDCE /* AppDelegate.swift */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 /* End PBXBuildFile section */
@@ -22,11 +22,10 @@
 /* Begin PBXFileReference section */
 		0C8B87E88827482DA885578F /* GoogleService-Info.plist */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 4; includeInIndex = 0; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "ReceiptScanner/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* NestExpenseTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NestExpenseTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FAF1A68108700A75B9A /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = AppDelegate.h; path = ReceiptScanner/AppDelegate.h; sourceTree = "<group>"; };
-		13B07FB01A68108700A75B9A /* AppDelegate.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = AppDelegate.mm; path = ReceiptScanner/AppDelegate.mm; sourceTree = "<group>"; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = ReceiptScanner/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = ReceiptScanner/Info.plist; sourceTree = "<group>"; };
 		13B07FB71A68108700A75B9A /* main.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; name = main.m; path = ReceiptScanner/main.m; sourceTree = "<group>"; };
+		4F4149B45639655DA002FDCE /* AppDelegate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ReceiptScanner/AppDelegate.swift; sourceTree = "<group>"; };
 		6C2E3173556A471DD304B334 /* Pods-ReceiptScanner.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ReceiptScanner.debug.xcconfig"; path = "Target Support Files/Pods-ReceiptScanner/Pods-ReceiptScanner.debug.xcconfig"; sourceTree = "<group>"; };
 		7A4D352CD337FB3A3BF06240 /* Pods-ReceiptScanner.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ReceiptScanner.release.xcconfig"; path = "Target Support Files/Pods-ReceiptScanner/Pods-ReceiptScanner.release.xcconfig"; sourceTree = "<group>"; };
 		9C816B54302120BC0009A6D3 /* ReceiptScannerRelease.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = ReceiptScannerRelease.entitlements; path = ReceiptScanner/ReceiptScannerRelease.entitlements; sourceTree = "<group>"; };
@@ -57,8 +56,6 @@
 			children = (
 				9C816B54302120BC0009A6D3 /* ReceiptScannerRelease.entitlements */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
-				13B07FAF1A68108700A75B9A /* AppDelegate.h */,
-				13B07FB01A68108700A75B9A /* AppDelegate.mm */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				13B07FB71A68108700A75B9A /* main.m */,
@@ -67,6 +64,7 @@
 				EBA64FA8D1FD4989BC428A68 /* noop-file.swift */,
 				DAB017C9987C4CA88C439240 /* ReceiptScanner-Bridging-Header.h */,
 				F4D4EE3B0443C066E4E4F430 /* PrivacyInfo.xcprivacy */,
+				4F4149B45639655DA002FDCE /* AppDelegate.swift */,
 			);
 			name = ReceiptScanner;
 			sourceTree = "<group>";
@@ -437,10 +435,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
 				AD0A78720751417BB922B3E4 /* noop-file.swift in Sources */,
+				AE0317A4BE79DA2BFF28C84F /* AppDelegate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

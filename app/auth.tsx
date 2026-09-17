@@ -375,7 +375,7 @@ function AppleButton() {
       onPress={onPress}
       loading={loading}
       variant="secondary"
-      style={{ ...styles.socialButton, marginTop: 0 }}
+      style={styles.socialButton}
       textStyle={styles.socialButtonText}
     />
   );

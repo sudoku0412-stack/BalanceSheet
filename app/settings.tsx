@@ -38,6 +38,7 @@ import {
   setCurrency as persistCurrency,
 } from '../lib/secureStorage';
 import { getAllReceipts, getCurrentHouseholdId } from '../lib/database';
+import { humanizeAuthError } from '../lib/authErrors';
 import { registerForPushNotificationsAsync, requestNotificationPermission } from '../lib/notifications';
 import {
   getHouseholdMembers,
@@ -674,7 +675,21 @@ export default function SettingsScreen() {
   const confirmSignOut = () => {
     Alert.alert('Sign out?', 'You will need to sign in again to use the app.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign out', style: 'destructive', onPress: () => signOut() },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          // signOut() is async and this onPress return value is
+          // ignored by Alert — an uncaught rejection here (e.g. a
+          // GoogleSignin/Firebase native call throwing) previously
+          // vanished silently: no error shown, no redirect, the user
+          // just stayed on Settings with no indication anything
+          // happened.
+          signOut().catch((e) => {
+            toast.show({ kind: 'error', message: humanizeAuthError(e) });
+          });
+        },
+      },
     ]);
   };
 

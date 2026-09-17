@@ -99,6 +99,13 @@ export default function TabLayout() {
       shadowOpacity: t.isDark ? 0.45 : 0.14,
       shadowRadius: 14,
       elevation: 8,
+      // React Navigation pads the tab bar by the bottom safe-area inset
+      // by default, assuming it sits flush against the screen edge.
+      // This one floats (bottom: 16 above), so that padding just eats
+      // into the fixed 64px height instead — squeezing the icon+label
+      // column until it pokes up past the pill's rounded top edge.
+      paddingTop: 0,
+      paddingBottom: 0,
     },
     scanButton: {
       width: 56,
