@@ -1,5 +1,7 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   View,
   Text,
   ScrollView,
@@ -7,11 +9,12 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter, useNavigation } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { isToday, isYesterday, format } from 'date-fns';
-import { getAllReceipts, searchReceipts } from '../../lib/database';
+import { deleteReceipt, getAllReceipts, searchReceipts } from '../../lib/database';
 import { getCurrency } from '../../lib/secureStorage';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { Receipt, Category } from '../../types';
@@ -19,6 +22,7 @@ import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES, CATEGORY_ICONS } from '../../constants/categories';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ReceiptListSkeleton } from '../../components/ui/Skeleton';
+import { useToast } from '../../components/ui/Toast';
 import { receiptMatchesCategory } from '../../lib/receiptFilter';
 import { findRecurring } from '../../lib/reports';
 
@@ -53,6 +57,7 @@ function groupByDate(items: Receipt[]): { title: string; data: Receipt[] }[] {
 export default function HistoryScreen() {
   const theme = useTheme();
   const router = useRouter();
+  const toast = useToast();
   const navigation = useNavigation();
   const styles = useStyles((t) => ({
     screen: {
@@ -201,11 +206,25 @@ export default function HistoryScreen() {
       flexShrink: 0,
       paddingLeft: t.spacing.sm,
     },
+    deleteAction: {
+      backgroundColor: t.colors.error,
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: 84,
+      gap: 2,
+    },
+    deleteActionText: {
+      color: '#fff',
+      fontFamily: t.fonts.display.bold,
+      fontSize: t.font.xs,
+    },
   }));
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<Filter>(FILTER_ALL);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
   const params = useLocalSearchParams<{ category?: string }>();
 
   // This screen renders its own "Expenses" headline + add button per the
@@ -265,6 +284,45 @@ export default function HistoryScreen() {
       setReceipts(results);
     } else {
       await load();
+    }
+  };
+
+  // Re-fetches whatever's currently on screen (a search result set or
+  // the full list) after a swipe-to-delete, same as onRefresh/handleSearch.
+  const refreshAfterDelete = useCallback(async () => {
+    if (query.trim()) {
+      const results = await searchReceipts(query.trim());
+      setReceipts(results);
+    } else {
+      await load();
+    }
+  }, [query, load]);
+
+  // Swipe-to-delete for an expense row, mirroring households.tsx's
+  // Swipeable delete pattern: swipe left to reveal a Delete action,
+  // confirm via Alert, then delete and refresh the list.
+  const confirmDeleteReceipt = (receipt: Receipt) => {
+    swipeableRefs.current[receipt.id]?.close();
+    Alert.alert('Delete Receipt', 'This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => performDeleteReceipt(receipt.id),
+      },
+    ]);
+  };
+
+  const performDeleteReceipt = async (id: string) => {
+    if (deletingId) return;
+    setDeletingId(id);
+    try {
+      await deleteReceipt(id);
+      await refreshAfterDelete();
+    } catch (e) {
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't delete that receipt." });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -393,38 +451,73 @@ export default function HistoryScreen() {
                     r.storeName.trim().toLowerCase(),
                   );
                   return (
-                    <TouchableOpacity
+                    <Swipeable
                       key={r.id}
-                      activeOpacity={0.8}
-                      onPress={() => router.push(`/edit/${r.id}`)}
-                      style={[
-                        styles.row,
-                        idx < section.data.length - 1 && styles.rowDivider,
-                      ]}
+                      ref={(ref) => {
+                        swipeableRefs.current[r.id] = ref;
+                      }}
+                      // Rows span the full screen width with no gap at the
+                      // left edge, so this Swipeable's PanGestureHandler
+                      // was claiming touches starting right at x=0 — the
+                      // same strip the OS reads a system back-swipe from.
+                      // Negative left hitSlop shrinks the handler's own
+                      // recognized area away from that edge (without
+                      // shrinking the touchable row itself), so an
+                      // edge-starting drag is left for the system/
+                      // navigation back gesture instead of being captured
+                      // here. Matches the standard fix for this exact
+                      // RNGH Swipeable-vs-back-gesture conflict (see
+                      // software-mansion/react-native-gesture-handler#890).
+                      hitSlop={{ left: -24 }}
+                      renderRightActions={() => (
+                        <TouchableOpacity
+                          style={styles.deleteAction}
+                          onPress={() => confirmDeleteReceipt(r)}
+                          disabled={deletingId !== null}
+                        >
+                          {deletingId === r.id ? (
+                            <ActivityIndicator color="#fff" />
+                          ) : (
+                            <>
+                              <Ionicons name="trash" size={20} color="#fff" />
+                              <Text style={styles.deleteActionText}>Delete</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      )}
                     >
-                      <View
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => router.push(`/edit/${r.id}`)}
                         style={[
-                          styles.avatar,
-                          { backgroundColor: `${theme.colors.category[r.category]}26` },
+                          styles.row,
+                          idx < section.data.length - 1 && styles.rowDivider,
                         ]}
                       >
-                        <Text style={styles.avatarText}>
-                          {CATEGORY_ICONS[r.category as keyof typeof CATEGORY_ICONS] ?? '🧾'}
+                        <View
+                          style={[
+                            styles.avatar,
+                            { backgroundColor: `${theme.colors.category[r.category]}26` },
+                          ]}
+                        >
+                          <Text style={styles.avatarText}>
+                            {CATEGORY_ICONS[r.category as keyof typeof CATEGORY_ICONS] ?? '🧾'}
+                          </Text>
+                        </View>
+                        <View style={styles.rowInfo}>
+                          <Text style={styles.rowStoreName} numberOfLines={1}>
+                            {r.storeName}
+                          </Text>
+                          <Text style={styles.rowMeta}>
+                            {r.category}
+                            {isRecurring ? ' · Recurring' : ''}
+                          </Text>
+                        </View>
+                        <Text style={styles.rowAmount}>
+                          {formatCurrency(r.totalAmount, currency)}
                         </Text>
-                      </View>
-                      <View style={styles.rowInfo}>
-                        <Text style={styles.rowStoreName} numberOfLines={1}>
-                          {r.storeName}
-                        </Text>
-                        <Text style={styles.rowMeta}>
-                          {r.category}
-                          {isRecurring ? ' · Recurring' : ''}
-                        </Text>
-                      </View>
-                      <Text style={styles.rowAmount}>
-                        {formatCurrency(r.totalAmount, currency)}
-                      </Text>
-                    </TouchableOpacity>
+                      </TouchableOpacity>
+                    </Swipeable>
                   );
                 })}
               </View>

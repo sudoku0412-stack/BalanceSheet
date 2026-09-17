@@ -121,7 +121,7 @@ export default function PaywallScreen() {
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <ModalHeader title="Upgrade to Premium" onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.scroll}>
-        <View style={styles.featureList}>
+        <View style={styles.featureCard}>
           {FEATURES.map((f) => (
             <View key={f.label} style={styles.featureRow}>
               <View style={styles.featureIconWrap}>
@@ -144,10 +144,17 @@ export default function PaywallScreen() {
               const isAnnual = pkg.packageType === PACKAGE_TYPE.ANNUAL;
               const hasTrial = pkg.product.introPrice != null;
               return (
-                <View key={pkg.identifier} style={styles.planCard}>
+                <View
+                  key={pkg.identifier}
+                  style={[styles.planCard, isAnnual && styles.planCardBest]}
+                >
                   <View style={styles.planHeaderRow}>
                     <Text style={styles.planTitle}>{isAnnual ? 'Annual' : 'Monthly'}</Text>
-                    {isAnnual && <Text style={styles.planBadge}>BEST VALUE</Text>}
+                    {isAnnual && (
+                      <View style={styles.planBadgeWrap}>
+                        <Text style={styles.planBadge}>BEST VALUE</Text>
+                      </View>
+                    )}
                   </View>
                   <Text style={styles.planPrice}>{pkg.product.priceString}</Text>
                   {hasTrial && <Text style={styles.planTrial}>Includes free trial</Text>}
@@ -214,11 +221,21 @@ function usePaywallStyles() {
       paddingBottom: t.spacing.xl,
       gap: t.spacing.lg,
     },
-    featureList: { gap: t.spacing.sm },
+    featureCard: {
+      gap: t.spacing.sm + 3,
+      backgroundColor: t.colors.surface,
+      borderRadius: 20,
+      padding: t.spacing.md,
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
+    },
     featureRow: { flexDirection: 'row', alignItems: 'center', gap: t.spacing.sm },
     featureIconWrap: {
-      width: 32,
-      height: 32,
+      width: 36,
+      height: 36,
       borderRadius: t.radius.full,
       backgroundColor: `${t.colors.accent}18`,
       alignItems: 'center',
@@ -242,11 +259,24 @@ function usePaywallStyles() {
       backgroundColor: t.colors.surface,
       borderRadius: 20,
       padding: t.spacing.md,
+      borderWidth: 1.5,
+      borderColor: 'transparent',
       shadowColor: t.isDark ? '#000' : '#0C0F24',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: t.isDark ? 0.4 : 0.08,
       shadowRadius: 10,
       elevation: 2,
+    },
+    // Annual plan — the "best value" pick gets an accent-tinted border
+    // and a lifted shadow so it visually leads the two options, per the
+    // design export's .plan-card.best treatment.
+    planCardBest: {
+      borderColor: t.colors.accent,
+      shadowColor: t.colors.accent,
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: t.isDark ? 0.5 : 0.22,
+      shadowRadius: 16,
+      elevation: 4,
     },
     planHeaderRow: {
       flexDirection: 'row',
@@ -257,6 +287,12 @@ function usePaywallStyles() {
       color: t.colors.textPrimary,
       fontFamily: t.fonts.display.bold,
       fontSize: t.font.lg,
+    },
+    planBadgeWrap: {
+      backgroundColor: `${t.colors.accent}18`,
+      borderRadius: t.radius.full,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
     },
     planBadge: {
       color: t.colors.accent,

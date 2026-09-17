@@ -406,6 +406,13 @@ export default function HouseholdsScreen() {
                     onPress={() => switchTo(m.householdId)}
                     disabled={switchingTo !== null}
                   >
+                    <View style={styles.householdIcon}>
+                      <Ionicons
+                        name={m.role === 'owner' ? 'home' : 'airplane'}
+                        size={19}
+                        color={theme.colors.accent}
+                      />
+                    </View>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.name} numberOfLines={1}>{label}</Text>
                       <Text style={styles.meta}>
@@ -429,11 +436,11 @@ export default function HouseholdsScreen() {
                         onPress={() => startRename(m.householdId, m.name as string)}
                         disabled={nameItDisabled}
                         hitSlop={8}
-                        style={styles.renameIconBtn}
+                        style={[styles.renameIconBtn, nameItDisabled && styles.renameIconBtnDisabled]}
                       >
                         <Ionicons
                           name="pencil"
-                          size={16}
+                          size={14}
                           color={nameItDisabled ? theme.colors.textMuted : theme.colors.accent}
                         />
                       </Pressable>
@@ -460,6 +467,12 @@ export default function HouseholdsScreen() {
                 ref={(ref) => {
                   swipeableRefs.current[m.householdId] = ref;
                 }}
+                // See the matching comment in app/(tabs)/history.tsx —
+                // these rows also span the full width, so without this the
+                // Swipeable's own pan handler claims touches starting at
+                // the screen's left edge, the same strip the system reads
+                // a back-swipe from.
+                hitSlop={{ left: -24 }}
                 renderRightActions={() => (
                   <Pressable
                     style={styles.deleteAction}
@@ -498,9 +511,17 @@ function useHouseholdsStyles() {
     createRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: theme.spacing.lg,
-      paddingTop: theme.spacing.md,
+      marginHorizontal: theme.spacing.lg,
+      marginTop: theme.spacing.md,
+      padding: theme.spacing.sm,
       gap: theme.spacing.sm,
+      backgroundColor: theme.colors.surface,
+      borderRadius: 14,
+      shadowColor: theme.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: theme.isDark ? 0.35 : 0.06,
+      shadowRadius: 8,
+      elevation: 1,
     },
     renameRow: {
       flexDirection: 'row',
@@ -512,7 +533,7 @@ function useHouseholdsStyles() {
       flex: 1,
       color: theme.colors.textPrimary,
       backgroundColor: theme.colors.surfaceHigh,
-      borderRadius: theme.radius.sm,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: theme.colors.border,
       paddingHorizontal: 12,
@@ -521,7 +542,7 @@ function useHouseholdsStyles() {
     },
     saveBtn: {
       backgroundColor: theme.colors.accent,
-      borderRadius: theme.radius.sm,
+      borderRadius: 14,
       paddingHorizontal: 14,
       paddingVertical: 10,
     },
@@ -551,6 +572,16 @@ function useHouseholdsStyles() {
       flexDirection: 'row',
       alignItems: 'center',
       padding: theme.spacing.md,
+      gap: 11,
+    },
+    householdIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: `${theme.colors.accent}26`,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
     },
     name: {
       color: theme.colors.textPrimary,
@@ -569,12 +600,20 @@ function useHouseholdsStyles() {
       marginTop: 4,
     },
     renameIconBtn: {
-      padding: 6,
+      width: 28,
+      height: 28,
+      borderRadius: theme.radius.full,
+      backgroundColor: `${theme.colors.accent}26`,
+      alignItems: 'center',
+      justifyContent: 'center',
       marginRight: 4,
+    },
+    renameIconBtnDisabled: {
+      backgroundColor: theme.colors.surfaceHigh,
     },
     activeBadge: {
       backgroundColor: theme.colors.accent,
-      borderRadius: theme.radius.sm,
+      borderRadius: theme.radius.full,
       paddingHorizontal: 10,
       paddingVertical: 4,
     },

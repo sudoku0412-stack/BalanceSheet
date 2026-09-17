@@ -65,9 +65,6 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
@@ -121,6 +118,13 @@ jobs:
           # git-tracked files — google-services.json is gitignored but
           # materialised at runtime from a secret in the step above.
           EAS_NO_VCS: '1'
+          # app.config.js reads these at build/prebuild time to bake the
+          # RevenueCat SDK key into the app — without them
+          # Purchases.configure() silently no-ops and the paywall shows
+          # no plans, even though everything on the Play/RevenueCat
+          # dashboards is configured correctly.
+          REVENUECAT_API_KEY_ANDROID: ${{ secrets.REVENUECAT_API_KEY_ANDROID }}
+          REVENUECAT_API_KEY_IOS: ${{ secrets.REVENUECAT_API_KEY_IOS }}
         run: |
           echo "--- working directory before build ---"
           ls -la google-services.json

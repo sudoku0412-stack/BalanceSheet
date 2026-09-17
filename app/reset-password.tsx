@@ -185,5 +185,6 @@ const makeStyles = (t: Theme) => ({
   },
   submitButton: {
     marginTop: t.spacing.sm,
+    width: '100%' as const,
   },
 });

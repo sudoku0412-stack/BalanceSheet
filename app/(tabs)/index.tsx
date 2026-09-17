@@ -3,6 +3,7 @@ import { AppState, View, Text, ScrollView, TouchableOpacity, RefreshControl } fr
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import Svg, { Circle } from 'react-native-svg';
 import { addMonths, format, isSameMonth, isToday, isYesterday, subMonths } from 'date-fns';
 import { getCurrentHouseholdId, getReceiptsByMonth } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
@@ -16,7 +17,59 @@ import { RECURRING_BUDGET_KEY, isRecurringExpense } from '../../lib/recurring';
 import { useAuth } from '../../lib/AuthContext';
 import type { Profile } from '../../lib/profile';
 import { onLocalDataChanged } from '../../lib/dataSync';
-import { CATEGORY_ICONS } from '../../constants/categories';
+import { CATEGORY_ICONS, ALL_CATEGORIES } from '../../constants/categories';
+
+/**
+ * Single-arc radial progress ring, reusing the same react-native-svg
+ * stroke-dasharray technique as reports.tsx's CategoryDonut (this repo's
+ * one existing SVG-ring pattern) rather than introducing a second charting
+ * approach. Unlike the donut (which draws one arc per category), this
+ * draws a single progress arc against a track circle — used for both the
+ * hero "pace" ring and the per-budget ring chips.
+ *
+ * `pct` is clamped to [0, 1] so a ratio over 100% still renders as a full
+ * ring instead of overflowing/wrapping.
+ */
+function RingProgress({
+  size,
+  strokeWidth,
+  pct,
+  color,
+  trackColor,
+  testID,
+}: {
+  size: number;
+  strokeWidth: number;
+  pct: number;
+  color: string;
+  trackColor: string;
+  testID?: string;
+}) {
+  const r = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * r;
+  const center = size / 2;
+  const clamped = Math.max(0, Math.min(pct, 1));
+  const dash = clamped * circumference;
+  return (
+    <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} testID={testID}>
+      <Circle cx={center} cy={center} r={r} stroke={trackColor} strokeWidth={strokeWidth} fill="none" />
+      {clamped > 0 && (
+        <Circle
+          cx={center}
+          cy={center}
+          r={r}
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={`${dash} ${circumference - dash}`}
+          strokeLinecap="round"
+          fill="none"
+          rotation={-90}
+          origin={`${center}, ${center}`}
+        />
+      )}
+    </Svg>
+  );
+}
 
 function greeting(firstName: string | null): string {
   const h = new Date().getHours();
@@ -130,6 +183,40 @@ export default function DashboardScreen() {
       fontSize: 38,
       marginTop: 4,
     },
+    heroAmountShrinkWrap: {
+      flexShrink: 1,
+      minWidth: 0,
+    },
+    heroAmountRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-end',
+      justifyContent: 'space-between',
+      gap: t.spacing.sm,
+    },
+    paceRingWrap: {
+      alignItems: 'center',
+      flexShrink: 0,
+    },
+    paceRingCircleWrap: {
+      width: 46,
+      height: 46,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    paceRingPctText: {
+      position: 'absolute',
+      color: '#fff',
+      fontFamily: t.fonts.display.bold,
+      fontSize: 12,
+    },
+    paceRingCap: {
+      color: 'rgba(255,255,255,0.55)',
+      fontFamily: t.fonts.display.bold,
+      fontSize: 8,
+      letterSpacing: 0.5,
+      textTransform: 'uppercase',
+      marginTop: 3,
+    },
     heroMetaRow: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -161,6 +248,59 @@ export default function DashboardScreen() {
       color: 'rgba(255,255,255,0.85)',
       fontFamily: t.fonts.display.bold,
       fontSize: 13,
+    },
+
+    compositionCard: {
+      backgroundColor: t.colors.surface,
+      borderRadius: 18,
+      padding: t.spacing.md,
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
+    },
+    compositionHead: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'baseline',
+      marginBottom: 9,
+    },
+    compNote: {
+      fontFamily: t.fonts.body.regular,
+      fontSize: t.font.xs,
+      color: t.colors.textMuted,
+    },
+    compBar: {
+      flexDirection: 'row',
+      height: 8,
+      borderRadius: t.radius.full,
+      overflow: 'hidden',
+      gap: 1.5,
+    },
+    compSegment: {
+      height: '100%',
+    },
+    compLegend: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginTop: 9,
+    },
+    compLegendItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 5,
+    },
+    compDot: {
+      width: 7,
+      height: 7,
+      borderRadius: t.radius.full,
+    },
+    compLegendText: {
+      fontFamily: t.fonts.body.regular,
+      fontSize: t.font.xs,
+      color: t.colors.textSecondary,
     },
 
     actionRow: {
@@ -207,46 +347,46 @@ export default function DashboardScreen() {
       fontSize: t.font.sm,
     },
 
-    budgetCard: {
+    budgetScrollContent: {
+      flexDirection: 'row',
+      gap: t.spacing.sm,
+    },
+    budgetChip: {
       backgroundColor: t.colors.surface,
-      borderRadius: 20,
-      overflow: 'hidden',
+      borderRadius: 18,
+      padding: 12,
+      width: 112,
       shadowColor: t.isDark ? '#000' : '#0C0F24',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: t.isDark ? 0.4 : 0.08,
       shadowRadius: 10,
       elevation: 2,
     },
-    budgetRow: {
+    budgetChipTopRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingVertical: t.spacing.sm,
-      paddingRight: t.spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: t.colors.border,
+      justifyContent: 'space-between',
     },
-    budgetRowFirst: { borderTopWidth: 0 },
-    budgetAccent: { width: 4, height: '100%', marginRight: t.spacing.md },
-    budgetInfo: { flex: 1 },
-    budgetNameRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    budgetName: { color: t.colors.textPrimary, fontFamily: t.fonts.display.bold, fontSize: t.font.md },
-    budgetStatusText: { fontFamily: t.fonts.display.bold, fontSize: t.font.xs },
-    budgetAmounts: {
-      color: t.colors.textSecondary,
+    budgetChipStatusPill: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: t.radius.full,
+    },
+    budgetChipStatusText: {
+      fontFamily: t.fonts.display.bold,
+      fontSize: 9,
+    },
+    budgetChipName: {
+      color: t.colors.textPrimary,
+      fontFamily: t.fonts.display.bold,
+      fontSize: t.font.sm,
+      marginTop: 9,
+      marginBottom: 2,
+    },
+    budgetChipAmt: {
+      color: t.colors.textMuted,
       fontFamily: t.fonts.mono.regular,
-      fontSize: t.font.xs,
-      marginTop: 6,
-    },
-    progressTrack: {
-      height: 6,
-      borderRadius: t.radius.full,
-      backgroundColor: t.colors.surfaceHigh,
-      marginTop: 6,
-      overflow: 'hidden',
-    },
-    progressFill: {
-      height: 6,
-      borderRadius: t.radius.full,
+      fontSize: 10,
     },
 
     list: { gap: t.spacing.sm },
@@ -416,11 +556,23 @@ export default function DashboardScreen() {
       status: budgetStatus(spent, budgets[category]),
     }));
 
-  const statusMeta: Record<BudgetStatus, { label: string; color: string }> = {
-    onTrack: { label: 'On track', color: theme.colors.success },
-    watch: { label: 'Watch', color: theme.colors.accent },
-    over: { label: 'Over', color: theme.colors.error },
+  const statusMeta: Record<BudgetStatus, { label: string; color: string; bg: string }> = {
+    onTrack: { label: 'On track', color: theme.colors.success, bg: theme.colors.successFaint },
+    watch: { label: 'Watch', color: theme.colors.accent, bg: theme.colors.accentTint },
+    over: { label: 'Over', color: theme.colors.error, bg: theme.colors.errorFaint },
   };
+
+  // Hero "pace" ring: how much of the WHOLE month's configured budget has
+  // been spent so far, using every category budget the user has set (not
+  // just the top-3 slice budgetRows truncates to for display below).
+  // With no budgets configured at all there's nothing meaningful to show
+  // a percentage of, so the ring is hidden entirely rather than rendering
+  // a 0%/undefined ring.
+  const totalBudget = Object.values(budgets).reduce((s, v) => s + (v > 0 ? v : 0), 0);
+  const showPaceRing = totalBudget > 0;
+  const paceRatio = showPaceRing ? Math.min(stats.totalSpent / totalBudget, 1) : 0;
+  const paceStatus = showPaceRing ? budgetStatus(stats.totalSpent, totalBudget) : 'onTrack';
+  const paceColor = statusMeta[paceStatus].color;
 
   return (
     <SafeAreaView style={styles.screen} edges={['top']}>
@@ -452,7 +604,34 @@ export default function DashboardScreen() {
           <View style={styles.heroDecorCircle} />
           <Ionicons name="receipt" size={120} color="#fff" style={styles.heroDecorWatermark} />
           <Text style={styles.heroLabel}>{greeting(firstNameOf(user?.displayName, profile))}</Text>
-          <Text style={styles.heroAmount}>{formatCurrency(stats.totalSpent, currency)}</Text>
+          <View style={styles.heroAmountRow}>
+            <View style={styles.heroAmountShrinkWrap}>
+              <Text
+                style={styles.heroAmount}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.5}
+              >
+                {formatCurrency(stats.totalSpent, currency)}
+              </Text>
+            </View>
+            {showPaceRing && (
+              <View style={styles.paceRingWrap}>
+                <View style={styles.paceRingCircleWrap}>
+                  <RingProgress
+                    size={46}
+                    strokeWidth={5}
+                    pct={paceRatio}
+                    color={paceColor}
+                    trackColor="rgba(255,255,255,0.16)"
+                    testID="pace-ring"
+                  />
+                  <Text style={styles.paceRingPctText}>{Math.round(paceRatio * 100)}%</Text>
+                </View>
+                <Text style={styles.paceRingCap}>of budget</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.monthNavRow}>
             <TouchableOpacity
               onPress={() => setMonthOffset((v) => v - 1)}
@@ -495,7 +674,50 @@ export default function DashboardScreen() {
             )}
           </View>
         </View>
-  
+
+        {/* "Where it went" category composition bar */}
+        {stats.categories.length > 0 && (
+          <View style={styles.compositionCard}>
+            <View style={styles.compositionHead}>
+              <Text style={styles.sectionTitle}>Where it went</Text>
+              <Text style={styles.compNote}>{formatCurrency(stats.totalSpent, currency)} total</Text>
+            </View>
+            <View style={styles.compBar}>
+              {stats.categories.map((c) => {
+                const isStandard = (ALL_CATEGORIES as readonly string[]).includes(c.category);
+                const color = isStandard
+                  ? theme.colors.category[c.category as keyof typeof theme.colors.category]
+                  : theme.colors.accent;
+                return (
+                  <View
+                    key={c.category}
+                    style={[
+                      styles.compSegment,
+                      { flex: Math.max(c.percentage, 0.001), backgroundColor: color },
+                    ]}
+                  />
+                );
+              })}
+            </View>
+            <View style={styles.compLegend}>
+              {stats.categories.slice(0, 4).map((c) => {
+                const isStandard = (ALL_CATEGORIES as readonly string[]).includes(c.category);
+                const color = isStandard
+                  ? theme.colors.category[c.category as keyof typeof theme.colors.category]
+                  : theme.colors.accent;
+                return (
+                  <View key={c.category} style={styles.compLegendItem}>
+                    <View style={[styles.compDot, { backgroundColor: color }]} />
+                    <Text style={styles.compLegendText}>
+                      {c.category} {Math.round(c.percentage)}%
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
+
         {/* Quick actions */}
         <View style={styles.actionRow}>
           <TouchableOpacity
@@ -520,12 +742,16 @@ export default function DashboardScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Budgets</Text>
-              <TouchableOpacity onPress={() => router.push('/settings' as never)} hitSlop={8}>
+              <TouchableOpacity onPress={() => router.push('/settings?section=budgets' as never)} hitSlop={8}>
                 <Text style={styles.sectionLink}>Manage</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.budgetCard}>
-              {budgetRows.map((b, i) => {
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.budgetScrollContent}
+            >
+              {budgetRows.map((b) => {
                 const meta = statusMeta[b.status];
                 const catColor =
                   b.category === RECURRING_BUDGET_KEY
@@ -533,32 +759,36 @@ export default function DashboardScreen() {
                     : theme.colors.category[b.category as keyof typeof theme.colors.category];
                 const ratio = b.limit > 0 ? Math.min(b.spent / b.limit, 1) : 0;
                 return (
-                  <View key={b.category} style={[styles.budgetRow, i === 0 && styles.budgetRowFirst]}>
-                    <View style={[styles.budgetAccent, { backgroundColor: catColor }]} />
-                    <View style={styles.budgetInfo}>
-                      <View style={styles.budgetNameRow}>
-                        <Text style={styles.budgetName}>{b.category}</Text>
-                        <Text style={[styles.budgetStatusText, { color: meta.color }]}>{meta.label}</Text>
+                  <View key={b.category} style={styles.budgetChip}>
+                    <View style={styles.budgetChipTopRow}>
+                      <RingProgress
+                        size={30}
+                        strokeWidth={4}
+                        pct={ratio}
+                        // Same independent-of-status-pill red override the
+                        // old linear bar had (see the budgetStatus() doc
+                        // comment above) — the ring, not just the pill,
+                        // should turn error-red past 90%.
+                        color={ratio > 0.9 ? theme.colors.error : catColor}
+                        trackColor={theme.colors.surfaceHigh}
+                        testID="budget-ring"
+                      />
+                      <View style={[styles.budgetChipStatusPill, { backgroundColor: meta.bg }]}>
+                        <Text style={[styles.budgetChipStatusText, { color: meta.color }]}>
+                          {meta.label}
+                        </Text>
                       </View>
-                      <View style={styles.progressTrack}>
-                        <View
-                          style={[
-                            styles.progressFill,
-                            {
-                              width: `${ratio * 100}%`,
-                              backgroundColor: ratio > 0.9 ? theme.colors.error : catColor,
-                            },
-                          ]}
-                        />
-                      </View>
-                      <Text style={styles.budgetAmounts}>
-                        {formatCurrency(b.spent, currency)} of {formatCurrency(b.limit, currency)}
-                      </Text>
                     </View>
+                    <Text style={styles.budgetChipName} numberOfLines={1}>
+                      {b.category}
+                    </Text>
+                    <Text style={styles.budgetChipAmt}>
+                      {formatCurrency(b.spent, currency)} of {formatCurrency(b.limit, currency)}
+                    </Text>
                   </View>
                 );
               })}
-            </View>
+            </ScrollView>
           </View>
         )}
   

@@ -265,10 +265,16 @@ export default function ScanScreen() {
       gap: t.spacing.sm,
       paddingBottom: 100,
     },
+    // 20px radius to match the app-wide large-rounded-corner scale
+    // (Card/itemModalCard etc. below both use 20) — t.radius.lg (4px)
+    // is a stale "mostly-square" token left over from an earlier
+    // design pass that the rest of this screen (and the rest of the
+    // shipped app) has already moved past. See the design-export
+    // prototype's receipt-photo treatment for the same large radius.
     receiptThumb: {
       width: '100%',
       height: 180,
-      borderRadius: t.radius.lg,
+      borderRadius: 20,
       marginBottom: t.spacing.sm,
     },
     reviewHeader: {
@@ -406,7 +412,9 @@ export default function ScanScreen() {
       fontSize: t.font.md,
       fontFamily: t.fonts.body.regular,
       backgroundColor: t.colors.surfaceHigh,
-      borderRadius: t.radius.sm,
+      // t.radius.lg (4px) matches the prototype's .fake-input spec
+      // exactly — t.radius.sm (2px) undershoots it.
+      borderRadius: t.radius.lg,
       paddingHorizontal: 12,
       paddingVertical: 10,
       borderWidth: 1,
@@ -480,9 +488,11 @@ export default function ScanScreen() {
       marginTop: t.spacing.sm,
       gap: t.spacing.sm,
     },
+    // 12px per the prototype's .segmented spec — t.radius.lg (4px) is
+    // the stale near-square token.
     segmented: {
       flexDirection: 'row',
-      borderRadius: t.radius.lg,
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: t.colors.border,
       overflow: 'hidden',
@@ -503,10 +513,14 @@ export default function ScanScreen() {
       gap: t.spacing.sm,
       marginTop: t.spacing.sm,
     },
+    // 16px per the prototype's .scn-save-btn spec — matches
+    // components/ui/Button's own default radius, so this is the same
+    // "large rounded CTA" language already used everywhere else Button
+    // renders. t.radius.lg (4px) was the stale near-square token.
     saveButton: {
       width: '100%',
       height: 52,
-      borderRadius: t.radius.lg,
+      borderRadius: 16,
     },
     saveButtonText: {
       fontWeight: '800',

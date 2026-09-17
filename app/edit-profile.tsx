@@ -1,5 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { router } from 'expo-router';
 import { Theme, useStyles, useTheme } from '../constants/theme';
@@ -87,44 +95,51 @@ export default function EditProfileScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <ModalHeader title="Edit Profile" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.label}>First name</Text>
-        <TextInput
-          value={firstName}
-          onChangeText={setFirstName}
-          placeholder="Jane"
-          placeholderTextColor={theme.colors.textMuted}
-          autoCapitalize="words"
-          style={styles.input}
-        />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.card}>
+            <Text style={styles.label}>First name</Text>
+            <TextInput
+              value={firstName}
+              onChangeText={setFirstName}
+              placeholder="Jane"
+              placeholderTextColor={theme.colors.textMuted}
+              autoCapitalize="words"
+              style={styles.input}
+            />
 
-        <Text style={styles.label}>Last name</Text>
-        <TextInput
-          value={lastName}
-          onChangeText={setLastName}
-          placeholder="Doe"
-          placeholderTextColor={theme.colors.textMuted}
-          autoCapitalize="words"
-          style={styles.input}
-        />
-        {nameError && <Text style={styles.errorText}>{nameError}</Text>}
+            <Text style={styles.label}>Last name</Text>
+            <TextInput
+              value={lastName}
+              onChangeText={setLastName}
+              placeholder="Doe"
+              placeholderTextColor={theme.colors.textMuted}
+              autoCapitalize="words"
+              style={styles.input}
+            />
+            {nameError && <Text style={styles.errorText}>{nameError}</Text>}
 
-        <Text style={styles.label}>Phone number</Text>
-        <TextInput
-          value={phoneInput}
-          onChangeText={setPhoneInput}
-          placeholder="+1 416 555 1234"
-          placeholderTextColor={theme.colors.textMuted}
-          keyboardType="phone-pad"
-          style={styles.input}
-        />
-        {phoneError && <Text style={styles.errorText}>{phoneError}</Text>}
-        <Text style={styles.hint}>
-          Optional — lets others add you to a household by phone number.
-        </Text>
+            <Text style={styles.label}>Phone number</Text>
+            <TextInput
+              value={phoneInput}
+              onChangeText={setPhoneInput}
+              placeholder="+1 416 555 1234"
+              placeholderTextColor={theme.colors.textMuted}
+              keyboardType="phone-pad"
+              style={styles.input}
+            />
+            {phoneError && <Text style={styles.errorText}>{phoneError}</Text>}
+            <Text style={styles.hint}>
+              Optional — lets others add you to a household by phone number.
+            </Text>
+          </View>
 
-        <Button label="Save" onPress={save} loading={saving} size="lg" style={styles.saveBtn} />
-      </ScrollView>
+          <Button label="Save" onPress={save} loading={saving} size="lg" style={styles.saveBtn} />
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -136,8 +151,21 @@ const makeStyles = (theme: Theme) => ({
     paddingTop: theme.spacing.md,
     paddingBottom: theme.spacing.xl,
   },
+  // Prototype wraps the fields in a rounded "auth-card" surface rather
+  // than laying them straight on the screen background — matches the
+  // 20px radius used by the dashboard's other card surfaces.
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 20,
+    padding: theme.spacing.md,
+    shadowColor: theme.isDark ? '#000' : '#0C0F24',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: theme.isDark ? 0.4 : 0.08,
+    shadowRadius: 10,
+    elevation: 2,
+  },
   label: {
-    color: theme.colors.textSecondary,
+    color: theme.colors.textMuted,
     fontSize: theme.font.xs,
     fontFamily: theme.fonts.display.bold,
     letterSpacing: 1,
@@ -154,7 +182,7 @@ const makeStyles = (theme: Theme) => ({
     color: theme.colors.textPrimary,
     fontSize: theme.font.md,
     fontFamily: theme.fonts.body.regular,
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.background,
   },
   errorText: {
     color: theme.colors.error,
@@ -169,6 +197,6 @@ const makeStyles = (theme: Theme) => ({
     marginTop: 6,
   },
   saveBtn: {
-    marginTop: theme.spacing.xl,
+    marginTop: theme.spacing.lg,
   },
 });

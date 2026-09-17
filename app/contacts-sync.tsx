@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { EmptyState } from '../components/ui/EmptyState';
-import { useStyles, useTheme } from '../constants/theme';
+import { useStyles, useTheme, Theme } from '../constants/theme';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../lib/AuthContext';
 import { getCurrentHouseholdId } from '../lib/database';
@@ -21,6 +21,27 @@ import {
   type DeviceContact,
   type MatchedContact,
 } from '../lib/contactsSync';
+
+/** First-letter-of-first-and-last-word initials for a contact avatar,
+ *  matching the design export's two-letter avatar chips. */
+function initialsFor(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+  return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+}
+
+// Deterministic (name-hashed) pick from the existing category palette —
+// purely decorative avatar-chip coloring, matching the export's mockup
+// of colored initials avatars. Not tied to any real category data.
+function avatarColorFor(theme: Theme, name: string): string {
+  const palette = Object.values(theme.colors.category);
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return palette[hash % palette.length];
+}
 
 const REQUEST_TIMEOUT_MS = 15000;
 // matchContacts fires one Firestore lookup per unique phone/email across
@@ -354,20 +375,24 @@ export default function ContactsSyncScreen() {
               {filteredMatched.map((item) => {
                 const added = addedUids.has(item.uid);
                 const busy = busyId === item.contact.id;
+                const name = item.displayName || item.contact.name;
                 return (
                   <View key={item.contact.id} style={styles.row}>
+                    <View style={[styles.avatar, { backgroundColor: avatarColorFor(theme, name) }]}>
+                      <Text style={styles.avatarInitials}>{initialsFor(name)}</Text>
+                    </View>
                     <Text style={styles.name} numberOfLines={1}>
-                      {item.displayName || item.contact.name}
+                      {name}
                     </Text>
                     <Pressable
                       onPress={() => addMatched(item)}
                       disabled={added || busy}
-                      style={[styles.actionBtn, (added || busy) && styles.actionBtnDisabled]}
+                      style={[styles.actionBtn, (added || busy) && styles.actionBtnDone]}
                     >
                       {busy ? (
                         <ActivityIndicator size="small" color={theme.colors.accent} />
                       ) : (
-                        <Text style={styles.actionText}>
+                        <Text style={[styles.actionText, (added) && styles.actionTextDone]}>
                           {item.matchedVia === 'phone' ? (added ? 'Added' : 'Add') : added ? 'Invited' : 'Invite'}
                         </Text>
                       )}
@@ -385,13 +410,16 @@ export default function ContactsSyncScreen() {
                 const busy = busyId === contact.id;
                 return (
                   <View key={contact.id} style={styles.row}>
+                    <View style={[styles.avatar, { backgroundColor: avatarColorFor(theme, contact.name) }]}>
+                      <Text style={styles.avatarInitials}>{initialsFor(contact.name)}</Text>
+                    </View>
                     <Text style={styles.name} numberOfLines={1}>
                       {contact.name}
                     </Text>
                     <Pressable
                       onPress={() => inviteUnmatched(contact)}
                       disabled={busy}
-                      style={[styles.actionBtn, busy && styles.actionBtnDisabled]}
+                      style={[styles.actionBtn, busy && styles.actionBtnDone]}
                     >
                       {busy ? (
                         <ActivityIndicator size="small" color={theme.colors.accent} />
@@ -425,12 +453,17 @@ function useContactsSyncStyles() {
       borderColor: theme.colors.border,
       borderRadius: theme.radius.full,
       paddingHorizontal: theme.spacing.md,
-      paddingVertical: 10,
+      paddingVertical: 12,
       color: theme.colors.textPrimary,
       fontSize: theme.font.sm,
       fontFamily: theme.fonts.body.regular,
       backgroundColor: theme.colors.surface,
-      marginBottom: theme.spacing.md,
+      marginBottom: theme.spacing.sm,
+      shadowColor: theme.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: theme.isDark ? 0.3 : 0.06,
+      shadowRadius: 6,
+      elevation: 1,
     },
     emptyText: {
       color: theme.colors.textMuted,
@@ -442,6 +475,7 @@ function useContactsSyncStyles() {
       color: theme.colors.textMuted,
       fontFamily: theme.fonts.display.bold,
       fontSize: theme.font.xs,
+      letterSpacing: 0.8,
       textTransform: 'uppercase',
       marginTop: theme.spacing.lg,
       marginBottom: theme.spacing.sm,
@@ -450,13 +484,31 @@ function useContactsSyncStyles() {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: theme.colors.surface,
-      borderRadius: theme.radius.lg,
+      borderRadius: 16,
       borderWidth: 1,
       borderColor: theme.colors.border,
       paddingHorizontal: theme.spacing.md,
       paddingVertical: theme.spacing.sm,
       marginBottom: theme.spacing.sm,
       gap: theme.spacing.sm,
+      shadowColor: theme.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: theme.isDark ? 0.35 : 0.08,
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    avatar: {
+      width: 34,
+      height: 34,
+      borderRadius: theme.radius.full,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+    avatarInitials: {
+      color: '#fff',
+      fontFamily: theme.fonts.display.bold,
+      fontSize: theme.font.xs,
     },
     name: {
       flex: 1,
@@ -466,19 +518,24 @@ function useContactsSyncStyles() {
     },
     actionBtn: {
       backgroundColor: theme.colors.accent,
-      borderRadius: theme.radius.sm,
+      borderRadius: 10,
       paddingHorizontal: 14,
       paddingVertical: 8,
       minWidth: 64,
       alignItems: 'center',
     },
-    actionBtnDisabled: {
-      opacity: 0.5,
+    // "Added"/"Invited" resting state — matches the export's flat
+    // surface-high chip rather than a dimmed accent button.
+    actionBtnDone: {
+      backgroundColor: theme.colors.surfaceHigh,
     },
     actionText: {
       color: '#fff',
       fontFamily: theme.fonts.display.bold,
       fontSize: theme.font.sm,
+    },
+    actionTextDone: {
+      color: theme.colors.textMuted,
     },
   }));
 }

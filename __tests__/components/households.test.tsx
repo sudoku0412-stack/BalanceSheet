@@ -47,16 +47,25 @@ jest.mock('@expo/vector-icons', () => ({
 // action a way to be pressed — the app never simulates an actual swipe
 // gesture in tests, so render both the row and the (always-visible)
 // right action underneath it.
+//
+// `hitSlop` is captured (not just swallowed) so a regression test can
+// assert the row actually passes the edge-back-gesture fix through to
+// the real Swipeable, rather than the prop silently getting lost if
+// this mock changes.
+const capturedSwipeableProps: any[] = [];
 jest.mock('react-native-gesture-handler', () => {
   const RN = require('react-native');
   const React = require('react');
   return {
-    Swipeable: React.forwardRef(({ children, renderRightActions }: any, ref: any) => (
-      <RN.View>
-        {children}
-        {renderRightActions ? renderRightActions() : null}
-      </RN.View>
-    )),
+    Swipeable: React.forwardRef(({ children, renderRightActions, ...rest }: any, ref: any) => {
+      capturedSwipeableProps.push(rest);
+      return (
+        <RN.View>
+          {children}
+          {renderRightActions ? renderRightActions() : null}
+        </RN.View>
+      );
+    }),
   };
 });
 
@@ -108,6 +117,7 @@ const mockRenameHousehold = renameHousehold as jest.Mock;
 describe('HouseholdsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    capturedSwipeableProps.length = 0;
     mockAuthValue = {
       user: { uid: 'u1' },
       memberships: [
@@ -335,5 +345,26 @@ describe('HouseholdsScreen', () => {
       resolveDelete({ ok: true });
       await Promise.resolve();
     });
+  });
+
+  /**
+   * Regression guard for the Android system back-gesture fix (commit
+   * 809b04d): this row's Swipeable spans the full screen width with no
+   * gap at the left edge, so without a negative left hitSlop its own
+   * pan handler claims touches starting at x=0 — the same strip the OS
+   * reads an edge back-swipe from (react-native-gesture-handler#890).
+   * If this prop is ever dropped during a future edit, the system
+   * back-swipe silently breaks again on Android with no visible test
+   * failure elsewhere, so it's pinned down explicitly here.
+   */
+  it('the row Swipeable carries a negative left hitSlop so it does not swallow the system back-swipe', async () => {
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getByText('Our Home'));
+
+    expect(capturedSwipeableProps.length).toBeGreaterThan(0);
+    for (const props of capturedSwipeableProps) {
+      expect(props.hitSlop).toEqual(expect.objectContaining({ left: expect.any(Number) }));
+      expect(props.hitSlop.left).toBeLessThan(0);
+    }
   });
 });

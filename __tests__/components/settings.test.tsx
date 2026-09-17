@@ -18,6 +18,7 @@ const mockToastShow = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn(), push: jest.fn(), replace: jest.fn() }),
+  useLocalSearchParams: () => ({}),
   useFocusEffect: (cb: () => void) => {
     require('react').useEffect(cb, []);
   },

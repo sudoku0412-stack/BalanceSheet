@@ -454,7 +454,8 @@ const makeStyles = (t: Theme) => ({
   brandIcon: {
     width: 26,
     height: 26,
-    borderRadius: t.radius.sm,
+    // Prototype spec: 8px, not the stale t.radius.sm (2px) token.
+    borderRadius: 8,
     backgroundColor: '#fff',
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
@@ -476,8 +477,9 @@ const makeStyles = (t: Theme) => ({
   sheet: {
     flex: 1,
     backgroundColor: t.colors.surface,
-    borderTopLeftRadius: t.radius.xl,
-    borderTopRightRadius: t.radius.xl,
+    // Prototype spec: 22px sheet corners, not the stale t.radius.xl (8px) token.
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
     marginTop: -16,
   },
   scroll: {
@@ -488,7 +490,8 @@ const makeStyles = (t: Theme) => ({
   tabs: {
     flexDirection: 'row' as const,
     backgroundColor: t.colors.surfaceHigh,
-    borderRadius: t.radius.sm,
+    // Prototype spec: 12px pill, not the stale t.radius.sm (2px) token.
+    borderRadius: 12,
     padding: 4,
     marginBottom: t.spacing.lg,
   },
@@ -497,7 +500,8 @@ const makeStyles = (t: Theme) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     paddingVertical: 10,
-    borderRadius: t.radius.sm,
+    // Prototype spec: 9px, not the stale t.radius.sm (2px) token.
+    borderRadius: 9,
   },
   tabBtnActive: {
     backgroundColor: t.colors.success,
@@ -552,12 +556,18 @@ const makeStyles = (t: Theme) => ({
     backgroundColor: t.colors.background,
     color: t.colors.textPrimary,
     fontFamily: t.fonts.body.regular,
-    borderRadius: t.radius.sm,
+    // Prototype spec: 14px field-input radius, not the stale t.radius.sm (2px) token.
+    borderRadius: 14,
     paddingHorizontal: t.spacing.md,
     paddingVertical: 12,
     borderWidth: 1,
     borderColor: t.colors.border,
     fontSize: t.font.md,
+    shadowColor: t.isDark ? '#000' : '#0C0F24',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: t.isDark ? 0.3 : 0.06,
+    shadowRadius: 6,
+    elevation: 1,
   },
   inputRow: {
     position: 'relative' as const,

@@ -87,6 +87,13 @@ jobs:
           # it into the uploaded archive. android-build.yml already had
           # to work around this same behavior.
           EAS_NO_VCS: '1'
+          # app.config.js reads these at build/prebuild time to bake the
+          # RevenueCat SDK key into the app — without them
+          # Purchases.configure() silently no-ops and the paywall shows
+          # no plans, even though everything on the Play/RevenueCat
+          # dashboards is configured correctly.
+          REVENUECAT_API_KEY_ANDROID: ${{ secrets.REVENUECAT_API_KEY_ANDROID }}
+          REVENUECAT_API_KEY_IOS: ${{ secrets.REVENUECAT_API_KEY_IOS }}
         run: |
           eas build \
             --profile production \
@@ -169,6 +176,10 @@ jobs:
           # demonstrably existed locally. Same root cause the Android
           # local-build workflow already had to work around.
           EAS_NO_VCS: '1'
+          # See the Android job above — same reason, both platforms read
+          # their own key out of app.config.js `extra`.
+          REVENUECAT_API_KEY_ANDROID: ${{ secrets.REVENUECAT_API_KEY_ANDROID }}
+          REVENUECAT_API_KEY_IOS: ${{ secrets.REVENUECAT_API_KEY_IOS }}
         run: |
           eas build \
             --profile production \

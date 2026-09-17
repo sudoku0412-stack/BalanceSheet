@@ -1,6 +1,28 @@
 import React from 'react';
 import { render, waitFor, screen } from '@testing-library/react-native';
+import { StyleSheet } from 'react-native';
 import type { Receipt } from '../../types';
+
+// react-native-svg's mocked/native renderer doesn't matter here — these
+// tests only assert that a ring (SVG) with the expected testID is present
+// or absent, not anything about how it draws.
+
+/** Climbs the rendered-instance parent chain from `node` until it finds
+ *  one whose flattened style carries an `elevation` key (the card-style
+ *  wrapper), rather than assuming a fixed number of parent hops — which
+ *  would silently point at the wrong node the next time this section's
+ *  JSX nesting changes. */
+function nearestCardAncestorStyle(node: { parent: any; props?: Record<string, unknown> }) {
+  let current: any = node;
+  while (current) {
+    const flattened = StyleSheet.flatten(current.props?.style);
+    if (flattened && Object.prototype.hasOwnProperty.call(flattened, 'elevation')) {
+      return flattened;
+    }
+    current = current.parent;
+  }
+  throw new Error('No ancestor with an `elevation` style key was found.');
+}
 
 // NOTE: mocks below that return plain object literals (expo-router,
 // lib/database, lib/secureStorage, lib/notifications) build their
@@ -48,10 +70,11 @@ jest.mock('uuid', () => ({
 
 import DashboardScreen from '../../app/(tabs)/index';
 import { getReceiptsByMonth } from '../../lib/database';
-import { getCategoryBudgets } from '../../lib/secureStorage';
+import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 
 const mockGetReceiptsByMonth = getReceiptsByMonth as jest.Mock;
 const mockGetCategoryBudgets = getCategoryBudgets as jest.Mock;
+const mockGetCurrency = getCurrency as jest.Mock;
 
 function makeReceipt(overrides: Partial<Receipt>): Receipt {
   return {
@@ -68,6 +91,7 @@ describe('DashboardScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetCategoryBudgets.mockResolvedValue({});
+    mockGetCurrency.mockResolvedValue('USD');
     // First call = current month, second call (inside load()) = previous
     // month for the trend comparison — default both to empty unless a
     // test overrides.
@@ -128,5 +152,152 @@ describe('DashboardScreen', () => {
     await waitFor(() => {
       expect(screen.getByText('No receipts yet')).toBeTruthy();
     });
+  });
+
+  it('shows the hero pace ring only when at least one budget is configured', async () => {
+    // No budgets configured at all (default mock) — the pace ring has
+    // nothing meaningful to show a percentage of, so it should be hidden.
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([makeReceipt({ id: 'r1', totalAmount: 20 })])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('1 expense this month')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('pace-ring')).toBeNull();
+  });
+
+  it('shows the hero pace ring once a budget exists', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Groceries: 100 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([makeReceipt({ id: 'r1', totalAmount: 40, category: 'Groceries' })])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('pace-ring')).toBeTruthy();
+    });
+    // 40 spent of a 100 total configured budget = 40%.
+    expect(screen.getByText('40%')).toBeTruthy();
+  });
+
+  // Regression test for e1c552b: a large converted total (e.g. "CA$11726.55")
+  // used to overflow the fixed-width hero row and clip/overlap the pace
+  // ring. The fix wraps the amount in a shrinkable container and lets the
+  // Text scale its own font down — this pins both halves of that fix:
+  // the ring still renders fully, and the amount Text still carries the
+  // shrink-to-fit props, so neither regresses silently later.
+  it('shrinks the hero amount to fit instead of clipping the pace ring, for a large converted total', async () => {
+    mockGetCurrency.mockResolvedValue('CAD');
+    mockGetCategoryBudgets.mockResolvedValue({ Groceries: 8497.5 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([makeReceipt({ id: 'r1', totalAmount: 8497.5, category: 'Groceries' })])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    // 8497.5 USD * 1.38 CAD/USD = CA$11726.55 — the exact large total from
+    // the real device screenshot that exposed this bug. The same string
+    // also shows up in the budget row and the recent-expenses row (same
+    // amount, unrelated Text nodes), so disambiguate by picking the one
+    // wrapped in adjustsFontSizeToFit — that's the hero amount.
+    await waitFor(() => {
+      expect(screen.getAllByText('CA$11726.55').length).toBeGreaterThan(0);
+    });
+    const amountText = screen
+      .getAllByText('CA$11726.55')
+      .find((node) => node.props.adjustsFontSizeToFit);
+    expect(amountText).toBeTruthy();
+    expect(amountText!.props.numberOfLines).toBe(1);
+    expect(amountText!.props.adjustsFontSizeToFit).toBe(true);
+
+    // The pace ring (spent == budget, so 100% of budget) must still be
+    // fully rendered alongside the shrunk amount, not clipped or hidden.
+    expect(screen.getByTestId('pace-ring')).toBeTruthy();
+    expect(screen.getByText('100%')).toBeTruthy();
+    expect(screen.getByText('of budget')).toBeTruthy();
+  });
+
+  it('shows the "Where it went" composition bar only when there is category spend', async () => {
+    mockGetReceiptsByMonth.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('No receipts yet')).toBeTruthy();
+    });
+    expect(screen.queryByText('Where it went')).toBeNull();
+
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({ id: 'r1', totalAmount: 20, category: 'Dining' }),
+        makeReceipt({ id: 'r2', totalAmount: 30, category: 'Groceries' }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText('Where it went')[0]).toBeTruthy();
+    });
+  });
+
+  it('renders each budget as its own ring chip instead of a linear bar', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Groceries: 100, Dining: 50 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({ id: 'r1', totalAmount: 40, category: 'Groceries' }),
+        makeReceipt({ id: 'r2', totalAmount: 10, category: 'Dining' }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeTruthy();
+    });
+    expect(screen.getAllByTestId('budget-ring')).toHaveLength(2);
+  });
+
+  // app/(tabs)/index.tsx gives its card surfaces (budgetCard, the
+  // recent-expenses row, etc.) BOTH an iOS shadow key set
+  // (shadowColor/shadowOffset/shadowOpacity/shadowRadius) and Android's
+  // `elevation` on the same style object — RN itself picks the relevant
+  // half per platform at native render time, so there's no Platform.OS
+  // branch in JS to assert per-OS. What the restyle CAN silently drop is
+  // one half of that pair; this pins down that both are still present
+  // together, asserting only that the right keys exist (not their
+  // literal shadow/elevation values).
+  it('gives both the budget card and the recent-expenses row the full cross-platform shadow key set', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Groceries: 100 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({ id: 'r1', totalAmount: 40, storeName: 'Coffee Shop', category: 'Groceries' }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Groceries')).toBeTruthy();
+    });
+
+    const budgetCardStyle = nearestCardAncestorStyle(screen.getByText('Groceries'));
+    expect(budgetCardStyle).toEqual(
+      expect.objectContaining({
+        shadowColor: expect.anything(),
+        shadowOffset: expect.anything(),
+        shadowOpacity: expect.anything(),
+        shadowRadius: expect.anything(),
+        elevation: expect.anything(),
+      }),
+    );
+
+    const rowCardStyle = nearestCardAncestorStyle(screen.getByText('Coffee Shop'));
+    expect(rowCardStyle).toEqual(
+      expect.objectContaining({
+        shadowColor: expect.anything(),
+        shadowOffset: expect.anything(),
+        shadowOpacity: expect.anything(),
+        shadowRadius: expect.anything(),
+        elevation: expect.anything(),
+      }),
+    );
   });
 });

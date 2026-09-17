@@ -1,5 +1,6 @@
 import React from 'react';
-import { render, waitFor, screen } from '@testing-library/react-native';
+import { render, waitFor, screen, fireEvent, act } from '@testing-library/react-native';
+import { Platform, Switch, TouchableOpacity } from 'react-native';
 
 // This screen (app/(tabs)/scan.tsx, 2277 lines) is camera/OCR/AI-parsing
 // heavy — expo-camera, expo-image-picker, an on-device ML Kit text
@@ -133,6 +134,69 @@ describe('ScanScreen (smoke test)', () => {
     render(<ScanScreen />);
     await waitFor(() => {
       expect(screen.getByText('Align receipt within frame')).toBeTruthy();
+    });
+  });
+
+  // The "Repeat this expense" Switch's thumbColor branches on
+  // Platform.OS (see app/(tabs)/scan.tsx: `Platform.OS === 'android' ?
+  // '#fff' : undefined`) — undefined on iOS lets the native default
+  // thumb render, '#fff' on Android matches the accent track. This is
+  // the one Platform.OS branch this screen's restyle touched; assert
+  // both branches still resolve to the right value and render without
+  // throwing, on the manual-entry form where that Switch lives.
+  describe('the recurring-toggle Switch thumbColor Platform.OS branch', () => {
+    const originalOS = Platform.OS;
+
+    afterEach(() => {
+      Platform.OS = originalOS;
+    });
+
+    async function renderManualEntryWithRecurringToggle() {
+      render(<ScanScreen />);
+      await waitFor(() => {
+        expect(screen.getByText('Align receipt within frame')).toBeTruthy();
+      });
+
+      // The manual-entry entry point is the icon-only side action in the
+      // idle camera screen's shutter row (onPress={startManualEntry}); it
+      // has no visible label since its Ionicons glyph is mocked to null,
+      // so it's located by the onPress handler's function identity
+      // rather than by a brittle position/count assumption.
+      const manualEntryButton = screen
+        .UNSAFE_getAllByType(TouchableOpacity)
+        .find((el) => el.props.onPress?.name === 'startManualEntry');
+      expect(manualEntryButton).toBeTruthy();
+      await act(async () => {
+        fireEvent.press(manualEntryButton!);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('Repeat this expense')).toBeTruthy();
+      });
+    }
+
+    it("resolves to '#fff' on android", async () => {
+      Platform.OS = 'android';
+      await renderManualEntryWithRecurringToggle();
+
+      // react-native's own Switch is a forwardRef wrapping a
+      // platform-specific native host component, so the accessibility
+      // tree can surface more than one "ForwardRef(Switch)" instance
+      // for the same on-screen toggle — every one of them carries the
+      // same props, so asserting on all of them (rather than picking
+      // just one) is both safe and exhaustive.
+      const toggles = screen.UNSAFE_getAllByType(Switch);
+      expect(toggles.length).toBeGreaterThan(0);
+      toggles.forEach((toggle) => expect(toggle.props.thumbColor).toBe('#fff'));
+    });
+
+    it('resolves to undefined (native default) on ios', async () => {
+      Platform.OS = 'ios';
+      await renderManualEntryWithRecurringToggle();
+
+      const toggles = screen.UNSAFE_getAllByType(Switch);
+      expect(toggles.length).toBeGreaterThan(0);
+      toggles.forEach((toggle) => expect(toggle.props.thumbColor).toBeUndefined());
     });
   });
 });

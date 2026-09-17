@@ -1,8 +1,9 @@
 const withGooglePlayAdiToken = require('./plugins/withGooglePlayAdiToken');
 const withGradleJvmHeap = require('./plugins/withGradleJvmHeap');
+const withAndroidPredictiveBack = require('./plugins/withAndroidPredictiveBack');
 
 module.exports = ({ config }) => {
-  return withGradleJvmHeap(withGooglePlayAdiToken({
+  return withAndroidPredictiveBack(withGradleJvmHeap(withGooglePlayAdiToken({
     ...config,
     // Matches the App Store Connect listing name — "Receiptly" wasn't
     // available there, so this is the name going forward on both
@@ -112,7 +113,7 @@ module.exports = ({ config }) => {
       // Kept in sync BY HAND before each release build — see the
       // buildNumber comment above (autoIncrement is off; this literal
       // is the one actually used).
-      versionCode: 22,
+      versionCode: 27,
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       // Phase 3 magic-link invites: paired with the iOS associated
       // domain above. autoVerify=true makes Android verify the
@@ -275,5 +276,5 @@ module.exports = ({ config }) => {
       smsWorkerEndpoint: process.env.SMS_WORKER_ENDPOINT,
       smsWorkerSecret: process.env.SMS_WORKER_SECRET,
     },
-  }));
+  })));
 };

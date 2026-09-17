@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  LayoutChangeEvent,
   Linking,
   Pressable,
   ScrollView,
@@ -11,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as FileSystem from 'expo-file-system';
 import { useStyles, useTheme, useThemePreference } from '../constants/theme';
 import { ThemePreference } from '../lib/secureStorage';
@@ -379,6 +380,9 @@ export default function SettingsScreen() {
   const { preference: themePreference, setPreference: setThemePreference } = useThemePreference();
   const styles = useSettingsStyles();
   const router = useRouter();
+  const { section } = useLocalSearchParams<{ section?: string }>();
+  const scrollRef = React.useRef<ScrollView>(null);
+  const budgetsSectionY = React.useRef(0);
   const { user, profile, signOut, deleteAccount, refreshProfile, setActiveHousehold } = useAuth();
   const { isPremium, promoRedemption } = useEntitlements();
   const toast = useToast();
@@ -439,6 +443,35 @@ export default function SettingsScreen() {
   useEffect(() => {
     loadMembers();
   }, [loadMembers]);
+
+  // Deep-linked from Home's "Manage" budget link (/settings?section=budgets)
+  // — scroll straight to the Categories & budgets section once its layout
+  // is measured, instead of landing at the top of a long Settings screen.
+  // Re-runs when `members` resolves too: the Household section above
+  // budgets grows once member data arrives (see its `members.length > 1`
+  // branch), which shifts budgetsSectionY — re-scrolling here picks up
+  // that new position instead of leaving the very first (now-stale) one.
+  // Consumes the deep link via `didAutoScrollRef` — Settings is a tab
+  // (never remounts) and `loadMembers()` reruns on every focus with a
+  // fresh array reference, so without this guard every later focus of
+  // this screen would re-fire the scroll and yank the user back to
+  // budgets even after they'd scrolled elsewhere themselves. But it only
+  // latches once `members` has resolved at least once (initial state is
+  // `null`) — scrolling before then would use a Y measured before the
+  // Household section had a chance to grow, and latching immediately
+  // would leave that wrong position stuck for good on a slow fetch.
+  const didAutoScrollRef = React.useRef(false);
+  useEffect(() => {
+    didAutoScrollRef.current = false;
+  }, [section]);
+  useEffect(() => {
+    if (section !== 'budgets' || didAutoScrollRef.current) return;
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({ y: budgetsSectionY.current, animated: true });
+      if (members !== null) didAutoScrollRef.current = true;
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [section, members]);
 
   const sendInvite = async () => {
     const householdId = getCurrentHouseholdId();
@@ -733,7 +766,7 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll}>
         <Text style={styles.screenTitle}>Settings</Text>
 
         <Section title="Profile">
@@ -970,7 +1003,12 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
-        <Section title="Categories & budgets">
+        <Section
+          title="Categories & budgets"
+          onLayout={(e) => {
+            budgetsSectionY.current = e.nativeEvent.layout.y;
+          }}
+        >
           {ALL_CATEGORIES.filter((cat) => cat !== RECURRING_BUDGET_KEY).map((cat: Category) => (
             <View key={cat} style={styles.budgetRow}>
               <View
@@ -1075,10 +1113,18 @@ function formatBudgetInput(amount: number, currency: CurrencyCode): string {
   return amount.toFixed(decimals);
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  children,
+  onLayout,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onLayout?: (e: LayoutChangeEvent) => void;
+}) {
   const styles = useSettingsStyles();
   return (
-    <View style={styles.section}>
+    <View style={styles.section} onLayout={onLayout}>
       <Text style={styles.sectionTitle}>{title}</Text>
       <View style={styles.card}>{children}</View>
     </View>
