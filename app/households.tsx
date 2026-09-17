@@ -467,6 +467,12 @@ export default function HouseholdsScreen() {
                 ref={(ref) => {
                   swipeableRefs.current[m.householdId] = ref;
                 }}
+                // See the matching comment in app/(tabs)/history.tsx —
+                // these rows also span the full width, so without this the
+                // Swipeable's own pan handler claims touches starting at
+                // the screen's left edge, the same strip the system reads
+                // a back-swipe from.
+                hitSlop={{ left: -24 }}
                 renderRightActions={() => (
                   <Pressable
                     style={styles.deleteAction}

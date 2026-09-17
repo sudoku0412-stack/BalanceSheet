@@ -1,8 +1,9 @@
 const withGooglePlayAdiToken = require('./plugins/withGooglePlayAdiToken');
 const withGradleJvmHeap = require('./plugins/withGradleJvmHeap');
+const withAndroidPredictiveBack = require('./plugins/withAndroidPredictiveBack');
 
 module.exports = ({ config }) => {
-  return withGradleJvmHeap(withGooglePlayAdiToken({
+  return withAndroidPredictiveBack(withGradleJvmHeap(withGooglePlayAdiToken({
     ...config,
     // Matches the App Store Connect listing name — "Receiptly" wasn't
     // available there, so this is the name going forward on both
@@ -275,5 +276,5 @@ module.exports = ({ config }) => {
       smsWorkerEndpoint: process.env.SMS_WORKER_ENDPOINT,
       smsWorkerSecret: process.env.SMS_WORKER_SECRET,
     },
-  }));
+  })));
 };

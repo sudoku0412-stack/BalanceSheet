@@ -456,6 +456,19 @@ export default function HistoryScreen() {
                       ref={(ref) => {
                         swipeableRefs.current[r.id] = ref;
                       }}
+                      // Rows span the full screen width with no gap at the
+                      // left edge, so this Swipeable's PanGestureHandler
+                      // was claiming touches starting right at x=0 — the
+                      // same strip the OS reads a system back-swipe from.
+                      // Negative left hitSlop shrinks the handler's own
+                      // recognized area away from that edge (without
+                      // shrinking the touchable row itself), so an
+                      // edge-starting drag is left for the system/
+                      // navigation back gesture instead of being captured
+                      // here. Matches the standard fix for this exact
+                      // RNGH Swipeable-vs-back-gesture conflict (see
+                      // software-mansion/react-native-gesture-handler#890).
+                      hitSlop={{ left: -24 }}
                       renderRightActions={() => (
                         <TouchableOpacity
                           style={styles.deleteAction}
