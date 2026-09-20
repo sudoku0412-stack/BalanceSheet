@@ -12,7 +12,7 @@ module.exports = ({ config }) => {
     // project/URLs, not user-visible.
     name: 'NestExpenseTracker',
     slug: 'receipt-scanner',
-    version: '1.0.5',
+    version: '1.0.6',
     runtimeVersion: { policy: 'appVersion' },
     updates: {
       url: 'https://u.expo.dev/bbdefab5-4cc5-4480-96a9-8ece7eb913a5',
