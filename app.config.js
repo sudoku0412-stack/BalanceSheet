@@ -250,9 +250,22 @@ module.exports = ({ config }) => {
       // different keys because they're scoped to separate RC "apps"
       // within the same project. Empty/undefined is a valid
       // not-configured-for-this-platform state — lib/entitlements.ts's
-      // configurePurchases no-ops on it rather than throwing.
-      revenueCatApiKeyAndroid: process.env.REVENUECAT_API_KEY_ANDROID,
-      revenueCatApiKeyIos: process.env.REVENUECAT_API_KEY_IOS,
+      // configurePurchases no-ops on it rather than throwing — which is
+      // exactly what made a real bug silent: a manual `git pull` +
+      // Xcode Archive (no `eas build`, no env var injection) baked in
+      // `undefined` and the paywall quietly showed no plans, on a build
+      // that otherwise looked completely normal. Since these keys are
+      // safe to hardcode, a literal fallback removes that whole failure
+      // mode — env var still wins when EAS sets one, so CI/EAS builds
+      // are unaffected either way. If either key is ever rotated (e.g.
+      // compromise, RC project migration), update BOTH the EAS env var
+      // AND this literal — otherwise a build made without the env var
+      // set silently falls back to the OLD key instead of failing
+      // loudly, the same class of silent-misconfiguration bug this
+      // fallback exists to prevent. (Also update the matching literals
+      // in __tests__/appConfigRevenueCatKeys.test.ts.)
+      revenueCatApiKeyAndroid: process.env.REVENUECAT_API_KEY_ANDROID ?? 'goog_LUmSeXyOBnDtiRDjxocSgYvmrRN',
+      revenueCatApiKeyIos: process.env.REVENUECAT_API_KEY_IOS ?? 'appl_IWUzaIJgGCmISLeoYdTuzjQNJxc',
       // Optional: a Cloudflare Worker that wraps Workers AI as a free
       // fallback when the shared Gemini quota is exhausted. Set
       // PARSE_ENDPOINT to e.g. https://...workers.dev/parse and
