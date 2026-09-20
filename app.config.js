@@ -257,7 +257,13 @@ module.exports = ({ config }) => {
       // that otherwise looked completely normal. Since these keys are
       // safe to hardcode, a literal fallback removes that whole failure
       // mode — env var still wins when EAS sets one, so CI/EAS builds
-      // are unaffected either way.
+      // are unaffected either way. If either key is ever rotated (e.g.
+      // compromise, RC project migration), update BOTH the EAS env var
+      // AND this literal — otherwise a build made without the env var
+      // set silently falls back to the OLD key instead of failing
+      // loudly, the same class of silent-misconfiguration bug this
+      // fallback exists to prevent. (Also update the matching literals
+      // in __tests__/appConfigRevenueCatKeys.test.ts.)
       revenueCatApiKeyAndroid: process.env.REVENUECAT_API_KEY_ANDROID ?? 'goog_LUmSeXyOBnDtiRDjxocSgYvmrRN',
       revenueCatApiKeyIos: process.env.REVENUECAT_API_KEY_IOS ?? 'appl_IWUzaIJgGCmISLeoYdTuzjQNJxc',
       // Optional: a Cloudflare Worker that wraps Workers AI as a free
