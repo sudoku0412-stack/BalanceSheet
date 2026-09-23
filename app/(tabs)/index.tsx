@@ -336,9 +336,11 @@ export default function DashboardScreen() {
     },
 
     compositionCard: {
-      backgroundColor: t.colors.surface,
+      backgroundColor: t.colors.cardTint.sky,
       borderRadius: 18,
       padding: t.spacing.md,
+      borderWidth: t.isDark ? 0 : 1,
+      borderColor: t.colors.border,
       shadowColor: t.isDark ? '#000' : '#0C0F24',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: t.isDark ? 0.4 : 0.08,
@@ -402,7 +404,9 @@ export default function DashboardScreen() {
       gap: 6,
       paddingVertical: 14,
       borderRadius: 16,
-      backgroundColor: t.colors.surface,
+      backgroundColor: t.colors.surfaceCard,
+      borderWidth: t.isDark ? 0 : 1,
+      borderColor: t.colors.border,
       shadowColor: t.isDark ? '#000' : '#0C0F24',
       shadowOffset: { width: 0, height: 3 },
       shadowOpacity: t.isDark ? 0.35 : 0.06,
@@ -440,10 +444,12 @@ export default function DashboardScreen() {
       gap: t.spacing.sm,
     },
     budgetChip: {
-      backgroundColor: t.colors.surface,
+      backgroundColor: t.colors.cardTint.lavender,
       borderRadius: 18,
       padding: 12,
       width: 112,
+      borderWidth: t.isDark ? 0 : 1,
+      borderColor: t.colors.border,
       shadowColor: t.isDark ? '#000' : '#0C0F24',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: t.isDark ? 0.4 : 0.08,
@@ -481,10 +487,24 @@ export default function DashboardScreen() {
     row: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: t.colors.surface,
+      backgroundColor: t.colors.cardTint.peach,
       borderRadius: 20,
       padding: t.spacing.md,
       justifyContent: 'space-between',
+      borderWidth: t.isDark ? 0 : 1,
+      borderColor: t.colors.border,
+      shadowColor: t.isDark ? '#000' : '#0C0F24',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: t.isDark ? 0.4 : 0.08,
+      shadowRadius: 10,
+      elevation: 2,
+    },
+    savingsCard: {
+      backgroundColor: t.colors.cardTint.mint,
+      borderRadius: 18,
+      padding: t.spacing.md,
+      borderWidth: t.isDark ? 0 : 1,
+      borderColor: t.colors.border,
       shadowColor: t.isDark ? '#000' : '#0C0F24',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: t.isDark ? 0.4 : 0.08,
@@ -984,36 +1004,42 @@ export default function DashboardScreen() {
         {/* Quick actions */}
         <View style={styles.actionRow}>
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.sky }]}
             onPress={() => router.push('/(tabs)/scan?mode=manual' as never)}
           >
             <Ionicons name="add-circle-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Add expense</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.mint }]}
             onPress={() => router.push('/add-income' as never)}
           >
             <Ionicons name="cash-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Add income</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/recurring' as never)}>
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.lavender }]}
+            onPress={() => router.push('/recurring' as never)}
+          >
             <Ionicons name="repeat-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Recurring</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/balances' as never)}>
+          <TouchableOpacity
+            style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.peach }]}
+            onPress={() => router.push('/balances' as never)}
+          >
             <Ionicons name="wallet-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Balances</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.lilac }]}
             onPress={() => router.push('/incomes' as never)}
           >
             <Ionicons name="list-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Incomes</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={styles.actionBtn}
+            style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.sky }]}
             onPress={() => router.push(isPremium ? '/savings-goals' : '/paywall')}
           >
             <Ionicons name="flag-outline" size={20} color={theme.colors.textPrimary} />
@@ -1034,6 +1060,7 @@ export default function DashboardScreen() {
               return (
                 <TouchableOpacity
                   key={goal.id}
+                  style={styles.savingsCard}
                   onPress={() => router.push('/savings-goals' as never)}
                   activeOpacity={0.7}
                 >

@@ -338,7 +338,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
 }
 
 function sliceColor(key: string, remaining: boolean | undefined, theme: Theme): string {
-  if (remaining) return theme.colors.borderLight;
+  if (remaining) return theme.colors.chartRemaining;
   const standard = (ALL_CATEGORIES as readonly string[]).includes(key);
   return standard ? theme.colors.category[key as Category] : theme.colors.accent;
 }
@@ -499,7 +499,7 @@ function BudgetDonut({
           cx={center}
           cy={center}
           r={r}
-          stroke={theme.colors.border}
+          stroke={theme.colors.chartRemaining}
           strokeWidth={strokeWidth}
           strokeDasharray="6 8"
           fill="none"
@@ -515,7 +515,7 @@ function BudgetDonut({
         cx={center}
         cy={center}
         r={r}
-        stroke={theme.colors.borderLight}
+        stroke={theme.colors.chartRemaining}
         strokeWidth={strokeWidth}
         strokeDasharray="5 7"
         fill="none"
@@ -574,11 +574,13 @@ function useReportsStyles() {
     paddingBottom: 100,
   },
   summaryCard: {
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.colors.cardTint.sky,
     borderRadius: 20,
     padding: theme.spacing.lg,
     alignItems: 'stretch',
     gap: theme.spacing.sm,
+    borderWidth: theme.isDark ? 0 : 1,
+    borderColor: theme.colors.border,
     shadowColor: theme.isDark ? '#000' : '#0C0F24',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: theme.isDark ? 0.4 : 0.08,
