@@ -11,13 +11,15 @@ import { Alert } from 'react-native';
 // recover references to the created fns afterwards via the (now-mocked)
 // module's exports. useAuth/useToast are safe to close over outer consts
 // since they're wrapped in a function only invoked later at render time.
-const mockSignOut = jest.fn();
+const mockSignOut = jest.fn(async () => {});
 const mockRefreshProfile = jest.fn(async () => {});
 const mockSetActiveHousehold = jest.fn(async () => {});
 const mockToastShow = jest.fn();
 
+const mockSettingsPush = jest.fn();
+
 jest.mock('expo-router', () => ({
-  useRouter: () => ({ back: jest.fn(), push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ back: jest.fn(), push: mockSettingsPush, replace: jest.fn() }),
   useLocalSearchParams: () => ({}),
   useFocusEffect: (cb: () => void) => {
     require('react').useEffect(cb, []);
@@ -132,6 +134,17 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('Jane Doe')).toBeTruthy();
     expect(screen.getByText('jane@example.com')).toBeTruthy();
     expect(screen.getByText('Sign out')).toBeTruthy();
+    expect(screen.getByText('Import bank CSV')).toBeTruthy();
+    expect(screen.getByText('Savings goals')).toBeTruthy();
+  });
+
+  it('opens the Phase C import and savings screens from Settings', async () => {
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByText('Import bank CSV'));
+    fireEvent.press(screen.getByText('Import bank CSV'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/import-income');
+    fireEvent.press(screen.getByText('Savings goals'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/savings-goals');
   });
 
   it('sending an email invite calls inviteUserToHousehold and shows a success toast', async () => {

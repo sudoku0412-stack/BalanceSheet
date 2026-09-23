@@ -1,6 +1,6 @@
 # Income vs spending — product plan
 
-**Status**: Phase A shipped. Phase B implemented (recurring paycheck auto-materialize, recent source-name chips, PDF/reports cashflow + investments/savings-rate). Joint `earnedBy` stays member-only.
+**Status**: Phase A and B shipped. Phase C implemented (pay-stub OCR → Add Income, bank CSV paste-import, local savings goals / envelopes). Joint `earnedBy` stays member-only. Savings goals are local-first (not Firestore yet).
 **Product**: NestExpenseTracker household cashflow.
 
 This replaces the earlier high-level sketch with the concrete product
@@ -68,7 +68,7 @@ doc (or leave a follow-up that says "build Phase A").
 
 ### 5. What we are not doing in v1
 
-- Pay-stub OCR, bank CSV import.
+- Pay-stub OCR, bank CSV import (Phase C).
 - Splitting one income across members (one income = one `earnedBy`).
 - Treating investment contributions as income or as a third ledger
   type — they stay expenses.
@@ -194,9 +194,13 @@ recurring "Investments" expense; custom Other sources work by name.
 - Optional: savings-rate view that treats Investments spend as
   "saved" rather than "consumed" — **done** (Home + Reports; Spent still includes Investments)
 
-### Phase C — later
+### Phase C — import + envelopes
 
-- Pay-stub OCR, bank import, savings goals / envelopes
+- Pay-stub OCR (on-device, same ML Kit as receipts) prefills Add Income
+- Bank CSV paste-import (no new native picker); deposits only by default; dedupes date+amount+description
+- Savings goals / envelopes (local SQLite, Home + Settings)
+
+**Exit criteria**: user can scan a stub or paste a statement and confirm incomes; named envelopes show progress without changing Spent.
 
 ---
 

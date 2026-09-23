@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { format } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import { ModalHeader } from '../components/ui/ModalHeader';
@@ -47,9 +47,26 @@ function initialFor(label: string): string {
   return trimmed ? trimmed.charAt(0).toUpperCase() : '?';
 }
 
+function firstParam(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) return value[0] ?? '';
+  return value ?? '';
+}
+
 export default function AddIncomeScreen() {
   const theme = useTheme();
   const { user } = useAuth();
+  const params = useLocalSearchParams<{
+    amount?: string;
+    date?: string;
+    sourceName?: string;
+    category?: string;
+    notes?: string;
+  }>();
+  const prefillCategory = ALL_INCOME_CATEGORIES.includes(
+    firstParam(params.category) as IncomeCategory,
+  )
+    ? (firstParam(params.category) as IncomeCategory)
+    : 'Salary';
   const styles = useStyles((t) => ({
     root: { flex: 1, backgroundColor: t.colors.background },
     content: {
@@ -162,11 +179,13 @@ export default function AddIncomeScreen() {
     },
   }));
 
-  const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [category, setCategory] = useState<IncomeCategory>('Salary');
-  const [sourceName, setSourceName] = useState('');
-  const [notes, setNotes] = useState('');
+  const [amount, setAmount] = useState(() => firstParam(params.amount));
+  const [date, setDate] = useState(
+    () => firstParam(params.date) || format(new Date(), 'yyyy-MM-dd'),
+  );
+  const [category, setCategory] = useState<IncomeCategory>(prefillCategory);
+  const [sourceName, setSourceName] = useState(() => firstParam(params.sourceName));
+  const [notes, setNotes] = useState(() => firstParam(params.notes));
   const [earnedBy, setEarnedBy] = useState<string | null>(user?.uid ?? null);
   const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');

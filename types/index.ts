@@ -228,3 +228,17 @@ export interface CashflowStats {
   /** Per IncomeCategory totals. */
   byCategory: { category: IncomeCategory | string; total: number; count: number }[];
 }
+
+/** Local envelope toward a named savings target (Phase C). */
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  /** Target balance, USD-canonical. */
+  targetUsd: number;
+  /** User-allocated envelope balance, USD-canonical. */
+  allocatedUsd: number;
+  notes?: string;
+  householdId?: string;
+  createdAt: string;
+  updatedAt: string;
+}

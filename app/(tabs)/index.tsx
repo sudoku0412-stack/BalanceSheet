@@ -5,11 +5,16 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { addMonths, format, isSameMonth, isToday, isYesterday, subMonths } from 'date-fns';
-import { getCurrentHouseholdId, getIncomesByMonth, getReceiptsByMonth } from '../../lib/database';
+import {
+  getAllSavingsGoals,
+  getCurrentHouseholdId,
+  getIncomesByMonth,
+  getReceiptsByMonth,
+} from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 import { checkBudgetsAndNotify } from '../../lib/notifications';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
-import { CashflowStats, Receipt, MonthlyStats } from '../../types';
+import { CashflowStats, Receipt, MonthlyStats, SavingsGoal } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { computeStats } from '../../lib/dashboardStats';
@@ -500,6 +505,18 @@ export default function DashboardScreen() {
       color: t.colors.textPrimary,
       paddingLeft: t.spacing.sm,
     },
+    goalTrack: {
+      height: 8,
+      borderRadius: 999,
+      backgroundColor: t.colors.surfaceHigh,
+      overflow: 'hidden' as const,
+      marginTop: 8,
+    },
+    goalFill: {
+      height: '100%' as const,
+      borderRadius: 999,
+      backgroundColor: t.colors.success,
+    },
   }));
 
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
@@ -526,6 +543,7 @@ export default function DashboardScreen() {
   const [lastMonthTotal, setLastMonthTotal] = useState<number | null>(null);
   const [budgets, setBudgets] = useState<Record<string, number>>({});
   const [refreshing, setRefreshing] = useState(false);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   // 0 = current calendar month, negative = further back. Lets the
   // dashboard browse older months instead of only ever showing "now".
   const [monthOffset, setMonthOffset] = useState(0);
@@ -537,7 +555,7 @@ export default function DashboardScreen() {
     const householdId = getCurrentHouseholdId();
     const year = viewedMonth.getFullYear();
     const month = viewedMonth.getMonth() + 1;
-    const [data, incomes, prevData, budgetMap, currencyCode, memberList] = await Promise.all([
+    const [data, incomes, prevData, budgetMap, currencyCode, memberList, goals] = await Promise.all([
       getReceiptsByMonth(year, month),
       getIncomesByMonth(year, month),
       getReceiptsByMonth(prevMonth.getFullYear(), prevMonth.getMonth() + 1),
@@ -546,6 +564,7 @@ export default function DashboardScreen() {
       householdId && user?.uid
         ? getHouseholdMembers({ householdId, currentUid: user.uid })
         : Promise.resolve(null),
+      getAllSavingsGoals().catch(() => []),
     ]);
     setReceipts(data);
     setStats(computeStats(data));
@@ -554,6 +573,7 @@ export default function DashboardScreen() {
     setBudgets(budgetMap);
     setCurrency((currencyCode as CurrencyCode | null) ?? 'USD');
     setMembers(memberList ?? []);
+    setSavingsGoals(goals);
   }, [monthOffset, user?.uid]);
 
   useFocusEffect(
@@ -941,8 +961,45 @@ export default function DashboardScreen() {
             <Ionicons name="wallet-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Balances</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push('/savings-goals' as never)}
+          >
+            <Ionicons name="flag-outline" size={20} color={theme.colors.textPrimary} />
+            <Text style={styles.actionBtnText}>Goals</Text>
+          </TouchableOpacity>
         </View>
   
+        {savingsGoals.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Savings goals</Text>
+              <TouchableOpacity onPress={() => router.push('/savings-goals' as never)} hitSlop={8}>
+                <Text style={styles.sectionLink}>Manage</Text>
+              </TouchableOpacity>
+            </View>
+            {savingsGoals.map((goal) => {
+              const ratio = goal.targetUsd > 0 ? Math.min(goal.allocatedUsd / goal.targetUsd, 1) : 0;
+              return (
+                <TouchableOpacity
+                  key={goal.id}
+                  onPress={() => router.push('/savings-goals' as never)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.budgetChipName}>{goal.name}</Text>
+                  <Text style={styles.budgetChipAmt}>
+                    {formatCurrency(goal.allocatedUsd, currency)} of{' '}
+                    {formatCurrency(goal.targetUsd, currency)}
+                  </Text>
+                  <View style={styles.goalTrack}>
+                    <View style={[styles.goalFill, { width: `${ratio * 100}%` }]} />
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         {/* Budgets */}
         {budgetRows.length > 0 && (
           <View style={styles.section}>

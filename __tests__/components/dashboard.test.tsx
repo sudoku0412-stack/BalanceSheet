@@ -67,6 +67,7 @@ jest.mock('../../lib/database', () => ({
   getCurrentHouseholdId: jest.fn(() => 'hh1'),
   getReceiptsByMonth: jest.fn(),
   getIncomesByMonth: jest.fn(async () => []),
+  getAllSavingsGoals: jest.fn(async () => []),
 }));
 
 jest.mock('../../lib/secureStorage', () => ({
@@ -87,11 +88,12 @@ jest.mock('uuid', () => ({
 
 import { router } from 'expo-router';
 import DashboardScreen from '../../app/(tabs)/index';
-import { getReceiptsByMonth, getIncomesByMonth } from '../../lib/database';
+import { getReceiptsByMonth, getIncomesByMonth, getAllSavingsGoals } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 
 const mockGetReceiptsByMonth = getReceiptsByMonth as jest.Mock;
 const mockGetIncomesByMonth = getIncomesByMonth as jest.Mock;
+const mockGetAllSavingsGoals = getAllSavingsGoals as jest.Mock;
 const mockGetCategoryBudgets = getCategoryBudgets as jest.Mock;
 const mockGetCurrency = getCurrency as jest.Mock;
 
@@ -112,6 +114,7 @@ describe('DashboardScreen', () => {
     mockGetCategoryBudgets.mockResolvedValue({});
     mockGetCurrency.mockResolvedValue('USD');
     mockGetIncomesByMonth.mockResolvedValue([]);
+    mockGetAllSavingsGoals.mockResolvedValue([]);
     // First call = current month, second call (inside load()) = previous
     // month for the trend comparison — default both to empty unless a
     // test overrides.
@@ -354,5 +357,28 @@ describe('DashboardScreen', () => {
         params: expect.objectContaining({ kind: 'income', group: 'member' }),
       }),
     );
+  });
+
+  it('shows savings-goal progress and a Goals action when envelopes exist', async () => {
+    mockGetAllSavingsGoals.mockResolvedValue([
+      {
+        id: 'g1',
+        name: 'Emergency fund',
+        targetUsd: 1000,
+        allocatedUsd: 250,
+        createdAt: '2026-03-01T00:00:00.000Z',
+        updatedAt: '2026-03-01T00:00:00.000Z',
+      },
+    ]);
+    mockGetReceiptsByMonth.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Emergency fund')).toBeTruthy();
+    });
+    expect(screen.getByText('$250.00 of $1000.00')).toBeTruthy();
+    expect(screen.getByText('Goals')).toBeTruthy();
+    fireEvent.press(screen.getByText('Goals'));
+    expect(router.push).toHaveBeenCalledWith('/savings-goals');
   });
 });
