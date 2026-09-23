@@ -31,6 +31,9 @@ describe('computeCashflow', () => {
     expect(s.totalSpent).toBe(0);
     expect(s.net).toBe(0);
     expect(s.incomeCount).toBe(0);
+    expect(s.investedUsd).toBe(0);
+    expect(s.consumedUsd).toBe(0);
+    expect(s.savingsRate).toBeNull();
     expect(s.byMember).toEqual([]);
     expect(s.byCategory).toEqual([]);
   });
@@ -49,6 +52,9 @@ describe('computeCashflow', () => {
     expect(s.totalSpent).toBe(500);
     expect(s.net).toBe(750);
     expect(s.incomeCount).toBe(2);
+    expect(s.investedUsd).toBe(100);
+    expect(s.consumedUsd).toBe(400);
+    expect(s.savingsRate).toBeCloseTo(100 / 1250);
   });
 
   it('rolls up byMember sorted by total desc', () => {

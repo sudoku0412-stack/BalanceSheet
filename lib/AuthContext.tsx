@@ -55,7 +55,7 @@ import {
   setOnboardingSeen as persistOnboardingSeen,
   resetAllSecureStorage,
 } from './secureStorage';
-import { processRecurringReceipts } from './recurring';
+import { processRecurringIncomes, processRecurringReceipts } from './recurring';
 import { registerForPushNotificationsAsync } from './notifications';
 
 type AuthState = {
@@ -457,7 +457,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // setCurrentUserId (above) sets the module-level uid
         // synchronously before its own async backfill runs, so it's
         // already safe to read here despite not being awaited.
-        processRecurringReceipts().catch(() => {
+        Promise.all([processRecurringReceipts(), processRecurringIncomes()]).catch(() => {
           // Best-effort — a failed run just leaves any due occurrences
           // to be generated on the next app open instead.
         });

@@ -1,6 +1,6 @@
 # Income vs spending — product plan
 
-**Status**: Phase A implemented (types, SQLite/Firestore income CRUD, Home cashflow strip, Add/Edit Income screens, History unified feed, Reports earned/spent/net, Investments expense category, tests).
+**Status**: Phase A shipped. Phase B implemented (recurring paycheck auto-materialize, recent source-name chips, PDF/reports cashflow + investments/savings-rate). Joint `earnedBy` stays member-only.
 **Product**: NestExpenseTracker household cashflow.
 
 This replaces the earlier high-level sketch with the concrete product
@@ -187,12 +187,12 @@ recurring "Investments" expense; custom Other sources work by name.
 
 ### Phase B — polish
 
-- Recurring income (paychecks) auto-materialize like recurring expenses
-- Recent source-name suggestions / autocomplete
-- "Joint" earnedBy option if you want it
-- PDF section for cashflow + investments callout
+- Recurring income (paychecks) auto-materialize like recurring expenses — **done**
+- Recent source-name suggestions / autocomplete — **done**
+- "Joint" earnedBy option if you want it — **deferred** (member-only)
+- PDF section for cashflow + investments callout — **done**
 - Optional: savings-rate view that treats Investments spend as
-  "saved" rather than "consumed"
+  "saved" rather than "consumed" — **done** (Home + Reports; Spent still includes Investments)
 
 ### Phase C — later
 

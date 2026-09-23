@@ -1,5 +1,6 @@
-import { Receipt } from '../types';
+import { Income, Receipt } from '../types';
 import { CurrencyCode, CURRENCY_SYMBOLS, convertFromUsd } from './currency';
+import { computeCashflow } from './cashflowStats';
 
 // expo-file-system is required lazily inside generateReceiptsPdf so
 // Jest (running pure-JS template tests for the HTML output) doesn't
@@ -66,6 +67,7 @@ export function isPdfExportAvailable(): boolean {
  */
 export const buildHtmlForPreview = (args: {
   receipts: Receipt[];
+  incomes?: Income[];
   startLabel: string;
   endLabel: string;
   currency?: CurrencyCode;
@@ -128,11 +130,13 @@ function visualFor(category: string): { color: string; tint: string; icon: strin
 
 function buildHtml(args: {
   receipts: Receipt[];
+  incomes?: Income[];
   startLabel: string;
   endLabel: string;
   currency?: CurrencyCode;
 }): string {
-  const { receipts, startLabel, endLabel, currency = 'USD' } = args;
+  const { receipts, incomes = [], startLabel, endLabel, currency = 'USD' } = args;
+  const cashflow = computeCashflow(incomes, receipts);
   const money = (n: number) => fmtMoney(n, currency);
   const sorted = [...receipts].sort((a, b) => a.date.localeCompare(b.date));
 
@@ -461,10 +465,36 @@ function buildHtml(args: {
       <div class="stat-label">Avg / receipt</div>
       <span class="stat-value">${money(avgPerReceipt)}</span>
     </div>
+    ${
+      incomes.length > 0
+        ? `<div class="stat">
+      <div class="stat-label">Earned</div>
+      <span class="stat-value">${money(cashflow.totalEarned)}</span>
+    </div>
+    <div class="stat">
+      <div class="stat-label">Net</div>
+      <span class="stat-value">${money(cashflow.net)}</span>
+    </div>`
+        : ''
+    }
   </div>
 </section>
 
 <section class="frame">
+  ${
+    incomes.length > 0
+      ? `<h2>Cashflow</h2>
+         <p class="muted">Earned ${money(cashflow.totalEarned)} · Spent ${money(cashflow.totalSpent)} · Net ${money(cashflow.net)}${
+           cashflow.investedUsd > 0
+             ? ` · Investments ${money(cashflow.investedUsd)}${
+                 cashflow.savingsRate != null
+                   ? ` (${(cashflow.savingsRate * 100).toFixed(0)}% of earned saved)`
+                   : ''
+               }`
+             : ''
+         }</p>`
+      : ''
+  }
   ${
     categoryRows
       ? `<h2>Spending by category</h2>
@@ -497,6 +527,7 @@ function buildHtml(args: {
  */
 export async function generateReceiptsPdf(args: {
   receipts: Receipt[];
+  incomes?: Income[];
   startLabel: string;
   endLabel: string;
   filename?: string;

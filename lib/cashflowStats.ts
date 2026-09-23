@@ -11,6 +11,13 @@ import { CashflowStats, Income, Receipt } from '../types';
 export function computeCashflow(incomes: Income[], receipts: Receipt[]): CashflowStats {
   const totalEarned = incomes.reduce((s, i) => s + (i.amountUsd || 0), 0);
   const totalSpent = receipts.reduce((s, r) => s + (r.totalAmount || 0), 0);
+  const investedUsd = receipts.reduce((s, r) => {
+    const tags = r.categoryTags ?? [r.category];
+    const isInvest = r.category === 'Investments' || tags.includes('Investments');
+    return isInvest ? s + (r.totalAmount || 0) : s;
+  }, 0);
+  const consumedUsd = totalSpent - investedUsd;
+  const savingsRate = totalEarned > 0 ? investedUsd / totalEarned : null;
 
   const memberMap = new Map<string, { total: number; count: number }>();
   const catMap = new Map<string, { total: number; count: number }>();
@@ -42,6 +49,9 @@ export function computeCashflow(incomes: Income[], receipts: Receipt[]): Cashflo
     totalSpent,
     net: totalEarned - totalSpent,
     incomeCount: incomes.length,
+    investedUsd,
+    consumedUsd,
+    savingsRate,
     byMember,
     byCategory,
   };

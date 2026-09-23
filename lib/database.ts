@@ -220,7 +220,8 @@ export async function initDatabase(): Promise<void> {
       created_at         TEXT NOT NULL,
       updated_at         TEXT NOT NULL,
       user_id            TEXT NOT NULL,
-      household_id       TEXT
+      household_id       TEXT,
+      is_recurring_occurrence INTEGER
     );
     CREATE INDEX IF NOT EXISTS idx_incomes_user ON incomes(user_id);
     CREATE INDEX IF NOT EXISTS idx_incomes_user_date ON incomes(user_id, date);
@@ -279,6 +280,7 @@ export async function initDatabase(): Promise<void> {
     // paid_by which is who fronted the cash). See Receipt['createdBy']
     // in types/index.ts.
     `ALTER TABLE receipts             ADD COLUMN created_by       TEXT`,
+    `ALTER TABLE incomes              ADD COLUMN is_recurring_occurrence INTEGER`,
   ]) {
     try {
       await db.execAsync(sql);
@@ -1316,6 +1318,7 @@ type IncomeRow = {
   created_at: string;
   updated_at: string;
   household_id: string | null;
+  is_recurring_occurrence: number | null;
 };
 
 function rowToIncome(row: IncomeRow): Income {
@@ -1337,6 +1340,7 @@ function rowToIncome(row: IncomeRow): Income {
     notes: row.notes ?? undefined,
     originalCurrency: (row.original_currency as Income['originalCurrency']) ?? undefined,
     recurring,
+    isRecurringOccurrence: row.is_recurring_occurrence === 1,
     createdBy: row.created_by ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -1360,6 +1364,7 @@ function incomeToRowParams(income: Income, uid: string, hid: string | null) {
     income.updatedAt,
     uid,
     hid,
+    income.isRecurringOccurrence ? 1 : 0,
   ];
 }
 
@@ -1371,8 +1376,8 @@ export async function saveIncome(income: Income): Promise<void> {
     `INSERT OR REPLACE INTO incomes (
       id, source_name, date, amount_usd, category, earned_by, notes,
       original_currency, recurring_json, created_by, created_at, updated_at,
-      user_id, household_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      user_id, household_id, is_recurring_occurrence
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     incomeToRowParams(income, uid, hid),
   );
   if (hid) {
@@ -1398,6 +1403,23 @@ export async function getAllIncomes(): Promise<Income[]> {
     hid ? [uid, hid] : [uid],
   );
   return rows.map(rowToIncome);
+}
+
+/** Distinct source names, most recently used first (getAllIncomes is date DESC). */
+export async function getRecentIncomeSourceNames(limit = 8): Promise<string[]> {
+  const incomes = await getAllIncomes();
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const row of incomes) {
+    const name = row.sourceName.trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+    if (names.length >= limit) break;
+  }
+  return names;
 }
 
 export async function getIncomesByMonth(year: number, month: number): Promise<Income[]> {
@@ -1459,8 +1481,8 @@ export async function upsertIncomeFromCloud(
     `INSERT OR REPLACE INTO incomes (
       id, source_name, date, amount_usd, category, earned_by, notes,
       original_currency, recurring_json, created_by, created_at, updated_at,
-      user_id, household_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      user_id, household_id, is_recurring_occurrence
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     incomeToRowParams(cloud, uid, householdId),
   );
 }

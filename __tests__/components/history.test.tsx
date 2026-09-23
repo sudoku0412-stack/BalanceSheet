@@ -10,11 +10,12 @@ import type { Receipt } from '../../types';
 // References are recovered afterwards via the (now-mocked) module's
 // exports.
 const mockPush = jest.fn();
+const mockParams: Record<string, string> = {};
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockPush, back: jest.fn() }),
   useNavigation: () => ({ setOptions: jest.fn() }),
-  useLocalSearchParams: () => ({}),
+  useLocalSearchParams: () => mockParams,
   useFocusEffect: (cb: () => void) => {
     require('react').useEffect(cb, []);
   },
@@ -51,6 +52,7 @@ jest.mock('../../lib/secureStorage', () => ({
 
 import HistoryScreen from '../../app/(tabs)/history';
 import { getAllReceipts, searchReceipts, getAllIncomes, searchIncomes } from '../../lib/database';
+import type { Income } from '../../types';
 
 const mockGetAllReceipts = getAllReceipts as jest.Mock;
 const mockSearchReceipts = searchReceipts as jest.Mock;
@@ -75,6 +77,7 @@ describe('HistoryScreen', () => {
     mockSearchReceipts.mockResolvedValue([]);
     mockGetAllIncomes.mockResolvedValue([]);
     mockSearchIncomes.mockResolvedValue([]);
+    Object.keys(mockParams).forEach((k) => delete mockParams[k]);
   });
 
   it('renders one row per mocked receipt', async () => {
@@ -120,5 +123,31 @@ describe('HistoryScreen', () => {
     });
     fireEvent.press(screen.getByText('Coffee Shop'));
     expect(mockPush).toHaveBeenCalledWith('/edit/r-42');
+  });
+
+  it('groups incomes by earner when opened with kind=income&group=member', async () => {
+    mockParams.kind = 'income';
+    mockParams.group = 'member';
+    const income = (overrides: Partial<Income>): Income => ({
+      id: 'i1',
+      sourceName: 'Payroll',
+      date: new Date().toISOString().slice(0, 10),
+      amountUsd: 100,
+      category: 'Salary',
+      earnedBy: 'uid-self',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...overrides,
+    });
+    mockGetAllIncomes.mockResolvedValue([
+      income({ id: 'i1', sourceName: 'Payroll', earnedBy: 'uid-self' }),
+      income({ id: 'i2', sourceName: 'Gift', earnedBy: 'uid-other', amountUsd: 40 }),
+    ]);
+    render(<HistoryScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Income by person')).toBeTruthy();
+    });
+    expect(screen.getByText('Payroll · You')).toBeTruthy();
+    expect(screen.getByText(/Gift ·/)).toBeTruthy();
   });
 });
