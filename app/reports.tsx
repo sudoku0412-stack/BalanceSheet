@@ -214,6 +214,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
       const filename = buildExportFilename(monthStart, 'pdf');
       const path = await generateReceiptsPdf({
         receipts: monthReceipts,
+        incomes: monthIncomes,
         startLabel,
         endLabel,
         filename,
@@ -396,6 +397,30 @@ function SummaryCard({
           </Text>
         </View>
       </View>
+      {cashflow.investedUsd > 0 ? (
+        <View style={styles.cashflowRow}>
+          <View style={styles.cashflowCell}>
+            <Text style={styles.cashflowLabel}>Invested</Text>
+            <Text style={styles.cashflowValue}>
+              {formatCurrency(cashflow.investedUsd, currency)}
+            </Text>
+          </View>
+          <View style={styles.cashflowCell}>
+            <Text style={styles.cashflowLabel}>Consumed</Text>
+            <Text style={styles.cashflowValue}>
+              {formatCurrency(cashflow.consumedUsd, currency)}
+            </Text>
+          </View>
+          <View style={styles.cashflowCell}>
+            <Text style={styles.cashflowLabel}>Saved</Text>
+            <Text style={[styles.cashflowValue, { color: theme.colors.success }]}>
+              {cashflow.savingsRate != null
+                ? `${(cashflow.savingsRate * 100).toFixed(0)}%`
+                : '—'}
+            </Text>
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }

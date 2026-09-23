@@ -490,6 +490,9 @@ export default function DashboardScreen() {
     totalSpent: 0,
     net: 0,
     incomeCount: 0,
+    investedUsd: 0,
+    consumedUsd: 0,
+    savingsRate: null,
     byMember: [],
     byCategory: [],
   });
@@ -741,6 +744,14 @@ export default function DashboardScreen() {
             >
               Net {formatCurrency(cashflow.net, currency)}
             </Text>
+            {cashflow.investedUsd > 0 ? (
+              <Text style={styles.cashflowMemberLine}>
+                Invested {formatCurrency(cashflow.investedUsd, currency)}
+                {cashflow.savingsRate != null
+                  ? ` · Saved ${(cashflow.savingsRate * 100).toFixed(0)}% of earned`
+                  : ''}
+              </Text>
+            ) : null}
             {cashflow.byMember.length > 1 ? (
               <Text style={styles.cashflowMemberLine} numberOfLines={2}>
                 {cashflow.byMember

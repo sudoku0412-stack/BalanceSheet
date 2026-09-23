@@ -1,11 +1,15 @@
 const mockGetAllReceipts = jest.fn();
 const mockSaveReceipt = jest.fn();
 const mockUpdateReceipt = jest.fn();
+const mockGetAllIncomes = jest.fn();
+const mockSaveIncome = jest.fn();
 
 jest.mock('../lib/database', () => ({
   getAllReceipts: (...args: unknown[]) => mockGetAllReceipts(...args),
   saveReceipt: (...args: unknown[]) => mockSaveReceipt(...args),
   updateReceipt: (...args: unknown[]) => mockUpdateReceipt(...args),
+  getAllIncomes: (...args: unknown[]) => mockGetAllIncomes(...args),
+  saveIncome: (...args: unknown[]) => mockSaveIncome(...args),
 }));
 
 import {
@@ -13,8 +17,10 @@ import {
   advance,
   computeRecurringEndDate,
   processRecurringReceipts,
+  processRecurringIncomes,
+  resolveRecurringFromForm,
 } from '../lib/recurring';
-import { Receipt } from '../types';
+import { Income, Receipt } from '../types';
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -199,5 +205,90 @@ describe('processRecurringReceipts', () => {
     expect(created).toBe(0);
     expect(mockSaveReceipt).not.toHaveBeenCalled();
     expect(mockUpdateReceipt).not.toHaveBeenCalled();
+  });
+});
+
+describe('resolveRecurringFromForm', () => {
+  it('returns undefined schedule when disabled', () => {
+    const res = resolveRecurringFromForm({
+      enabled: false,
+      frequency: 'monthly',
+      nextDueDate: '2026-04-01',
+      duration: '12',
+      startDate: '2026-03-01',
+    });
+    expect(res).toEqual({ ok: true, schedule: undefined });
+  });
+
+  it('requires duration when there is no existing end date', () => {
+    const res = resolveRecurringFromForm({
+      enabled: true,
+      frequency: 'monthly',
+      nextDueDate: '2026-04-01',
+      duration: '',
+      startDate: '2026-03-01',
+    });
+    expect(res.ok).toBe(false);
+  });
+
+  it('builds a schedule from next date and duration', () => {
+    const res = resolveRecurringFromForm({
+      enabled: true,
+      frequency: 'monthly',
+      nextDueDate: '2026-04-01',
+      duration: '6',
+      startDate: '2026-03-01',
+    });
+    expect(res).toEqual({
+      ok: true,
+      schedule: {
+        frequency: 'monthly',
+        nextDueDate: '2026-04-01',
+        endDate: '2026-09-01',
+      },
+    });
+  });
+});
+
+describe('processRecurringIncomes', () => {
+  const template = (overrides: Partial<Income>): Income => ({
+    id: 'inc-template',
+    sourceName: 'Acme payroll',
+    date: '2025-01-01',
+    amountUsd: 2000,
+    category: 'Salary',
+    earnedBy: 'uid-a',
+    createdAt: '2025-01-01T00:00:00.000Z',
+    updatedAt: '2025-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('skips incomes with no recurring field', async () => {
+    mockGetAllIncomes.mockResolvedValue([template({})]);
+    const created = await processRecurringIncomes();
+    expect(created).toBe(0);
+    expect(mockSaveIncome).not.toHaveBeenCalled();
+  });
+
+  it('materializes due paychecks and advances the template', async () => {
+    const t = template({
+      recurring: {
+        frequency: 'monthly',
+        nextDueDate: '2025-11-01',
+        endDate: '2025-12-15',
+      },
+    });
+    mockGetAllIncomes.mockResolvedValue([t]);
+    const created = await processRecurringIncomes();
+    expect(created).toBe(2);
+    expect(mockSaveIncome).toHaveBeenCalledTimes(3);
+    const occurrence = mockSaveIncome.mock.calls[0][0] as Income;
+    expect(occurrence.id).not.toBe(t.id);
+    expect(occurrence.recurring).toBeUndefined();
+    expect(occurrence.isRecurringOccurrence).toBe(true);
+    expect(occurrence.date).toBe('2025-11-01');
+    const updated = mockSaveIncome.mock.calls[2][0] as Income;
+    expect(updated.id).toBe(t.id);
+    expect(updated.recurring?.nextDueDate).toBe('2026-01-01');
   });
 });

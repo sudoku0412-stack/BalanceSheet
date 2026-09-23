@@ -169,14 +169,15 @@ export interface Income {
   earnedBy: string;
   notes?: string;
   originalCurrency?: CurrencyCode;
-  /** Optional paycheck schedule — stored in Phase A; auto-materialize
-   *  of occurrences is Phase B (lib/recurring.ts for expenses already
-   *  covers investment contributions as expenses). */
+  /** Paycheck / repeating-income schedule. The original row keeps this;
+   *  generated occurrences do not (see `isRecurringOccurrence`). */
   recurring?: {
     frequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
     nextDueDate: string;
     endDate: string;
   };
+  /** True for a row materialized by processRecurringIncomes. */
+  isRecurringOccurrence?: boolean;
   householdId?: string;
   /** Who logged this entry (may differ from earnedBy). */
   createdBy?: string;
@@ -216,6 +217,12 @@ export interface CashflowStats {
   totalSpent: number;
   net: number;
   incomeCount: number;
+  /** Investment-category expense totals (still included in totalSpent). */
+  investedUsd: number;
+  /** Spent minus investments — "consumed" cash. */
+  consumedUsd: number;
+  /** investedUsd / totalEarned, or null when nothing was earned. */
+  savingsRate: number | null;
   /** Per earnedBy uid totals for the period. */
   byMember: { earnedBy: string; total: number; count: number }[];
   /** Per IncomeCategory totals. */
