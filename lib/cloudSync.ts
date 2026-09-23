@@ -1802,6 +1802,42 @@ export async function leaveHousehold(args: {
 
 // ─── delete-account cleanup (Phase 3) ─────────────────────────────────────
 
+type DeletableRef = { delete: () => Promise<unknown> };
+
+/**
+ * Delete query documents in batches of 400 (Firestore caps a batch at
+ * 500). If a batch commit fails, fall back to one-by-one deletes and
+ * skip any single doc that still fails. Returns how many deletes
+ * succeeded.
+ */
+async function deleteDocsInChunks(
+  db: { batch: () => { delete: (ref: DeletableRef) => void; commit: () => Promise<unknown> } },
+  docs: ReadonlyArray<{ ref: DeletableRef }>,
+): Promise<number> {
+  const CHUNK = 400;
+  let deleted = 0;
+  for (let i = 0; i < docs.length; i += CHUNK) {
+    const slice = docs.slice(i, i + CHUNK);
+    const batch = db.batch();
+    for (const d of slice) batch.delete(d.ref);
+    try {
+      await batch.commit();
+      deleted += slice.length;
+    } catch {
+      for (const d of slice) {
+        try {
+          await d.ref.delete();
+          deleted++;
+        } catch {
+          // skip
+        }
+      }
+    }
+  }
+  return deleted;
+}
+
+
 /**
  * Wipe every cloud trace of the current user before Firebase Auth
  * actually deletes their account. Called by AuthContext.deleteAccount.
@@ -1810,6 +1846,7 @@ export async function leaveHousehold(args: {
  *
  *   Solo household (memberCount <= 1):
  *     - Delete every receipt doc under households/{hid}/receipts/.
+ *     - Delete every income doc under households/{hid}/incomes/.
  *     - Delete every photo under households/{hid}/photos/ (best effort —
  *       only fires when Cloud Storage is wired up).
  *     - Delete the household doc itself.
@@ -1817,7 +1854,7 @@ export async function leaveHousehold(args: {
  *   Shared household (memberCount > 1):
  *     - Remove the user's uid from the household's memberUids and
  *       decrement memberCount. The other family members keep all the
- *       receipts and photos.
+ *       receipts, incomes, and photos.
  *
  * Either way we also:
  *     - Delete users/{uid}.
@@ -1869,29 +1906,16 @@ export async function deleteCloudUserData(args: {
             // Delete every receipt under this household. Chunked
             // batched deletes — 400 per batch (Firestore caps at 500).
             const receiptsCol = hRef.collection('receipts');
-            // Pagination loop: pull all docs up front since the
-            // typical user has at most a few hundred receipts.
+            // Pull all docs up front since the typical user has at
+            // most a few hundred receipts.
             const snap = await receiptsCol.get();
             const docs = snap.docs;
-            const CHUNK = 400;
-            for (let i = 0; i < docs.length; i += CHUNK) {
-              const batch = db.batch();
-              for (const d of docs.slice(i, i + CHUNK)) batch.delete(d.ref);
-              try {
-                await batch.commit();
-                receiptsDeleted += Math.min(CHUNK, docs.length - i);
-              } catch {
-                // Try one-by-one as a fallback.
-                for (const d of docs.slice(i, i + CHUNK)) {
-                  try {
-                    await d.ref.delete();
-                    receiptsDeleted++;
-                  } catch {
-                    // skip
-                  }
-                }
-              }
-            }
+            receiptsDeleted += await deleteDocsInChunks(db, docs);
+            // Incomes live in their own subcollection. A parent
+            // household delete does not cascade, and once the parent
+            // is gone the rules can no longer authorize the cleanup.
+            const incomesSnap = await hRef.collection('incomes').get();
+            await deleteDocsInChunks(db, incomesSnap.docs);
             // Best-effort photo cleanup. The Storage module is only
             // available on a Blaze-upgraded project; on Spark this
             // silently no-ops.
@@ -1946,10 +1970,10 @@ export async function deleteCloudUserData(args: {
 }
 
 /**
- * Owner-only permanent delete of an entire household: every receipt +
- * settlement doc and photo under it, then the household doc itself,
- * then the owner's own membership doc. Caller (Settings) is
- * responsible for auto-settling any pending balances FIRST — this
+ * Owner-only permanent delete of an entire household: every receipt,
+ * settlement, and income doc and photo under it, then the household
+ * doc itself, then the owner's own membership doc. Caller (Settings)
+ * is responsible for auto-settling any pending balances FIRST — this
  * function just destroys data, it doesn't check balances.
  *
  * Other members' `users/{uid}/memberships/{hid}` docs are intentionally
@@ -1962,10 +1986,10 @@ export async function deleteCloudUserData(args: {
  * in this codebase (see leaveHousehold's doc comment) rather than
  * introducing a new cross-user write rule just for this.
  *
- * Order matters: receipts/settlements/photos must be deleted BEFORE
- * the household doc, because their security rule looks up the parent
- * household via get() — deleting the household doc first would make
- * every subsequent subcollection delete get denied.
+ * Order matters: receipts/settlements/incomes/photos must be deleted
+ * BEFORE the household doc, because their security rule looks up the
+ * parent household via get() — deleting the household doc first would
+ * make every subsequent subcollection delete get denied.
  */
 export async function deleteHousehold(args: {
   householdId: string;
@@ -1982,47 +2006,16 @@ export async function deleteHousehold(args: {
       return { ok: false, reason: 'only the owner can delete this household' };
     }
 
-    let receiptsDeleted = 0;
-    const receiptsCol = hRef.collection('receipts');
-    const receiptsSnap = await receiptsCol.get();
+    const receiptsSnap = await hRef.collection('receipts').get();
     const receiptDocs = receiptsSnap.docs;
-    const CHUNK = 400;
-    for (let i = 0; i < receiptDocs.length; i += CHUNK) {
-      const batch = db.batch();
-      for (const d of receiptDocs.slice(i, i + CHUNK)) batch.delete(d.ref);
-      try {
-        await batch.commit();
-        receiptsDeleted += Math.min(CHUNK, receiptDocs.length - i);
-      } catch {
-        for (const d of receiptDocs.slice(i, i + CHUNK)) {
-          try {
-            await d.ref.delete();
-            receiptsDeleted++;
-          } catch {
-            // skip
-          }
-        }
-      }
-    }
+    const receiptsDeleted = await deleteDocsInChunks(db, receiptDocs);
     await tryDeleteHouseholdPhotos(args.householdId, receiptDocs.map((d) => d.id));
 
-    const settlementsCol = hRef.collection('settlements');
-    const settlementsSnap = await settlementsCol.get();
-    for (let i = 0; i < settlementsSnap.docs.length; i += CHUNK) {
-      const batch = db.batch();
-      for (const d of settlementsSnap.docs.slice(i, i + CHUNK)) batch.delete(d.ref);
-      try {
-        await batch.commit();
-      } catch {
-        for (const d of settlementsSnap.docs.slice(i, i + CHUNK)) {
-          try {
-            await d.ref.delete();
-          } catch {
-            // skip
-          }
-        }
-      }
-    }
+    const settlementsSnap = await hRef.collection('settlements').get();
+    await deleteDocsInChunks(db, settlementsSnap.docs);
+
+    const incomesSnap = await hRef.collection('incomes').get();
+    await deleteDocsInChunks(db, incomesSnap.docs);
 
     await hRef.delete();
     await db.collection('users').doc(args.uid).collection('memberships').doc(args.householdId).delete();
