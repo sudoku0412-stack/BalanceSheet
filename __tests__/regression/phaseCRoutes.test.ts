@@ -8,4 +8,17 @@ describe('Phase C routes are registered', () => {
     expect(source).toMatch(/name="scan-paystub"/);
     expect(source).toMatch(/name="savings-goals"/);
   });
+
+  it('whitelists those routes so the auth guard does not bounce them to Home', () => {
+    const source = fs.readFileSync(path.join(__dirname, '../../app/_layout.tsx'), 'utf8');
+    const whitelistMatch = source.match(/STICKY_VOLUNTARY\s*=\s*new Set\(\[([^\]]*)\]\)/);
+    expect(whitelistMatch).not.toBeNull();
+    const whitelistItems = whitelistMatch![1]
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+    expect(whitelistItems).toEqual(
+      expect.arrayContaining(['import-income', 'scan-paystub', 'savings-goals']),
+    );
+  });
 });
