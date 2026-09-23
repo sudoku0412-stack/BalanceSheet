@@ -117,6 +117,9 @@ const STICKY_VOLUNTARY = new Set([
   'households',
   'contacts-sync',
   'paywall',
+  'import-income',
+  'scan-paystub',
+  'savings-goals',
 ]);
 
 function RootStack() {
