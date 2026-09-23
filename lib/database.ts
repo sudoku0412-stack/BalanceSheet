@@ -589,9 +589,10 @@ export async function replaceLineItems(
 }
 
 /**
- * Deletes every receipt belonging to the CURRENTLY SIGNED-IN user.
- * Used by the deleteAccount flow. Other users' data on the same
- * device is untouched.
+ * Deletes every receipt and income belonging to the CURRENTLY SIGNED-IN
+ * user. Used by the deleteAccount flow. Other users' data on the same
+ * device is untouched. Incomes are included so a deleted account does
+ * not leave paycheck amounts, source names, or notes in SQLite.
  */
 export async function deleteAllReceipts(): Promise<void> {
   const uid = requireUserId('deleteAllReceipts');
@@ -606,6 +607,7 @@ export async function deleteAllReceipts(): Promise<void> {
     );
     await db.runAsync(`DELETE FROM receipts WHERE user_id = ?`, [uid]);
     await db.runAsync(`DELETE FROM receipt_corrections WHERE user_id = ?`, [uid]);
+    await db.runAsync(`DELETE FROM incomes WHERE user_id = ?`, [uid]);
   });
 }
 
