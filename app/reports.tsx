@@ -24,13 +24,14 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { Button } from '../components/ui/Button';
 import { ALL_CATEGORIES } from '../constants/categories';
-import { getAllReceipts, getAllIncomes } from '../lib/database';
+import { getAllReceipts, getAllIncomes, getCurrentHouseholdId } from '../lib/database';
 import { computeStats } from '../lib/dashboardStats';
 import { isInCalendarMonth } from '../lib/calendarDate';
 import { computeCashflow } from '../lib/cashflowStats';
+import { computeBudgetDonut, BudgetDonutModel } from '../lib/budgetDonut';
 import { filterReceiptsInRange, receiptsToCsv } from '../lib/reports';
 import { generateReceiptsPdf, isPdfExportAvailable } from '../lib/pdfExport';
-import { getCurrency } from '../lib/secureStorage';
+import { getCategoryBudgets, getCurrency } from '../lib/secureStorage';
 import { useEntitlements } from '../lib/EntitlementsContext';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { CategorySummary, MonthlyStats, Receipt, Category, Income, CashflowStats } from '../types';
@@ -72,20 +73,26 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [incomes, setIncomes] = useState<Income[]>([]);
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  const [budgetTotal, setBudgetTotal] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
       (async () => {
-        const [all, allIncomes, code] = await Promise.all([
+        const hid = getCurrentHouseholdId();
+        const [all, allIncomes, code, budgets] = await Promise.all([
           getAllReceipts(),
           getAllIncomes(),
           getCurrency(),
+          hid ? getCategoryBudgets(hid) : Promise.resolve({} as Record<string, number>),
         ]);
         if (!mounted) return;
         setReceipts(all);
         setIncomes(allIncomes);
         if (code) setCurrency(code as CurrencyCode);
+        setBudgetTotal(
+          Object.values(budgets ?? {}).reduce((s, n) => s + (typeof n === 'number' ? n : 0), 0),
+        );
         setLoading(false);
       })();
       return () => {
@@ -98,9 +105,17 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [all, allIncomes] = await Promise.all([getAllReceipts(), getAllIncomes()]);
+        const hid = getCurrentHouseholdId();
+        const [all, allIncomes, budgets] = await Promise.all([
+          getAllReceipts(),
+          getAllIncomes(),
+          hid ? getCategoryBudgets(hid) : Promise.resolve({} as Record<string, number>),
+        ]);
       setReceipts(all);
       setIncomes(allIncomes);
+      setBudgetTotal(
+        Object.values(budgets ?? {}).reduce((s, n) => s + (typeof n === 'number' ? n : 0), 0),
+      );
     } finally {
       setRefreshing(false);
     }
@@ -119,6 +134,12 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   );
   const stats: MonthlyStats = computeStats(monthReceipts);
   const cashflow: CashflowStats = computeCashflow(monthIncomes, monthReceipts);
+  const donut = computeBudgetDonut({
+    spentByCategory: stats.categories,
+    totalSpent: stats.totalSpent,
+    budgetTotal,
+    earned: cashflow.totalEarned,
+  });
 
   // Separate loading flags per button — a single shared `exporting`
   // flag made tapping either button spin BOTH (each button's `loading`
@@ -272,39 +293,13 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
             />
           }
         >
-          {/* Summary — donut chart + total spend this month */}
-          <SummaryCard stats={stats} cashflow={cashflow} currency={currency} theme={theme} />
-
-          {/* By category — colored dot + name + percentage + amount */}
-          {stats.categories.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>BY CATEGORY</Text>
-              <View style={styles.sectionBody}>
-                {stats.categories.map((c: CategorySummary) => {
-                  const standard = (ALL_CATEGORIES as readonly string[]).includes(
-                    c.category,
-                  );
-                  const color = standard
-                    ? theme.colors.category[c.category as Category]
-                    // NOT theme.colors.primary — dark navy is invisible as a
-                    // legend-dot fill against dark mode's card background.
-                    : theme.colors.accent;
-                  return (
-                    <View key={c.category} style={styles.row}>
-                      <View style={[styles.categoryDot, { backgroundColor: color }]} />
-                      <Text style={styles.rowLabel} numberOfLines={1} ellipsizeMode="tail">
-                        {c.category}
-                      </Text>
-                      <Text style={styles.rowPct}>{c.percentage.toFixed(0)}%</Text>
-                      <Text style={styles.rowAmount}>
-                        {formatCurrency(c.total, currency)}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-          )}
+          <SummaryCard
+            stats={stats}
+            cashflow={cashflow}
+            donut={donut}
+            currency={currency}
+            theme={theme}
+          />
 
           {/* Empty state */}
           {monthReceipts.length === 0 && (
@@ -342,14 +337,36 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   );
 }
 
+function sliceColor(key: string, remaining: boolean | undefined, theme: Theme): string {
+  if (remaining) return theme.colors.borderLight;
+  const standard = (ALL_CATEGORIES as readonly string[]).includes(key);
+  return standard ? theme.colors.category[key as Category] : theme.colors.accent;
+}
+
+function donutCaption(donut: BudgetDonutModel, currency: CurrencyCode): string {
+  const total = formatCurrency(donut.circleTotal, currency);
+  const pot =
+    donut.source === 'budget'
+      ? `One circle, one total: ${total} (your category budgets).`
+      : donut.source === 'income'
+        ? `One circle, one total: ${total} (this month's earned).`
+        : `One circle, one total: ${total}.`;
+  if (donut.remaining > 0.009) {
+    return `${pot} The colored wedges are what's already been eaten up by spending, and the dashed gray wedge is what's still untouched — ${donut.remainingPct.toFixed(1)}%, or ${formatCurrency(donut.remaining, currency)}.`;
+  }
+  return `${pot} Spending has filled the circle.`;
+}
+
 function SummaryCard({
   stats,
   cashflow,
+  donut,
   currency,
   theme,
 }: {
   stats: MonthlyStats;
   cashflow: CashflowStats;
+  donut: BudgetDonutModel;
   currency: CurrencyCode;
   theme: Theme;
 }) {
@@ -357,21 +374,52 @@ function SummaryCard({
   const count = stats.receiptCount;
   return (
     <View style={styles.summaryCard}>
-      <View style={styles.summaryTopRow}>
-        <CategoryDonut
-          categories={stats.categories}
-          total={stats.totalSpent}
-          theme={theme}
-        />
-        <View style={styles.summaryTotalBox}>
-          <Text style={styles.summaryAmount}>
-            {formatCurrency(stats.totalSpent, currency)}
-          </Text>
-          <Text style={styles.summarySub}>
-            total across {count} expense{count === 1 ? '' : 's'}
-          </Text>
+      <View style={styles.donutWrap} accessibilityLabel="Monthly budget donut">
+        <BudgetDonut donut={donut} theme={theme} size={220} />
+        <View style={styles.donutCenter} pointerEvents="none">
+          {donut.circleTotal > 0 ? (
+            <>
+              <Text style={styles.donutCenterPct}>
+                {donut.remainingPct.toFixed(1)}%
+              </Text>
+              <Text style={styles.donutCenterSub}>
+                left · {formatCurrency(donut.remaining, currency)}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.donutCenterSub}>No pot yet</Text>
+          )}
         </View>
       </View>
+      <View style={styles.legendGrid}>
+        {donut.slices.map((slice) => (
+          <View key={slice.key} style={styles.legendCell}>
+            <View
+              style={[
+                styles.legendDot,
+                { backgroundColor: sliceColor(slice.key, slice.remaining, theme) },
+                slice.remaining ? styles.legendDotRemaining : null,
+              ]}
+            />
+            <Text style={styles.legendLabel} numberOfLines={1}>
+              {slice.label}
+            </Text>
+            <Text style={styles.legendPct}>{slice.percentage.toFixed(1)}%</Text>
+          </View>
+        ))}
+      </View>
+      {donut.circleTotal > 0 ? (
+        <Text style={styles.donutCaption}>{donutCaption(donut, currency)}</Text>
+      ) : (
+        <Text style={styles.donutCaption}>
+          Add income or category budgets and this ring becomes one pot — spend
+          as colored wedges, leftover as the dashed gray slice.
+        </Text>
+      )}
+      <Text style={styles.summarySub}>
+        {formatCurrency(stats.totalSpent, currency)} total across {count} expense
+        {count === 1 ? '' : 's'}
+      </Text>
       <View style={styles.cashflowRow}>
         <View style={styles.cashflowCell}>
           <Text style={styles.cashflowLabel}>Earned</Text>
@@ -426,31 +474,25 @@ function SummaryCard({
 }
 
 /**
- * 64px conic-gradient-style donut: one <Circle> per category, drawn as
- * a stroked arc via strokeDasharray/strokeDashoffset, sized to that
- * category's share of the period's total spend. Segment colors come
- * from t.colors.category — the same mapping used by the "BY CATEGORY"
- * row dots below, per the design system's color-semantics rule (never
- * use arbitrary chart colors for category data).
+ * One ring = one pot. Colored arcs are spend. Remaining shows through as
+ * a dashed gray track behind the spent wedges (screenshot: leftover slice).
  */
-function CategoryDonut({
-  categories,
-  total,
+function BudgetDonut({
+  donut,
   theme,
-  size = 64,
+  size = 220,
 }: {
-  categories: Array<{ category: Category | string; total: number }>;
-  total: number;
+  donut: BudgetDonutModel;
   theme: Theme;
   size?: number;
 }) {
-  const strokeWidth = Math.round(size * 0.3);
+  const strokeWidth = Math.round(size * 0.22);
   const r = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * r;
   const center = size / 2;
-  const segments = categories.filter((c) => c.total > 0);
+  const spentSlices = donut.slices.filter((s) => !s.remaining && s.amount > 0);
 
-  if (total <= 0 || segments.length === 0) {
+  if (donut.circleTotal <= 0) {
     return (
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
         <Circle
@@ -459,6 +501,7 @@ function CategoryDonut({
           r={r}
           stroke={theme.colors.border}
           strokeWidth={strokeWidth}
+          strokeDasharray="6 8"
           fill="none"
         />
       </Svg>
@@ -468,30 +511,32 @@ function CategoryDonut({
   let offset = 0;
   return (
     <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <Circle
+        cx={center}
+        cy={center}
+        r={r}
+        stroke={theme.colors.borderLight}
+        strokeWidth={strokeWidth}
+        strokeDasharray="5 7"
+        fill="none"
+      />
       <G rotation={-90} origin={`${center}, ${center}`}>
-        {segments.map((c) => {
-          const standard = (ALL_CATEGORIES as readonly string[]).includes(
-            c.category as string,
-          );
-          const color = standard
-            ? theme.colors.category[c.category as Category]
-            // NOT theme.colors.primary — dark navy would be invisible as a
-            // donut-segment stroke against dark mode's card background.
-            : theme.colors.accent;
-          const frac = c.total / total;
+        {spentSlices.map((slice) => {
+          const frac = slice.amount / donut.circleTotal;
           const dash = Math.max(0, frac * circumference);
           const dashOffset = -offset;
           offset += dash;
           return (
             <Circle
-              key={String(c.category)}
+              key={slice.key}
               cx={center}
               cy={center}
               r={r}
-              stroke={color}
+              stroke={sliceColor(slice.key, false, theme)}
               strokeWidth={strokeWidth}
               strokeDasharray={`${dash} ${circumference - dash}`}
               strokeDashoffset={dashOffset}
+              strokeLinecap="butt"
               fill="none"
             />
           );
@@ -540,19 +585,78 @@ function useReportsStyles() {
     shadowRadius: 10,
     elevation: 2,
   },
-  summaryTopRow: {
+  donutWrap: {
+    alignSelf: 'center',
+    width: 220,
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: theme.spacing.sm,
+  },
+  donutCenter: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.md,
+  },
+  donutCenterPct: {
+    color: theme.colors.textPrimary,
+    fontSize: 32,
+    fontFamily: theme.fonts.display.bold,
+    textAlign: 'center',
+  },
+  donutCenterSub: {
+    color: theme.colors.textMuted,
+    fontSize: theme.font.sm,
+    fontFamily: theme.fonts.body.regular,
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  legendGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    columnGap: theme.spacing.md,
+    rowGap: theme.spacing.xs,
+  },
+  legendCell: {
+    width: '46%' as `${number}%`,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: theme.spacing.md,
+    gap: 6,
+    paddingVertical: 2,
   },
-  summaryTotalBox: {
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: theme.radius.full,
+  },
+  legendDotRemaining: {
+    borderWidth: 1,
+    borderColor: theme.colors.borderLight,
+    backgroundColor: theme.colors.surfaceHigh,
+    borderStyle: 'dashed',
+  },
+  legendLabel: {
     flex: 1,
-    gap: 2,
-  },
-  summaryAmount: {
     color: theme.colors.textPrimary,
-    fontSize: 26,
-    fontFamily: theme.fonts.mono.medium,
+    fontSize: theme.font.sm,
+    fontFamily: theme.fonts.body.regular,
+  },
+  legendPct: {
+    color: theme.colors.textMuted,
+    fontSize: theme.font.xs,
+    fontFamily: theme.fonts.mono.regular,
+  },
+  donutCaption: {
+    color: theme.colors.textPrimary,
+    fontSize: theme.font.sm,
+    fontFamily: theme.fonts.body.regular,
+    lineHeight: 20,
+    marginTop: theme.spacing.xs,
   },
   summarySub: {
     color: theme.colors.textMuted,

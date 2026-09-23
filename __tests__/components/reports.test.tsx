@@ -48,10 +48,12 @@ jest.mock('expo-file-system', () => ({
 jest.mock('../../lib/database', () => ({
   getAllReceipts: jest.fn(),
   getAllIncomes: jest.fn(async () => []),
+  getCurrentHouseholdId: jest.fn(() => 'hh1'),
 }));
 
 jest.mock('../../lib/secureStorage', () => ({
   getCurrency: jest.fn(async () => 'USD'),
+  getCategoryBudgets: jest.fn(async () => ({})),
 }));
 
 jest.mock('../../lib/pdfExport', () => ({
@@ -93,14 +95,32 @@ describe('ReportsScreen', () => {
       makeReceipt({ id: 'r1', totalAmount: 20, category: 'Groceries' }),
       makeReceipt({ id: 'r2', totalAmount: 30, category: 'Dining' }),
     ]);
+    mockGetAllIncomes.mockResolvedValue([
+      {
+        id: 'i1',
+        householdId: 'hh1',
+        sourceName: 'Pay',
+        amountUsd: 200,
+        category: 'Salary',
+        earnedBy: 'self',
+        date: new Date().toISOString().slice(0, 10),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
     render(<ReportsScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText('total across 2 expenses')).toBeTruthy();
+      expect(screen.getByText(/total across 2 expenses/)).toBeTruthy();
     });
     expect(screen.getAllByText('$50.00').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('Earned')).toBeTruthy();
     expect(screen.getByText('Net')).toBeTruthy();
+    expect(screen.getByText('Remaining (unspent)')).toBeTruthy();
+    expect(screen.getByText(/One circle, one total: \$200.00/)).toBeTruthy();
+    expect(screen.getByText('Groceries')).toBeTruthy();
+    expect(screen.getByText('Dining')).toBeTruthy();
+    expect(screen.getByText(/left · \$150.00/)).toBeTruthy();
   });
 
   it('shows an empty state when there are no receipts in range', async () => {
