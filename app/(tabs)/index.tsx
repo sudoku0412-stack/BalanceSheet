@@ -21,6 +21,7 @@ import { computeStats } from '../../lib/dashboardStats';
 import { computeCashflow } from '../../lib/cashflowStats';
 import { RECURRING_BUDGET_KEY, isRecurringExpense } from '../../lib/recurring';
 import { useAuth } from '../../lib/AuthContext';
+import { useEntitlements } from '../../lib/EntitlementsContext';
 import type { Profile } from '../../lib/profile';
 import { onLocalDataChanged } from '../../lib/dataSync';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
@@ -115,6 +116,7 @@ function budgetStatus(spent: number, limit: number): BudgetStatus {
 export default function DashboardScreen() {
   const theme = useTheme();
   const { memberships, user, profile } = useAuth();
+  const { isPremium } = useEntitlements();
   const styles = useStyles((t) => ({
     screen: { flex: 1, backgroundColor: t.colors.background },
     content: {
@@ -805,13 +807,13 @@ export default function DashboardScreen() {
               };
               const openAllIncomes = () =>
                 router.push({
-                  pathname: '/(tabs)/history',
-                  params: { kind: 'income', ...monthParams },
+                  pathname: '/incomes',
+                  params: { ...monthParams },
                 });
               const openIncomesByMember = () =>
                 router.push({
-                  pathname: '/(tabs)/history',
-                  params: { kind: 'income', group: 'member', ...monthParams },
+                  pathname: '/incomes',
+                  params: { ...monthParams },
                 });
               return (
                 <>
@@ -910,10 +912,9 @@ export default function DashboardScreen() {
                       key={m.earnedBy}
                       onPress={() =>
                         router.push({
-                          pathname: '/(tabs)/history',
+                          pathname: '/incomes',
                           params: {
-                            kind: 'income',
-                            group: 'member',
+                            earnedBy: m.earnedBy,
                             year: String(viewedMonth.getFullYear()),
                             month: String(viewedMonth.getMonth() + 1),
                           },
@@ -1006,14 +1007,21 @@ export default function DashboardScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => router.push('/savings-goals' as never)}
+            onPress={() => router.push('/incomes' as never)}
+          >
+            <Ionicons name="list-outline" size={20} color={theme.colors.textPrimary} />
+            <Text style={styles.actionBtnText}>Incomes</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push(isPremium ? '/savings-goals' : '/paywall')}
           >
             <Ionicons name="flag-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>Goals</Text>
+            <Text style={styles.actionBtnText}>{isPremium ? 'Goals' : 'Goals · Pro'}</Text>
           </TouchableOpacity>
         </View>
   
-        {savingsGoals.length > 0 && (
+        {isPremium && savingsGoals.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Savings goals</Text>

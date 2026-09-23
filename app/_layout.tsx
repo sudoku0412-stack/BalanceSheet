@@ -117,9 +117,9 @@ const STICKY_VOLUNTARY = new Set([
   'households',
   'contacts-sync',
   'paywall',
-  'import-income',
   'scan-paystub',
   'savings-goals',
+  'incomes',
 ]);
 
 function RootStack() {
@@ -243,7 +243,7 @@ function RootStack() {
         }}
       />
       <Stack.Screen
-        name="import-income"
+        name="incomes"
         options={{
           headerShown: false,
         }}

@@ -1,6 +1,6 @@
 # Income vs spending — product plan
 
-**Status**: Phases A–C shipped. Phase D syncs savings envelopes to Firestore (`households/{hid}/savingsGoals`) so household members share goals. Joint `earnedBy` stays member-only.
+**Status**: Phases A–D shipped. Phase E: dedicated Incomes page, savings goals are Premium-only, bank CSV import removed. Joint `earnedBy` stays member-only.
 **Product**: NestExpenseTracker household cashflow.
 
 This replaces the earlier high-level sketch with the concrete product
@@ -197,8 +197,8 @@ recurring "Investments" expense; custom Other sources work by name.
 ### Phase C — import + envelopes
 
 - Pay-stub OCR (on-device, same ML Kit as receipts) prefills Add Income
-- Bank CSV paste-import (no new native picker); deposits only by default; dedupes date+amount+description
-- Savings goals / envelopes (local SQLite, Home + Settings)
+- Bank CSV paste-import — **removed** (users preferred not to have it)
+- Savings goals / envelopes (local SQLite, Home + Settings) — **Premium** as of Phase E
 
 **Exit criteria**: user can scan a stub or paste a statement and confirm incomes; named envelopes show progress without changing Spent.
 
@@ -209,6 +209,12 @@ recurring "Investments" expense; custom Other sources work by name.
 - Solo account / household delete wipes `savingsGoals` before the parent household doc; leaving a shared household keeps the envelopes
 
 **Exit criteria**: two devices in the same household see the same envelopes; deleting the household does not orphan cloud goal docs.
+
+### Phase E — incomes list + Premium goals
+
+- Dedicated **Incomes** page (all entries, search, edit, delete) from Home Earned / Incomes and Settings
+- Savings goals require Premium (Home, Settings, and the goals screen itself)
+- Bank CSV import removed
 
 ---
 

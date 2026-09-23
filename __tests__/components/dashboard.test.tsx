@@ -63,6 +63,11 @@ jest.mock('../../lib/cloudSync', () => ({
   getHouseholdMembers: jest.fn(async () => []),
 }));
 
+const mockEntitlements = { isPremium: true, loading: false };
+jest.mock('../../lib/EntitlementsContext', () => ({
+  useEntitlements: () => mockEntitlements,
+}));
+
 jest.mock('../../lib/database', () => ({
   getCurrentHouseholdId: jest.fn(() => 'hh1'),
   getReceiptsByMonth: jest.fn(),
@@ -118,6 +123,7 @@ describe('DashboardScreen', () => {
     mockGetIncomesByMonth.mockResolvedValue([]);
     mockGetAllSavingsGoals.mockResolvedValue([]);
     mockGetHouseholdMembers.mockResolvedValue([]);
+    mockEntitlements.isPremium = true;
     // First call = current month, second call (inside load()) = previous
     // month for the trend comparison — default both to empty unless a
     // test overrides.
@@ -349,15 +355,13 @@ describe('DashboardScreen', () => {
     fireEvent.press(screen.getByTestId('cashflow-earned'));
     expect(router.push).toHaveBeenCalledWith(
       expect.objectContaining({
-        pathname: '/(tabs)/history',
-        params: expect.objectContaining({ kind: 'income' }),
+        pathname: '/incomes',
       }),
     );
     fireEvent.press(screen.getByTestId('cashflow-bars'));
     expect(router.push).toHaveBeenCalledWith(
       expect.objectContaining({
-        pathname: '/(tabs)/history',
-        params: expect.objectContaining({ kind: 'income', group: 'member' }),
+        pathname: '/incomes',
       }),
     );
   });
@@ -383,6 +387,17 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('Goals')).toBeTruthy();
     fireEvent.press(screen.getByText('Goals'));
     expect(router.push).toHaveBeenCalledWith('/savings-goals');
+  });
+
+  it('sends a free-tier user to the paywall instead of Goals', async () => {
+    mockEntitlements.isPremium = false;
+    mockGetReceiptsByMonth.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Goals · Pro')).toBeTruthy();
+    });
+    fireEvent.press(screen.getByText('Goals · Pro'));
+    expect(router.push).toHaveBeenCalledWith('/paywall');
   });
 
   it('labels the manual-entry action Add expense', async () => {

@@ -115,10 +115,10 @@ once something is actually live.
 1. **Ship the RN/dependency upgrade**, get an Android build past Play
    Console, get both platforms actually live in production (not just
    Internal/TestFlight).
-2. **Income vs spending (cashflow)** — Phases A–C on `main`; Phase D
-   on `cursor/income-phase-d-5efe` (see [`docs/INCOME_FEATURE.md`](docs/INCOME_FEATURE.md)).
-   Savings envelopes sync across household devices. Joint owner is
-   still out of scope.
+2. **Income vs spending (cashflow)** — Phases A–D on `main`; Phase E
+   (Incomes page, Premium savings goals, drop CSV import) on
+   `cursor/income-list-premium-goals-5efe`. Joint owner is still out
+   of scope.
 3. **Crash reporting** (Firebase Crashlytics or similar) — not set up
    yet, referenced as a gap in the v1.1 doc.
 4. **In-app feedback → Jira pipeline** (spec already written, see

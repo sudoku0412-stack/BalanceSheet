@@ -1126,10 +1126,6 @@ export default function ScanScreen() {
         text: 'Scan pay stub',
         onPress: () => router.push('/scan-paystub' as never),
       },
-      {
-        text: 'Import bank CSV',
-        onPress: () => router.push('/import-income' as never),
-      },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };

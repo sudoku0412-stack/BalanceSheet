@@ -10,7 +10,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+import { useEntitlements } from '../lib/EntitlementsContext';
 import { v4 as uuidv4 } from 'uuid';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { Button } from '../components/ui/Button';
@@ -29,6 +30,7 @@ import { SavingsGoal } from '../types';
 
 export default function SavingsGoalsScreen() {
   const theme = useTheme();
+  const { isPremium, loading } = useEntitlements();
   const styles = useStyles((t) => ({
     root: { flex: 1, backgroundColor: t.colors.background },
     content: { padding: t.spacing.md, gap: t.spacing.sm, paddingBottom: 48 },
@@ -98,8 +100,12 @@ export default function SavingsGoalsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      if (!loading && !isPremium) {
+        router.replace('/paywall' as never);
+        return;
+      }
       load();
-    }, [load]),
+    }, [load, isPremium, loading]),
   );
 
   const handleCreate = async () => {

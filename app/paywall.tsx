@@ -16,6 +16,7 @@ const FEATURES = [
   { icon: 'sparkles' as const, label: 'Unlimited AI receipt scanning' },
   { icon: 'document-text' as const, label: 'Export reports as PDF' },
   { icon: 'people' as const, label: 'Create or join multiple households' },
+  { icon: 'flag' as const, label: 'Savings goals and envelopes' },
 ];
 
 /**
@@ -23,7 +24,7 @@ const FEATURES = [
  * from any of the three gates (AI-parse quota, PDF export, multi-
  * household) that redirect here instead of dead-ending. Household
  * SHARING itself is free; this only covers AI quota, export, and
- * belonging to more than one household at a time.
+ * belonging to more than one household at a time, plus savings goals.
  */
 export default function PaywallScreen() {
   const theme = useTheme();
