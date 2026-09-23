@@ -638,8 +638,8 @@ function useReportsStyles() {
   },
   legendDotRemaining: {
     borderWidth: 1,
-    borderColor: theme.colors.borderLight,
-    backgroundColor: theme.colors.surfaceHigh,
+    borderColor: theme.colors.chartRemaining,
+    backgroundColor: theme.colors.chartRemaining,
     borderStyle: 'dashed',
   },
   legendLabel: {
