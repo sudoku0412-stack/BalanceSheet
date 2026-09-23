@@ -34,20 +34,36 @@ const BRAND = {
 };
 
 const CATEGORY_COLORS_LIGHT = {
-  Groceries: '#1F8A75',
-  Electronics: '#3E5FBF',
-  Dining: '#C45C26',
-  Pharmacy: '#5A6A8A',
-  Gas: '#7A8F4A',
-  Clothing: '#6B4C9A',
-  Entertainment: '#C43B4A',
-  Travel: '#2E7CB8',
-  Healthcare: '#2F6F66',
-  Electricity: '#C49212',
-  Investments: '#1B6B4A',
-  Recurring: '#6B5CA5',
-  Other: '#6D7388',
+  Groceries: '#1DB37A',
+  Electronics: '#2F6BFF',
+  Dining: '#F06B2A',
+  Pharmacy: '#5B7CFF',
+  Gas: '#C9A116',
+  Clothing: '#9A4DFF',
+  Entertainment: '#E23B55',
+  Travel: '#1A8FE0',
+  Healthcare: '#129A8A',
+  Electricity: '#E8A20F',
+  Investments: '#148F5C',
+  Recurring: '#6E5CFF',
+  Other: '#4A5D8A',
 } as Record<Category, string>;
+
+const CARD_TINTS_LIGHT = {
+  sky: '#D7E6F8',
+  mint: '#D3F0E6',
+  lavender: '#E2DEF8',
+  peach: '#F7E4D4',
+  lilac: '#EDE3F6',
+};
+
+const CARD_TINTS_DARK = {
+  sky: '#1E2438',
+  mint: '#1A2A28',
+  lavender: '#242038',
+  peach: '#2A221C',
+  lilac: '#262034',
+};
 
 // "Shopping"-family categories (Electronics, Clothing) swap to a lighter
 // blue in dark mode so they stay visible against dark surfaces — the one
@@ -93,9 +109,12 @@ export const darkTheme = {
   colors: {
     background: '#10121F', // paper-2
     surface: '#181B29', // paper-1
+    surfaceCard: '#181B29',
     surfaceHigh: '#232743', // paper-3
     border: '#2A2E4A', // rule-1
     borderLight: '#363B5C',
+    chartRemaining: '#6B7190',
+    cardTint: CARD_TINTS_DARK,
 
     ...BRAND,
     primaryFaint: 'rgba(80, 108, 170, 0.18)',
@@ -122,9 +141,12 @@ export const lightTheme = {
   colors: {
     background: '#F4F6FB', // cool paper — brighter than the old cream
     surface: '#FFFFFF',
-    surfaceHigh: '#EBF0F8',
-    border: '#D8DEEB',
-    borderLight: '#C5CDE0',
+    surfaceCard: '#E4ECF8',
+    surfaceHigh: '#D5DFF0',
+    border: '#C5D0E4',
+    borderLight: '#AEB9D0',
+    chartRemaining: '#8B95AD',
+    cardTint: CARD_TINTS_LIGHT,
 
     ...BRAND,
     primaryFaint: 'rgba(62, 95, 191, 0.12)',

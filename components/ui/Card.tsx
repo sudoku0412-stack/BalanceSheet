@@ -11,9 +11,11 @@ interface Props {
 export function Card({ children, style, elevated = false }: Props) {
   const styles = useStyles((t) => ({
     card: {
-      backgroundColor: t.colors.surface,
+      backgroundColor: t.colors.surfaceCard,
       borderRadius: 20,
       padding: t.spacing.md,
+      borderWidth: t.isDark ? 0 : 1,
+      borderColor: t.colors.border,
       shadowColor: t.isDark ? '#000' : '#0C0F24',
       shadowOffset: { width: 0, height: 4 },
       shadowOpacity: t.isDark ? 0.4 : 0.08,
