@@ -1,9 +1,12 @@
 import * as SQLite from 'expo-sqlite';
-import { Receipt, LineItem, Settlement } from '../types';
+import { calendarMonthSql, calendarMonthSqlParams } from './calendarDate';
+import { Receipt, LineItem, Settlement, Income, IncomeCategory } from '../types';
 import {
   syncReceiptDeletionToCloud,
   syncReceiptToCloud,
   syncSettlementToCloud,
+  syncIncomeToCloud,
+  syncIncomeDeletionToCloud,
   uploadReceiptPhoto,
 } from './cloudSync';
 
@@ -96,6 +99,10 @@ async function backfillHouseholdIdForRows(uid: string, hid: string): Promise<voi
     );
     await db.runAsync(
       `UPDATE settlements SET household_id = ? WHERE household_id IS NULL AND user_id = ?`,
+      [hid, uid],
+    );
+    await db.runAsync(
+      `UPDATE incomes SET household_id = ? WHERE household_id IS NULL AND user_id = ?`,
       [hid, uid],
     );
   } catch {
@@ -195,6 +202,28 @@ export async function initDatabase(): Promise<void> {
       user_id     TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_settlements_user ON settlements(user_id);
+
+    -- Income ledger (docs/INCOME_FEATURE.md). Separate from receipts —
+    -- money in, attributed to earned_by household member. USD-canonical
+    -- amount_usd matches Settlement / Receipt conventions.
+    CREATE TABLE IF NOT EXISTS incomes (
+      id                 TEXT PRIMARY KEY,
+      source_name        TEXT NOT NULL,
+      date               TEXT NOT NULL,
+      amount_usd         REAL NOT NULL DEFAULT 0,
+      category           TEXT NOT NULL DEFAULT 'Other',
+      earned_by          TEXT NOT NULL,
+      notes              TEXT,
+      original_currency  TEXT,
+      recurring_json     TEXT,
+      created_by         TEXT,
+      created_at         TEXT NOT NULL,
+      updated_at         TEXT NOT NULL,
+      user_id            TEXT NOT NULL,
+      household_id       TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_incomes_user ON incomes(user_id);
+    CREATE INDEX IF NOT EXISTS idx_incomes_user_date ON incomes(user_id, date);
   `);
 
   // Migrations for columns added after initial release. ALTER TABLE has no
@@ -270,6 +299,8 @@ export async function initDatabase(): Promise<void> {
          ON receipts(user_id, household_id, date);
        CREATE INDEX IF NOT EXISTS idx_settlements_user_household
          ON settlements(user_id, household_id);
+       CREATE INDEX IF NOT EXISTS idx_incomes_user_household_date
+         ON incomes(user_id, household_id, date);
        CREATE INDEX IF NOT EXISTS idx_corrections_user_store
          ON receipt_corrections(user_id, store_name);`,
     );
@@ -580,7 +611,7 @@ export async function deleteAllReceipts(): Promise<void> {
 
 /**
  * Wipes every LOCAL row (any user_id) for one household on this device
- * — receipts, their line items, and settlements. Called after
+ * — receipts, their line items, settlements, and incomes. Called after
  * cloudSync.deleteHousehold has already removed the household's cloud
  * data, so this is just cleaning up this device's now-stale mirror.
  * Scoped by household_id only (not user_id): a shared household's local
@@ -596,6 +627,7 @@ export async function deleteAllRowsForHousehold(householdId: string): Promise<vo
     );
     await db.runAsync(`DELETE FROM receipts WHERE household_id = ?`, [householdId]);
     await db.runAsync(`DELETE FROM settlements WHERE household_id = ?`, [householdId]);
+    await db.runAsync(`DELETE FROM incomes WHERE household_id = ?`, [householdId]);
   });
 }
 
@@ -886,13 +918,12 @@ export async function getReceiptById(id: string): Promise<Receipt | null> {
 export async function getReceiptsByMonth(year: number, month: number): Promise<Receipt[]> {
   const uid = requireUserId('getReceiptsByMonth');
   const hid = currentHouseholdId;
-  const start = new Date(year, month - 1, 1).toISOString();
-  const end   = new Date(year, month, 0, 23, 59, 59).toISOString();
+  const monthParams = calendarMonthSqlParams(year, month);
   const rows  = await db.getAllAsync<RawRow>(
     `SELECT * FROM receipts
-     WHERE user_id = ? AND date >= ? AND date <= ?${householdFilterSql(hid)}
+     WHERE user_id = ?${calendarMonthSql('date')}${householdFilterSql(hid)}
      ORDER BY date DESC`,
-    hid ? [uid, start, end, hid] : [uid, start, end],
+    hid ? [uid, ...monthParams, hid] : [uid, ...monthParams],
   );
   return await attachLineItems(rows);
 }
@@ -1265,4 +1296,181 @@ export async function upsertSettlementFromCloud(
     `INSERT OR IGNORE INTO settlements (id, from_uid, to_uid, amount_usd, created_at, user_id, household_id) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [cloud.id, cloud.fromUid, cloud.toUid, cloud.amountUsd, cloud.createdAt, uid, householdId],
   );
+}
+
+// ─── incomes (money in) ────────────────────────────────────────────────────
+
+type IncomeRow = {
+  id: string;
+  source_name: string;
+  date: string;
+  amount_usd: number;
+  category: string;
+  earned_by: string;
+  notes: string | null;
+  original_currency: string | null;
+  recurring_json: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  household_id: string | null;
+};
+
+function rowToIncome(row: IncomeRow): Income {
+  let recurring: Income['recurring'] | undefined;
+  if (row.recurring_json) {
+    try {
+      recurring = JSON.parse(row.recurring_json) as Income['recurring'];
+    } catch {
+      recurring = undefined;
+    }
+  }
+  return {
+    id: row.id,
+    sourceName: row.source_name,
+    date: row.date,
+    amountUsd: row.amount_usd,
+    category: (row.category as IncomeCategory) || 'Other',
+    earnedBy: row.earned_by,
+    notes: row.notes ?? undefined,
+    originalCurrency: (row.original_currency as Income['originalCurrency']) ?? undefined,
+    recurring,
+    createdBy: row.created_by ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    householdId: row.household_id ?? undefined,
+  };
+}
+
+function incomeToRowParams(income: Income, uid: string, hid: string | null) {
+  return [
+    income.id,
+    income.sourceName,
+    income.date,
+    income.amountUsd,
+    income.category,
+    income.earnedBy,
+    income.notes ?? null,
+    income.originalCurrency ?? null,
+    income.recurring ? JSON.stringify(income.recurring) : null,
+    income.createdBy ?? null,
+    income.createdAt,
+    income.updatedAt,
+    uid,
+    hid,
+  ];
+}
+
+/** Insert or replace a local income + shadow-write to Firestore. */
+export async function saveIncome(income: Income): Promise<void> {
+  const uid = requireUserId('saveIncome');
+  const hid = currentHouseholdId;
+  await db.runAsync(
+    `INSERT OR REPLACE INTO incomes (
+      id, source_name, date, amount_usd, category, earned_by, notes,
+      original_currency, recurring_json, created_by, created_at, updated_at,
+      user_id, household_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    incomeToRowParams(income, uid, hid),
+  );
+  if (hid) {
+    void syncIncomeToCloud(income, hid);
+  }
+}
+
+export async function getIncomeById(id: string): Promise<Income | null> {
+  const uid = requireUserId('getIncomeById');
+  const hid = currentHouseholdId;
+  const row = await db.getFirstAsync<IncomeRow>(
+    `SELECT * FROM incomes WHERE id=? AND user_id=?${householdFilterSql(hid)}`,
+    hid ? [id, uid, hid] : [id, uid],
+  );
+  return row ? rowToIncome(row) : null;
+}
+
+export async function getAllIncomes(): Promise<Income[]> {
+  const uid = requireUserId('getAllIncomes');
+  const hid = currentHouseholdId;
+  const rows = await db.getAllAsync<IncomeRow>(
+    `SELECT * FROM incomes WHERE user_id=?${householdFilterSql(hid)} ORDER BY date DESC`,
+    hid ? [uid, hid] : [uid],
+  );
+  return rows.map(rowToIncome);
+}
+
+export async function getIncomesByMonth(year: number, month: number): Promise<Income[]> {
+  const uid = requireUserId('getIncomesByMonth');
+  const hid = currentHouseholdId;
+  const monthParams = calendarMonthSqlParams(year, month);
+  const rows = await db.getAllAsync<IncomeRow>(
+    `SELECT * FROM incomes
+     WHERE user_id = ?${calendarMonthSql('date')}${householdFilterSql(hid)}
+     ORDER BY date DESC`,
+    hid ? [uid, ...monthParams, hid] : [uid, ...monthParams],
+  );
+  return rows.map(rowToIncome);
+}
+
+export async function searchIncomes(query: string): Promise<Income[]> {
+  const uid = requireUserId('searchIncomes');
+  const hid = currentHouseholdId;
+  const q = `%${query.toLowerCase()}%`;
+  const rows = await db.getAllAsync<IncomeRow>(
+    `SELECT * FROM incomes
+     WHERE user_id = ?
+       AND (lower(source_name) LIKE ? OR lower(category) LIKE ? OR lower(notes) LIKE ?)${householdFilterSql(hid)}
+     ORDER BY date DESC`,
+    hid ? [uid, q, q, q, hid] : [uid, q, q, q],
+  );
+  return rows.map(rowToIncome);
+}
+
+export async function deleteIncome(id: string): Promise<void> {
+  const uid = requireUserId('deleteIncome');
+  const hid = currentHouseholdId;
+  await db.runAsync(
+    `DELETE FROM incomes WHERE id=? AND user_id=?${householdFilterSql(hid)}`,
+    hid ? [id, uid, hid] : [id, uid],
+  );
+  if (hid) {
+    void syncIncomeDeletionToCloud(id, hid);
+  }
+}
+
+/** Apply an income pulled from Firestore. Skip when the local row is
+ *  already at least as fresh — syncIncomeToCloud is fire-and-forget, so
+ *  a killed write leaves a stale cloud doc that a later snapshot would
+ *  otherwise INSERT OR REPLACE over the newer local amount/source/earnedBy. */
+export async function upsertIncomeFromCloud(
+  cloud: Income,
+  uid: string,
+  householdId: string,
+): Promise<void> {
+  const existing = await db.getFirstAsync<{ updated_at: string }>(
+    `SELECT updated_at FROM incomes WHERE id=?`,
+    [cloud.id],
+  );
+  if (existing && existing.updated_at >= (cloud.updatedAt ?? '')) {
+    return;
+  }
+  await db.runAsync(
+    `INSERT OR REPLACE INTO incomes (
+      id, source_name, date, amount_usd, category, earned_by, notes,
+      original_currency, recurring_json, created_by, created_at, updated_at,
+      user_id, household_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    incomeToRowParams(cloud, uid, householdId),
+  );
+}
+
+export async function deleteIncomeFromCloud(
+  incomeId: string,
+  uid: string,
+  householdId: string,
+): Promise<void> {
+  await db.runAsync(`DELETE FROM incomes WHERE id=? AND user_id=? AND household_id=?`, [
+    incomeId,
+    uid,
+    householdId,
+  ]);
 }

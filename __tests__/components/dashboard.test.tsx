@@ -44,12 +44,29 @@ jest.mock('@expo/vector-icons', () => ({
 }));
 
 jest.mock('../../lib/AuthContext', () => ({
-  useAuth: () => ({ memberships: [{ householdId: 'hh1', name: 'Our Home', role: 'owner', memberCount: 2, isDefault: true }] }),
+  useAuth: () => ({
+    memberships: [
+      {
+        householdId: 'hh1',
+        name: 'Our Home',
+        role: 'owner',
+        memberCount: 2,
+        isDefault: true,
+      },
+    ],
+    user: { uid: 'uid-self', displayName: 'Alex' },
+    profile: null,
+  }),
+}));
+
+jest.mock('../../lib/cloudSync', () => ({
+  getHouseholdMembers: jest.fn(async () => []),
 }));
 
 jest.mock('../../lib/database', () => ({
   getCurrentHouseholdId: jest.fn(() => 'hh1'),
   getReceiptsByMonth: jest.fn(),
+  getIncomesByMonth: jest.fn(async () => []),
 }));
 
 jest.mock('../../lib/secureStorage', () => ({
@@ -69,10 +86,11 @@ jest.mock('uuid', () => ({
 }));
 
 import DashboardScreen from '../../app/(tabs)/index';
-import { getReceiptsByMonth } from '../../lib/database';
+import { getReceiptsByMonth, getIncomesByMonth } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 
 const mockGetReceiptsByMonth = getReceiptsByMonth as jest.Mock;
+const mockGetIncomesByMonth = getIncomesByMonth as jest.Mock;
 const mockGetCategoryBudgets = getCategoryBudgets as jest.Mock;
 const mockGetCurrency = getCurrency as jest.Mock;
 
@@ -92,6 +110,7 @@ describe('DashboardScreen', () => {
     jest.clearAllMocks();
     mockGetCategoryBudgets.mockResolvedValue({});
     mockGetCurrency.mockResolvedValue('USD');
+    mockGetIncomesByMonth.mockResolvedValue([]);
     // First call = current month, second call (inside load()) = previous
     // month for the trend comparison — default both to empty unless a
     // test overrides.

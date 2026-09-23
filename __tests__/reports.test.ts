@@ -272,6 +272,15 @@ describe('filterReceiptsInRange', () => {
     expect(r.map((x) => x.id)).toEqual(['b', 'c', 'd']);
   });
 
+  it('includes a date-only first-of-month receipt (not UTC-shifted out of the month)', () => {
+    const r = filterReceiptsInRange(
+      [baseReceipt({ id: 'day1', date: '2026-05-01', totalAmount: 5 })],
+      new Date(2026, 4, 1),
+      new Date(2026, 4, 31),
+    );
+    expect(r.map((x) => x.id)).toEqual(['day1']);
+  });
+
   it('returns empty when no receipts fall in the range', () => {
     const r = filterReceiptsInRange(
       receipts,

@@ -24,9 +24,25 @@ jest.mock('@expo/vector-icons', () => ({
   Ionicons: () => null,
 }));
 
+jest.mock('../../lib/AuthContext', () => ({
+  useAuth: () => ({ user: { uid: 'uid-self' }, profile: null }),
+}));
+
+jest.mock('../../lib/cloudSync', () => ({
+  getHouseholdMembers: jest.fn(async () => []),
+}));
+
+jest.mock('../../components/ui/Toast', () => ({
+  useToast: () => ({ show: jest.fn(), dismiss: jest.fn() }),
+}));
+
 jest.mock('../../lib/database', () => ({
   getAllReceipts: jest.fn(),
   searchReceipts: jest.fn(),
+  getAllIncomes: jest.fn(async () => []),
+  searchIncomes: jest.fn(async () => []),
+  deleteIncome: jest.fn(),
+  getCurrentHouseholdId: jest.fn(() => null),
 }));
 
 jest.mock('../../lib/secureStorage', () => ({
@@ -34,10 +50,12 @@ jest.mock('../../lib/secureStorage', () => ({
 }));
 
 import HistoryScreen from '../../app/(tabs)/history';
-import { getAllReceipts, searchReceipts } from '../../lib/database';
+import { getAllReceipts, searchReceipts, getAllIncomes, searchIncomes } from '../../lib/database';
 
 const mockGetAllReceipts = getAllReceipts as jest.Mock;
 const mockSearchReceipts = searchReceipts as jest.Mock;
+const mockGetAllIncomes = getAllIncomes as jest.Mock;
+const mockSearchIncomes = searchIncomes as jest.Mock;
 
 function makeReceipt(overrides: Partial<Receipt>): Receipt {
   return {
@@ -55,6 +73,8 @@ describe('HistoryScreen', () => {
     jest.clearAllMocks();
     mockGetAllReceipts.mockResolvedValue([]);
     mockSearchReceipts.mockResolvedValue([]);
+    mockGetAllIncomes.mockResolvedValue([]);
+    mockSearchIncomes.mockResolvedValue([]);
   });
 
   it('renders one row per mocked receipt', async () => {
@@ -79,7 +99,8 @@ describe('HistoryScreen', () => {
     await waitFor(() => screen.getByText('Coffee Shop'));
 
     mockSearchReceipts.mockResolvedValue([makeReceipt({ id: 'r1', storeName: 'Coffee Shop' })]);
-    fireEvent.changeText(screen.getByPlaceholderText('Search merchant'), 'coffee');
+    mockSearchIncomes.mockResolvedValue([]);
+    fireEvent.changeText(screen.getByPlaceholderText('Search merchant or source'), 'coffee');
 
     await waitFor(() => {
       expect(mockSearchReceipts).toHaveBeenCalledWith('coffee');

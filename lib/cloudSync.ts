@@ -1,4 +1,4 @@
-import { Receipt, Settlement } from '../types';
+import { Receipt, Settlement, Income } from '../types';
 import {
   applyBudgetsSnapshot,
   BudgetsSnapshot,
@@ -641,6 +641,120 @@ export function subscribeToHouseholdSettlements(
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[cloudSync] subscribeToHouseholdSettlements failed:', (e as Error)?.message);
+    return null;
+  }
+}
+
+// ─── incomes (money in) ─────────────────────────────────────────────────────
+
+/** Shadow-write an income to Firestore. Mutable — callers may update. */
+export async function syncIncomeToCloud(income: Income, householdId: string): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return;
+  try {
+    const db = firestore();
+    await db
+      .collection('households')
+      .doc(householdId)
+      .collection('incomes')
+      .doc(income.id)
+      .set({
+        sourceName: income.sourceName,
+        date: income.date,
+        amountUsd: income.amountUsd,
+        category: income.category,
+        earnedBy: income.earnedBy,
+        notes: income.notes ?? null,
+        originalCurrency: income.originalCurrency ?? null,
+        recurring: income.recurring ?? null,
+        createdBy: income.createdBy ?? null,
+        createdAt: income.createdAt,
+        updatedAt: income.updatedAt,
+      });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncIncomeToCloud failed:', (e as Error)?.message);
+  }
+}
+
+export async function syncIncomeDeletionToCloud(
+  incomeId: string,
+  householdId: string,
+): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return;
+  try {
+    const db = firestore();
+    await db.collection('households').doc(householdId).collection('incomes').doc(incomeId).delete();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncIncomeDeletionToCloud failed:', (e as Error)?.message);
+  }
+}
+
+/** Listen for household income docs and merge into local SQLite. */
+export function subscribeToHouseholdIncomes(
+  householdId: string,
+  uid: string,
+): (() => void) | null {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId || !uid) return null;
+  try {
+    const db = firestore();
+    const col = db.collection('households').doc(householdId).collection('incomes');
+    const unsub = col.onSnapshot(
+      async (snapshot) => {
+        if (!snapshot) return;
+        for (const change of snapshot.docChanges()) {
+          try {
+            if (change.doc.metadata.hasPendingWrites) continue;
+            // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+            const {
+              upsertIncomeFromCloud,
+              deleteIncomeFromCloud,
+            } = require('./database') as {
+              upsertIncomeFromCloud: (cloud: Income, uid: string, householdId: string) => Promise<void>;
+              deleteIncomeFromCloud: (incomeId: string, uid: string, householdId: string) => Promise<void>;
+            };
+            if (change.type === 'removed') {
+              await deleteIncomeFromCloud(change.doc.id, uid, householdId);
+              continue;
+            }
+            const data = change.doc.data();
+            await upsertIncomeFromCloud(
+              {
+                id: change.doc.id,
+                sourceName: (data.sourceName as string) || '',
+                date: (data.date as string) || '',
+                amountUsd: (data.amountUsd as number) || 0,
+                category: (data.category as Income['category']) || 'Other',
+                earnedBy: (data.earnedBy as string) || uid,
+                notes: (data.notes as string | null) ?? undefined,
+                originalCurrency: (data.originalCurrency as Income['originalCurrency']) ?? undefined,
+                recurring: (data.recurring as Income['recurring']) ?? undefined,
+                createdBy: (data.createdBy as string | null) ?? undefined,
+                createdAt: (data.createdAt as string) || new Date().toISOString(),
+                updatedAt: (data.updatedAt as string) || new Date().toISOString(),
+              },
+              uid,
+              householdId,
+            );
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('[cloudSync] income snapshot apply failed:', (e as Error)?.message);
+          }
+        }
+        if (snapshot.docChanges().length > 0) notifyLocalDataChanged();
+      },
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloudSync] incomes listener errored:', err?.message);
+      },
+    );
+    return unsub;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] subscribeToHouseholdIncomes failed:', (e as Error)?.message);
     return null;
   }
 }
