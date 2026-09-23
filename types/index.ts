@@ -229,7 +229,8 @@ export interface CashflowStats {
   byCategory: { category: IncomeCategory | string; total: number; count: number }[];
 }
 
-/** Local envelope toward a named savings target (Phase C). */
+/** Household envelope toward a named savings target. Local SQLite plus
+ *  Firestore `households/{hid}/savingsGoals/{id}` (Phase D). */
 export interface SavingsGoal {
   id: string;
   name: string;

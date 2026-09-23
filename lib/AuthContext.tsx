@@ -41,6 +41,7 @@ import {
   subscribeToHouseholdReceipts,
   subscribeToHouseholdSettlements,
   subscribeToHouseholdIncomes,
+  subscribeToHouseholdSavingsGoals,
   subscribeToPendingInvite,
   subscribeToPhoneInvite,
   syncPushTokenToCloud,
@@ -165,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const settlementsUnsubRef = useRef<(() => void) | null>(null);
   // Same for the incomes listener (cashflow money-in ledger).
   const incomesUnsubRef = useRef<(() => void) | null>(null);
+  const savingsGoalsUnsubRef = useRef<(() => void) | null>(null);
   // Same for the household budgets listener (Settings' category/recurring
   // budget amounts + alerts toggle, mirrored onto the household doc).
   const budgetsUnsubRef = useRef<(() => void) | null>(null);
@@ -180,6 +182,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (incomesUnsubRef.current) {
       incomesUnsubRef.current();
       incomesUnsubRef.current = null;
+    }
+    if (savingsGoalsUnsubRef.current) {
+      savingsGoalsUnsubRef.current();
+      savingsGoalsUnsubRef.current = null;
     }
     if (budgetsUnsubRef.current) {
       budgetsUnsubRef.current();
@@ -224,6 +230,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
       const unsubIncomes = subscribeToHouseholdIncomes(householdId, uid);
       if (unsubIncomes) incomesUnsubRef.current = unsubIncomes;
+      const unsubGoals = subscribeToHouseholdSavingsGoals(householdId, uid);
+      if (unsubGoals) savingsGoalsUnsubRef.current = unsubGoals;
       const unsubBudgets = subscribeToHouseholdBudgets(householdId);
       if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
       await refreshMemberships(uid);
