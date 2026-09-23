@@ -115,28 +115,38 @@ once something is actually live.
 1. **Ship the RN/dependency upgrade**, get an Android build past Play
    Console, get both platforms actually live in production (not just
    Internal/TestFlight).
-2. **In-app feedback → Jira pipeline** (spec already written, see
+2. **Income vs spending (cashflow)** — primary next *product* phase.
+   Spec: [`docs/INCOME_FEATURE.md`](docs/INCOME_FEATURE.md). Phase A:
+   separate `Income` records (don't overload `Receipt`), Add Income
+   form, Home spent/earned/net, History filter, Firestore sync. Phase B:
+   recurring paychecks + refunds linked to receipts.
+3. **Crash reporting** (Firebase Crashlytics or similar) — not set up
+   yet, referenced as a gap in the v1.1 doc.
+4. **In-app feedback → Jira pipeline** (spec already written, see
    `docs/V1.1_ROADMAP.md` §1) — lets real users report bugs/requests
    without leaving the app.
-3. **Decide the "notify me when a fix is ready to test" mechanism**
+5. **Decide the "notify me when a fix is ready to test" mechanism**
    (`docs/V1.1_ROADMAP.md` §2 — three options laid out, no decision
    made yet).
-4. **Re-evaluate the admin web app question** (`docs/V1.1_ROADMAP.md`
+6. **Re-evaluate the admin web app question** (`docs/V1.1_ROADMAP.md`
    §3) after 2-3 weeks of real production usage — most needs may
    already be covered by the Firebase Console + Jira directly; don't
    build it speculatively.
-5. **Crash reporting** (Firebase Crashlytics or similar) — not set up
-   yet, referenced as a gap in the v1.1 doc.
 
 ## Ideas not yet scoped (park here, don't lose them)
 
-- Subscription/paid tier (explicitly deferred in `docs/V1.1_ROADMAP.md`).
+- Subscription/paid tier (explicitly deferred in `docs/V1.1_ROADMAP.md`;
+  RevenueCat client already in the tree via `react-native-purchases`).
+- Pay-stub OCR / bank CSV import (after income Phase A/B).
 - Multi-language support.
 - Push notification campaigns / broadcast (needs an admin surface).
 - App-config remote control (change categories/feature flags without a
   new build) — would need either Firebase Remote Config (free tier
   covers this, doesn't need Blaze) or a simple Firestore-backed config
   doc read at app launch.
+- Rename GitHub repo `BalanceSheet` → `NestExpenseTracker` (Settings →
+  General; update clone URLs after). Bundle ids / EAS slug stay
+  `receiptscanner` / `receipt-scanner` for store continuity.
 
 ## Note for whoever picks this up next (human or AI)
 

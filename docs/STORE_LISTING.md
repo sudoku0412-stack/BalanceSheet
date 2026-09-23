@@ -13,21 +13,21 @@ Copy/paste these fields into the Play Console when creating the store listing.
 ## App name (max 30 chars)
 
 ```
-Receipt Scanner
+NestExpenseTracker
 ```
-*(15 chars)*
+*(18 chars)*
 
 ## Short description (max 80 chars)
 
 ```
-Scan receipts, auto-categorize spending, and share with your household.
+Scan receipts, track spending, and share expenses with your household.
 ```
-*(70 chars)*
+*(71 chars)*
 
 ## Full description (max 4000 chars)
 
 ```
-Receipt Scanner turns paper receipts into structured spending data — scanned on-device, then synced across your family's phones.
+NestExpenseTracker turns paper receipts into structured spending data — scanned on-device, then synced across your family's phones.
 
 KEY FEATURES
 
@@ -66,7 +66,7 @@ PRIVACY
 • Photos are stored in Firebase Storage under your household's namespace; only household members can read them.
 • No third-party analytics, no advertising SDKs, no behavioral tracking.
 • Delete your account from Settings → Account → Delete account; this wipes all your cloud data.
-• Full privacy policy: https://kaushik-majumder.github.io/BalanceSheet/privacy-policy.html
+• Full privacy policy: https://nestexpensetracker.legal.craftloop.ca/privacy
 
 Built with React Native + Expo + Firebase + Google Gemini. Open source on GitHub.
 ```
@@ -86,15 +86,16 @@ Built with React Native + Expo + Firebase + Google Gemini. Open source on GitHub
 ## Website
 
 ```
-https://github.com/kaushik-majumder/BalanceSheet
+https://github.com/sudoku0412-stack/BalanceSheet
 ```
+*(Rename the GitHub repo to NestExpenseTracker when ready; update this URL after.)*
 
 ## Privacy policy URL
 
 ```
-https://kaushik-majumder.github.io/BalanceSheet/privacy-policy.html
+https://nestexpensetracker.legal.craftloop.ca/privacy
 ```
-*(active once GitHub Pages is enabled on the repo — see HOSTING_PRIVACY_POLICY.md)*
+*(Cloudflare Pages — see HOSTING_PRIVACY_POLICY.md / legal deploy notes in HANDOVER.md)*
 
 ---
 
@@ -198,7 +199,7 @@ Recommended size: **1080×2340** (or whatever resolution your phone produces). P
 Required: **1024 × 500 PNG**, no transparency, no alpha channel.
 
 Design hints:
-- Show the app name "Receipt Scanner" prominently
+- Show the app name "NestExpenseTracker" prominently
 - Tagline option: "Scan. Categorize. Share."
 - Visual hint of the app: a receipt icon plus the app's emerald-and-slate palette
 - Background: `#0F172A` (slate-900) with `#10B981` (emerald-500) accents to match the app's actual theme
