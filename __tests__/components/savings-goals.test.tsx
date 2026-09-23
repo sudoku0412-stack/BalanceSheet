@@ -1,11 +1,17 @@
 import React from 'react';
 import { fireEvent, render, waitFor, screen } from '@testing-library/react-native';
 
+const mockReplace = jest.fn();
 jest.mock('expo-router', () => ({
-  router: { back: jest.fn() },
+  router: { back: jest.fn(), replace: (...args: unknown[]) => mockReplace(...args) },
   useFocusEffect: (cb: () => void) => {
     require('react').useEffect(cb, []);
   },
+}));
+
+const mockEntitlements = { isPremium: true, loading: false };
+jest.mock('../../lib/EntitlementsContext', () => ({
+  useEntitlements: () => mockEntitlements,
 }));
 
 jest.mock('@expo/vector-icons', () => ({
@@ -42,6 +48,16 @@ describe('SavingsGoalsScreen', () => {
     jest.clearAllMocks();
     mockGetAll.mockResolvedValue([]);
     mockSave.mockResolvedValue(undefined);
+    mockEntitlements.isPremium = true;
+    mockEntitlements.loading = false;
+  });
+
+  it('sends a free-tier user to the paywall', async () => {
+    mockEntitlements.isPremium = false;
+    render(<SavingsGoalsScreen />);
+    await waitFor(() => {
+      expect(mockReplace).toHaveBeenCalledWith('/paywall');
+    });
   });
 
   it('creates an envelope from name and target', async () => {

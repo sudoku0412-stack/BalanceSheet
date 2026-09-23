@@ -1059,18 +1059,20 @@ export default function SettingsScreen() {
             <Text style={styles.leaveHouseholdText}>View recurring schedule</Text>
           </Pressable>
           <Pressable
-            onPress={() => router.push('/import-income' as never)}
+            onPress={() => router.push('/incomes' as never)}
             style={styles.leaveHouseholdBtn}
             hitSlop={4}
           >
-            <Text style={styles.leaveHouseholdText}>Import bank CSV</Text>
+            <Text style={styles.leaveHouseholdText}>All incomes</Text>
           </Pressable>
           <Pressable
-            onPress={() => router.push('/savings-goals' as never)}
+            onPress={() => router.push(isPremium ? '/savings-goals' : '/paywall')}
             style={styles.leaveHouseholdBtn}
             hitSlop={4}
           >
-            <Text style={styles.leaveHouseholdText}>Savings goals</Text>
+            <Text style={styles.leaveHouseholdText}>
+              {isPremium ? 'Savings goals' : 'Savings goals · Premium'}
+            </Text>
           </Pressable>
           <View style={styles.alertRow}>
             {/* Now the single on/off switch for every push notification

@@ -134,17 +134,17 @@ describe('SettingsScreen', () => {
     expect(screen.getByText('Jane Doe')).toBeTruthy();
     expect(screen.getByText('jane@example.com')).toBeTruthy();
     expect(screen.getByText('Sign out')).toBeTruthy();
-    expect(screen.getByText('Import bank CSV')).toBeTruthy();
-    expect(screen.getByText('Savings goals')).toBeTruthy();
+    expect(screen.getByText('All incomes')).toBeTruthy();
+    expect(screen.getByText('Savings goals · Premium')).toBeTruthy();
   });
 
-  it('opens the Phase C import and savings screens from Settings', async () => {
+  it('opens All incomes and paywalls savings goals for a free user', async () => {
     render(<SettingsScreen />);
-    await waitFor(() => screen.getByText('Import bank CSV'));
-    fireEvent.press(screen.getByText('Import bank CSV'));
-    expect(mockSettingsPush).toHaveBeenCalledWith('/import-income');
-    fireEvent.press(screen.getByText('Savings goals'));
-    expect(mockSettingsPush).toHaveBeenCalledWith('/savings-goals');
+    await waitFor(() => screen.getByText('All incomes'));
+    fireEvent.press(screen.getByText('All incomes'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/incomes');
+    fireEvent.press(screen.getByText('Savings goals · Premium'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
   });
 
   it('sending an email invite calls inviteUserToHousehold and shows a success toast', async () => {

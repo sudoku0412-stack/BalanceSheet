@@ -156,7 +156,7 @@ describe('ScanScreen (smoke test)', () => {
     fireEvent.press(createButton!);
     const buttons = alertSpy.mock.calls[0][2] as { text: string }[];
     expect(buttons.map((b) => b.text)).toEqual(
-      expect.arrayContaining(['Add expense', 'Add income', 'Scan pay stub', 'Import bank CSV']),
+      expect.arrayContaining(['Add expense', 'Add income', 'Scan pay stub']),
     );
   });
 
