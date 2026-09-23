@@ -139,20 +139,14 @@ still say BalanceSheet / Receipt Scanner.
 Three GitHub Actions workflows:
 
 - **`test.yml`** — reusable, runs the Jest suite. Gates the other two.
-- **`android-build.yml`** — `workflow_dispatch` (manual trigger, pick a
-  profile) — runs `eas build --local` on the runner itself. Use this to
-  get a downloadable `.aab`/`.apk` without touching EAS cloud build
-  minutes.
-- **`release-build.yml`** — runs **automatically on every push to
-  `main`**. Builds both platforms via **EAS cloud** and **auto-submits**:
-  Android → Play Console **internal track**, iOS → TestFlight/App Store
-  Connect. This is easy to forget about — if you manually build+upload a
-  `.aab` with the same `versionCode` shortly after pushing, you'll hit
-  "version code already used" because this pipeline already claimed it.
-  **If you're about to manually upload a build, bump `versionCode` again
-  first**, or just let this pipeline's automatic submission be the one
-  that lands (then promote from Play Console's Internal track to
-  Production — no re-upload needed).
+- **`android-build.yml`** — `workflow_dispatch` (pick profile) + push to
+  `main` / `feature/**` / `fix/**`. Runs `eas build --local` on the
+  runner. Default push profile is **preview** → sideload `.apk`.
+- **`release-build.yml`** — runs on every push to `main` (and
+  `workflow_dispatch`). Local **production** Android `.aab` on the
+  runner (no EAS cloud credits, **no auto-submit**). Download from the
+  run's Artifacts and upload to Play Console yourself. iOS is not built
+  here — archive via Xcode / TestFlight (see HANDOVER.md).
 
 Both `app.config.js` and `app.json` carry the same `version`/
 `buildNumber`/`versionCode` literals — `app.config.js`'s copy is what's

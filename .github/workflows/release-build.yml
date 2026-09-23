@@ -1,24 +1,18 @@
 name: Release build + submit
 
-# Retrigger note: Google Play service account key registered for
-# non-interactive submit via `eas credentials --platform android`.
+# Every push to main (non-docs) → local Android production .aab on the
+# GitHub runner (no EAS cloud build credits, no Play/App Store auto-submit).
+# Download the artifact from the run and upload to Play Console by hand.
 #
-# Every push to main → cloud EAS build (Android + iOS, production profile)
-# → auto-submit to Play Console (internal track) + App Store Connect
-# (TestFlight). Uses EAS's own macOS/Linux cloud builders (not this
-# runner) since iOS can't build on ubuntu-latest.
+# Why local, not `eas build` cloud:
+#   The Expo Free plan's included cloud builds run out mid-month and block
+#   every main push. `eas build --local` still uses Expo credentials/keystore
+#   from the cloud but compiles on GitHub's free minutes — same signed .aab,
+#   no quota burn. iOS stays out of this workflow (local Xcode / TestFlight
+#   is the standing release path; see HANDOVER.md).
 #
-# Android and iOS are separate jobs (not one `--platform all` call) so
-# a failure on one platform never blocks or aborts the other — this bit
-# us once already: iOS's distribution-cert credential issue was
-# aborting the Android build/submit too, even though Android itself
-# had nothing wrong with it.
-#
-# Submission still lands wherever the store leaves it: Android internal
-# track needs no review, but iOS App Store review will keep stalling on
-# whatever's blocking "Add for Review" in App Store Connect (see
-# HANDOVER.md) — this job gets a build INTO TestFlight/App Store Connect,
-# it does not bypass Apple's own review gate.
+# Name kept as "Release build + submit" so existing Actions bookmarks and
+# badges don't break; submit is intentionally disabled.
 
 on:
   push:
@@ -27,6 +21,7 @@ on:
     paths-ignore:
       - '**/*.md'
       - 'docs/**'
+  workflow_dispatch:
 
 concurrency:
   group: release-build
@@ -38,7 +33,7 @@ jobs:
     uses: ./.github/workflows/test.yml
 
   android:
-    name: Build + submit (Android)
+    name: Build Android AAB (local)
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -53,149 +48,76 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
       - name: Install EAS CLI
         run: npm install -g eas-cli@latest
 
-      - name: Stage gitignored files EAS needs for build + submit
+      - name: Stage google-services.json for EAS local build
         env:
           GOOGLE_SERVICES_JSON_CONTENT: ${{ secrets.GOOGLE_SERVICES_JSON_CONTENT }}
-          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          missing=0
-          for name in GOOGLE_SERVICES_JSON_CONTENT PLAY_SERVICE_ACCOUNT_JSON; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing repo secret $name — Settings → Secrets and variables → Actions."
-              missing=1
-            fi
-          done
-          [ "$missing" = "1" ] && exit 1
-
+          if [ -z "$GOOGLE_SERVICES_JSON_CONTENT" ]; then
+            echo "::error::Missing repo secret GOOGLE_SERVICES_JSON_CONTENT — paste the contents of google-services.json into Settings → Secrets → Actions."
+            exit 1
+          fi
           printf '%s' "$GOOGLE_SERVICES_JSON_CONTENT" > google-services.json
-          printf '%s' "$PLAY_SERVICE_ACCOUNT_JSON" > play-service-account.json
           node -e "JSON.parse(require('fs').readFileSync('google-services.json','utf8'))"
-          node -e "JSON.parse(require('fs').readFileSync('play-service-account.json','utf8'))"
 
-      - name: EAS cloud build + auto-submit (Android)
+          # eas-cli archives via .easignore / .gitignore; google-services.json
+          # is gitignored, so strip that line for the runner-only archive.
+          grep -v '^google-services\.json$' .gitignore > .easignore
+          echo "google-services.json staged ($(wc -c < google-services.json) bytes)"
+
+      - name: EAS local production AAB
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          # eas build archives the project via git's tracked-file list by
-          # default (VCS mode) — google-services.json is gitignored, so
-          # without this it's staged on the runner above but never makes
-          # it into the uploaded archive. android-build.yml already had
-          # to work around this same behavior.
+          # Include gitignored google-services.json in the archive.
           EAS_NO_VCS: '1'
-          # app.config.js reads these at build/prebuild time to bake the
-          # RevenueCat SDK key into the app — without them
-          # Purchases.configure() silently no-ops and the paywall shows
-          # no plans, even though everything on the Play/RevenueCat
-          # dashboards is configured correctly.
           REVENUECAT_API_KEY_ANDROID: ${{ secrets.REVENUECAT_API_KEY_ANDROID }}
           REVENUECAT_API_KEY_IOS: ${{ secrets.REVENUECAT_API_KEY_IOS }}
         run: |
+          ls -la google-services.json
+          # production profile → app-bundle (.aab) per eas.json.
+          # No --auto-submit: upload to Play Console manually from Artifacts.
           eas build \
             --profile production \
             --platform android \
+            --local \
             --non-interactive \
-            --auto-submit
+            --output ./build-output.aab
 
-      - name: Build summary
-        if: always()
-        run: |
-          {
-            echo "## Android release build + submit"
-            echo ""
-            echo "- Commit: \`${{ github.sha }}\`"
-            echo "- Status: \`${{ job.status }}\`"
-            echo "- Target: Play Console internal track"
-            echo ""
-            echo "Full logs: EAS dashboard → https://expo.dev"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  ios:
-    name: Build + submit (iOS)
-    needs: test
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    # Independent of the android job above — a failure here never
-    # blocks or cancels the Android build/submit.
-    continue-on-error: true
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Node 20
-        uses: actions/setup-node@v4
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci --legacy-peer-deps
-
-      - name: Install EAS CLI
-        run: npm install -g eas-cli@latest
-
-      - name: Stage gitignored files EAS needs for build + submit
-        env:
-          GOOGLE_SERVICES_PLIST_CONTENT: ${{ secrets.GOOGLE_SERVICES_PLIST_CONTENT }}
-          ASC_API_KEY_P8: ${{ secrets.ASC_API_KEY_P8 }}
-        run: |
-          missing=0
-          for name in GOOGLE_SERVICES_PLIST_CONTENT ASC_API_KEY_P8; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Missing repo secret $name — Settings → Secrets and variables → Actions."
-              missing=1
-            fi
-          done
-          [ "$missing" = "1" ] && exit 1
-
-          # ios/ is now a real checked-in Xcode project (bare workflow for
-          # this platform, unlike Android's fresh-every-time prebuild), and
-          # its project.pbxproj references this file at the fixed path
-          # ios/ReceiptScanner/GoogleService-Info.plist — not repo root.
-          # Writing it only to root left Xcode's build phase looking for a
-          # file that was never there, failing every iOS build with
-          # "Build input file cannot be found:
-          # .../ios/ReceiptScanner/GoogleService-Info.plist".
-          printf '%s' "$GOOGLE_SERVICES_PLIST_CONTENT" > ios/ReceiptScanner/GoogleService-Info.plist
-          printf '%s' "$ASC_API_KEY_P8" > appstore-connect-api-key.p8
-
-      - name: EAS cloud build + auto-submit (iOS)
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-          # eas build archives the project via git's tracked-file list by
-          # default (VCS mode) — GoogleService-Info.plist is gitignored,
-          # so even though the staging step above writes it to
-          # ios/ReceiptScanner/ on the runner, it never made it into the
-          # uploaded archive: Xcode on EAS's remote builder reported
-          # "Build input file cannot be found" for a file that
-          # demonstrably existed locally. Same root cause the Android
-          # local-build workflow already had to work around.
-          EAS_NO_VCS: '1'
-          # See the Android job above — same reason, both platforms read
-          # their own key out of app.config.js `extra`.
-          REVENUECAT_API_KEY_ANDROID: ${{ secrets.REVENUECAT_API_KEY_ANDROID }}
-          REVENUECAT_API_KEY_IOS: ${{ secrets.REVENUECAT_API_KEY_IOS }}
-        run: |
-          eas build \
-            --profile production \
-            --platform ios \
-            --non-interactive \
-            --auto-submit
+          name: nestexpensetracker-production-aab-${{ github.sha }}
+          path: build-output.aab
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Build summary
         if: always()
         run: |
           {
-            echo "## iOS release build + submit"
+            echo "## Android production AAB (local, no submit)"
             echo ""
+            echo "- Profile: \`production\`"
+            echo "- Output: \`build-output.aab\`"
             echo "- Commit: \`${{ github.sha }}\`"
             echo "- Status: \`${{ job.status }}\`"
-            echo "- Target: App Store Connect / TestFlight (App Store review still gated on manual items in HANDOVER.md)"
+            echo "- Auto-submit: **disabled** (download artifact → upload in Play Console)"
             echo ""
-            echo "Full logs: EAS dashboard → https://expo.dev"
+            if [ -f build-output.aab ]; then
+              SIZE=$(du -h build-output.aab | cut -f1)
+              echo "- Artifact size: $SIZE"
+              echo ""
+              echo "Download from the **Artifacts** section above."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
