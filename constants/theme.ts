@@ -25,28 +25,28 @@ import { getThemePreference, setThemePreference, ThemePreference } from '../lib/
 const BRAND = {
   primary: '#0C0F24', // dark-navy — primary buttons, hero card, nav active
   primaryHover: '#1A1F3A',
-  accent: '#506CAA', // slate-blue — links, "Watch" status, Food & Dining
-  accentHover: '#41598F',
-  accentTint: '#DCE3EF',
-  success: '#2F6F66', // status-approved — "On track", Groceries
+  accent: '#3E5FBF', // brighter slate-blue — links, chips, dining
+  accentHover: '#324E9E',
+  accentTint: '#E4EAF8',
+  success: '#1F8A75', // clearer teal for "On track" / Groceries
   error: '#8A2A2E', // status-critical — "Over", Entertainment, destructive
-  warning: '#506CAA', // brand kit has no warm warning color; reuse accent
+  warning: '#3E5FBF',
 };
 
 const CATEGORY_COLORS_LIGHT = {
-  Groceries: '#2F6F66',
-  Electronics: '#0C0F24',
-  Dining: '#506CAA',
-  Pharmacy: '#31303F',
-  Gas: '#91A3C9',
-  Clothing: '#0C0F24',
-  Entertainment: '#8A2A2E',
-  Travel: '#91A3C9',
-  Healthcare: '#31303F',
-  Electricity: '#A67C00',
+  Groceries: '#1F8A75',
+  Electronics: '#3E5FBF',
+  Dining: '#C45C26',
+  Pharmacy: '#5A6A8A',
+  Gas: '#7A8F4A',
+  Clothing: '#6B4C9A',
+  Entertainment: '#C43B4A',
+  Travel: '#2E7CB8',
+  Healthcare: '#2F6F66',
+  Electricity: '#C49212',
   Investments: '#1B6B4A',
   Recurring: '#6B5CA5',
-  Other: '#686672',
+  Other: '#6D7388',
 } as Record<Category, string>;
 
 // "Shopping"-family categories (Electronics, Clothing) swap to a lighter
@@ -120,23 +120,23 @@ export const darkTheme = {
 export const lightTheme = {
   isDark: false,
   colors: {
-    background: '#F0EDE6', // paper-2 — warm off-white/cream, matches the reference design
-    surface: '#FFFFFF', // paper-1
-    surfaceHigh: '#EEEEEE', // paper-3
-    border: '#E4E4E7', // rule-1
-    borderLight: '#D2D2D6', // rule-2
+    background: '#F4F6FB', // cool paper — brighter than the old cream
+    surface: '#FFFFFF',
+    surfaceHigh: '#EBF0F8',
+    border: '#D8DEEB',
+    borderLight: '#C5CDE0',
 
     ...BRAND,
-    primaryFaint: 'rgba(12, 15, 36, 0.08)',
-    successFaint: '#E0EBE8',
-    errorFaint: '#F0DEDE',
+    primaryFaint: 'rgba(62, 95, 191, 0.12)',
+    successFaint: '#D9F0EA',
+    errorFaint: '#F8E4E5',
 
-    textPrimary: '#000000', // ink-1
-    textSecondary: '#31303F', // ink-2 charcoal-blue
-    textMuted: '#686672', // ink-4 moss-grey
+    textPrimary: '#12141F',
+    textSecondary: '#3D4258',
+    textMuted: '#6D7388',
 
     tabActive: '#0C0F24',
-    tabInactive: '#9C9AA4',
+    tabInactive: '#8A90A4',
 
     category: CATEGORY_COLORS_LIGHT,
   },
