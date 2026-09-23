@@ -242,11 +242,6 @@ export default function DashboardScreen() {
       borderTopColor: 'rgba(255,255,255,0.12)',
       gap: 8,
     },
-    cashflowHint: {
-      color: 'rgba(255,255,255,0.45)',
-      fontFamily: t.fonts.body.regular,
-      fontSize: 10,
-    },
     cashflowBarRow: {
       gap: 6,
     },
@@ -279,19 +274,42 @@ export default function DashboardScreen() {
     },
     cashflowNetPositive: {
       color: '#9FE0C8',
-      fontFamily: t.fonts.display.bold,
-      fontSize: 12,
+      fontFamily: t.fonts.mono.medium,
+      fontSize: 13,
     },
     cashflowNetNegative: {
       color: '#F0B4B6',
-      fontFamily: t.fonts.display.bold,
+      fontFamily: t.fonts.mono.medium,
+      fontSize: 13,
+    },
+    cashflowMembers: {
+      gap: 8,
+      marginTop: 4,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: 'rgba(255,255,255,0.1)',
+    },
+    cashflowMemberRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      gap: 12,
+    },
+    cashflowMemberName: {
+      flex: 1,
+      color: 'rgba(255,255,255,0.72)',
+      fontFamily: t.fonts.body.medium,
       fontSize: 12,
     },
-    cashflowMemberLine: {
+    cashflowMemberAmt: {
+      color: '#fff',
+      fontFamily: t.fonts.mono.medium,
+      fontSize: 12,
+    },
+    cashflowInvested: {
       color: 'rgba(255,255,255,0.55)',
       fontFamily: t.fonts.body.regular,
       fontSize: 11,
-      width: '100%',
     },
     trendPill: {
       paddingHorizontal: 10,
@@ -391,9 +409,9 @@ export default function DashboardScreen() {
     },
     actionBtnText: {
       color: t.colors.textPrimary,
-      fontFamily: t.fonts.display.bold,
+      fontFamily: t.fonts.body.medium,
       fontSize: t.font.xs,
-      letterSpacing: 0.2,
+      textAlign: 'center' as const,
     },
 
     section: { gap: t.spacing.sm },
@@ -854,19 +872,21 @@ export default function DashboardScreen() {
                       </Text>
                     </View>
                   </TouchableOpacity>
-                  <Text
-                    style={cashflow.net >= 0 ? styles.cashflowNetPositive : styles.cashflowNetNegative}
-                  >
-                    Net {formatCurrency(cashflow.net, currency)}
-                  </Text>
-                  <Text style={styles.cashflowHint}>
-                    Tap earned for all incomes · tap bars to see by person
-                  </Text>
+                  <View style={styles.cashflowBarHead}>
+                    <Text style={styles.cashflowBarLabel}>Net</Text>
+                    <Text
+                      style={
+                        cashflow.net >= 0 ? styles.cashflowNetPositive : styles.cashflowNetNegative
+                      }
+                    >
+                      {formatCurrency(cashflow.net, currency)}
+                    </Text>
+                  </View>
                 </>
               );
             })()}
             {cashflow.investedUsd > 0 ? (
-              <Text style={styles.cashflowMemberLine}>
+              <Text style={styles.cashflowInvested}>
                 Invested {formatCurrency(cashflow.investedUsd, currency)}
                 {cashflow.savingsRate != null
                   ? ` · Saved ${(cashflow.savingsRate * 100).toFixed(0)}% of earned`
@@ -874,22 +894,45 @@ export default function DashboardScreen() {
               </Text>
             ) : null}
             {cashflow.byMember.length > 1 ? (
-              <Text style={styles.cashflowMemberLine} numberOfLines={2}>
-                {cashflow.byMember
-                  .map((m) => {
-                    const member = members.find((x) => x.uid === m.earnedBy);
-                    const name =
-                      member?.isYou
-                        ? 'You'
-                        : member?.displayName?.trim() ||
-                          member?.email?.trim() ||
-                          (m.earnedBy.length > 8
-                            ? `${m.earnedBy.slice(0, 6)}…`
-                            : m.earnedBy);
-                    return `${name} ${formatCurrency(m.total, currency)}`;
-                  })
-                  .join(' · ')}
-              </Text>
+              <View style={styles.cashflowMembers}>
+                {cashflow.byMember.map((m) => {
+                  const member = members.find((x) => x.uid === m.earnedBy);
+                  const name =
+                    member?.isYou
+                      ? 'You'
+                      : member?.displayName?.trim() ||
+                        member?.email?.trim() ||
+                        (m.earnedBy.length > 8
+                          ? `${m.earnedBy.slice(0, 6)}…`
+                          : m.earnedBy);
+                  return (
+                    <TouchableOpacity
+                      key={m.earnedBy}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/(tabs)/history',
+                          params: {
+                            kind: 'income',
+                            group: 'member',
+                            year: String(viewedMonth.getFullYear()),
+                            month: String(viewedMonth.getMonth() + 1),
+                          },
+                        })
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`${name} income`}
+                      style={styles.cashflowMemberRow}
+                    >
+                      <Text style={styles.cashflowMemberName} numberOfLines={1}>
+                        {name}
+                      </Text>
+                      <Text style={styles.cashflowMemberAmt}>
+                        {formatCurrency(m.total, currency)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             ) : null}
           </View>
         </View>
@@ -944,7 +987,7 @@ export default function DashboardScreen() {
             onPress={() => router.push('/(tabs)/scan?mode=manual' as never)}
           >
             <Ionicons name="add-circle-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>Add manually</Text>
+            <Text style={styles.actionBtnText}>Add expense</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
