@@ -115,10 +115,10 @@ once something is actually live.
 1. **Ship the RN/dependency upgrade**, get an Android build past Play
    Console, get both platforms actually live in production (not just
    Internal/TestFlight).
-2. **Income vs spending (cashflow)** — Phase A and B on `main`; Phase C
-   on `cursor/income-phase-c-5efe` (see [`docs/INCOME_FEATURE.md`](docs/INCOME_FEATURE.md)).
-   Pay-stub OCR, bank CSV import, and local savings envelopes. Joint
-   owner is still out of scope.
+2. **Income vs spending (cashflow)** — Phases A–C on `main`; Phase D
+   on `cursor/income-phase-d-5efe` (see [`docs/INCOME_FEATURE.md`](docs/INCOME_FEATURE.md)).
+   Savings envelopes sync across household devices. Joint owner is
+   still out of scope.
 3. **Crash reporting** (Firebase Crashlytics or similar) — not set up
    yet, referenced as a gap in the v1.1 doc.
 4. **In-app feedback → Jira pipeline** (spec already written, see
@@ -136,7 +136,7 @@ once something is actually live.
 
 - Subscription/paid tier (explicitly deferred in `docs/V1.1_ROADMAP.md`;
   RevenueCat client already in the tree via `react-native-purchases`).
-- Cloud-sync savings goals (Phase C envelopes are local-first).
+- Joint / household `earnedBy` (still deferred).
 - Multi-language support.
 - Push notification campaigns / broadcast (needs an admin surface).
 - App-config remote control (change categories/feature flags without a

@@ -125,14 +125,20 @@ describe('deleteHousehold', () => {
     seedDoc('households/h1/receipts/r1', { merchant: 'Cafe' });
     seedDoc('households/h1/settlements/s1', { amountUsd: 10 });
     seedDoc('households/h1/incomes/i1', { sourceName: 'Acme', amountUsd: 3200, notes: 'biweekly' });
+    seedDoc('households/h1/savingsGoals/g1', { name: 'Emergency', targetUsd: 1000 });
     seedDoc('users/owner/memberships/h1', { householdId: 'h1' });
 
     const res = await deleteHousehold({ householdId: 'h1', uid: 'owner' });
     expect(res).toEqual({ ok: true, receiptsDeleted: 1 });
     expect(mockStore.has('households/h1/incomes/i1')).toBe(false);
+    expect(mockStore.has('households/h1/savingsGoals/g1')).toBe(false);
     expect(mockStore.has('households/h1')).toBe(false);
     expect(mockDeletedPaths.indexOf('households/h1/incomes/i1')).toBeGreaterThan(-1);
     expect(mockDeletedPaths.indexOf('households/h1/incomes/i1')).toBeLessThan(
+      mockDeletedPaths.indexOf('households/h1'),
+    );
+    expect(mockDeletedPaths.indexOf('households/h1/savingsGoals/g1')).toBeGreaterThan(-1);
+    expect(mockDeletedPaths.indexOf('households/h1/savingsGoals/g1')).toBeLessThan(
       mockDeletedPaths.indexOf('households/h1'),
     );
   });
@@ -143,21 +149,25 @@ describe('deleteCloudUserData', () => {
     seedHousehold('h1', 'u1', ['u1']);
     seedDoc('households/h1/receipts/r1', {});
     seedDoc('households/h1/incomes/i1', { sourceName: 'Payroll', notes: 'direct deposit' });
+    seedDoc('households/h1/savingsGoals/g1', { name: 'Emergency' });
     seedDoc('users/u1', { householdId: 'h1' });
 
     const res = await deleteCloudUserData({ uid: 'u1', householdId: 'h1', email: null });
     expect(res.soloHouseholdDeleted).toBe(true);
     expect(mockStore.has('households/h1/incomes/i1')).toBe(false);
+    expect(mockStore.has('households/h1/savingsGoals/g1')).toBe(false);
     expect(mockStore.has('households/h1')).toBe(false);
   });
 
   it('leaves incomes when leaving a shared household', async () => {
     seedHousehold('h1', 'owner', ['owner', 'u1']);
     seedDoc('households/h1/incomes/i1', { sourceName: 'Shared paycheck' });
+    seedDoc('households/h1/savingsGoals/g1', { name: 'Shared envelope' });
 
     const res = await deleteCloudUserData({ uid: 'u1', householdId: 'h1', email: null });
     expect(res.soloHouseholdDeleted).toBe(false);
     expect(mockStore.has('households/h1/incomes/i1')).toBe(true);
+    expect(mockStore.has('households/h1/savingsGoals/g1')).toBe(true);
     expect(mockStore.has('households/h1')).toBe(true);
   });
 });

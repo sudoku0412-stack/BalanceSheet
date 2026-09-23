@@ -7,6 +7,8 @@ import {
   syncSettlementToCloud,
   syncIncomeToCloud,
   syncIncomeDeletionToCloud,
+  syncSavingsGoalToCloud,
+  syncSavingsGoalDeletionToCloud,
   uploadReceiptPhoto,
 } from './cloudSync';
 
@@ -230,8 +232,9 @@ export async function initDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_incomes_user ON incomes(user_id);
     CREATE INDEX IF NOT EXISTS idx_incomes_user_date ON incomes(user_id, date);
 
-    -- Savings envelopes (Phase C). Local-first; not shadow-written to
-    -- Firestore yet. Wiped with the account / household like incomes.
+    -- Savings envelopes. Shadow-written to Firestore
+    -- households/{hid}/savingsGoals (Phase D). Wiped with the account
+    -- / household like incomes.
     CREATE TABLE IF NOT EXISTS savings_goals (
       id            TEXT PRIMARY KEY,
       name          TEXT NOT NULL,
@@ -1568,6 +1571,9 @@ export async function saveSavingsGoal(goal: SavingsGoal): Promise<void> {
       hid,
     ],
   );
+  if (hid) {
+    void syncSavingsGoalToCloud(goal, hid);
+  }
 }
 
 export async function getAllSavingsGoals(): Promise<SavingsGoal[]> {
@@ -1587,4 +1593,52 @@ export async function deleteSavingsGoal(id: string): Promise<void> {
     `DELETE FROM savings_goals WHERE id=? AND user_id=?${householdFilterSql(hid)}`,
     hid ? [id, uid, hid] : [id, uid],
   );
+  if (hid) {
+    void syncSavingsGoalDeletionToCloud(id, hid);
+  }
+}
+
+/** Apply a savings goal pulled from Firestore. Skip when the local row
+ *  is already at least as fresh — same updated_at guard as incomes. */
+export async function upsertSavingsGoalFromCloud(
+  cloud: SavingsGoal,
+  uid: string,
+  householdId: string,
+): Promise<void> {
+  const existing = await db.getFirstAsync<{ updated_at: string }>(
+    `SELECT updated_at FROM savings_goals WHERE id=?`,
+    [cloud.id],
+  );
+  if (existing && existing.updated_at >= (cloud.updatedAt ?? '')) {
+    return;
+  }
+  await db.runAsync(
+    `INSERT OR REPLACE INTO savings_goals (
+      id, name, target_usd, allocated_usd, notes, created_at, updated_at,
+      user_id, household_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      cloud.id,
+      cloud.name,
+      cloud.targetUsd,
+      cloud.allocatedUsd,
+      cloud.notes ?? null,
+      cloud.createdAt,
+      cloud.updatedAt,
+      uid,
+      householdId,
+    ],
+  );
+}
+
+export async function deleteSavingsGoalFromCloud(
+  goalId: string,
+  uid: string,
+  householdId: string,
+): Promise<void> {
+  await db.runAsync(`DELETE FROM savings_goals WHERE id=? AND user_id=? AND household_id=?`, [
+    goalId,
+    uid,
+    householdId,
+  ]);
 }

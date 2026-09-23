@@ -23,6 +23,8 @@ jest.mock('../../lib/cloudSync', () => ({
   syncSettlementToCloud: jest.fn(),
   syncIncomeToCloud: jest.fn(),
   syncIncomeDeletionToCloud: jest.fn(),
+  syncSavingsGoalToCloud: jest.fn(),
+  syncSavingsGoalDeletionToCloud: jest.fn(),
   uploadReceiptPhoto: jest.fn(),
 }));
 
