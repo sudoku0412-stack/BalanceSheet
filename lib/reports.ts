@@ -1,4 +1,5 @@
 import { Category, Receipt } from '../types';
+import { isInCalendarRange } from './calendarDate';
 import { CurrencyCode, convertFromUsd } from './currency';
 
 /**
@@ -262,12 +263,7 @@ export function filterReceiptsInRange(
   start: Date,
   end: Date,
 ): Receipt[] {
-  const startMs = startOfLocalDay(start).getTime();
-  const endMs = endOfLocalDay(end).getTime();
-  return receipts.filter((r) => {
-    const ms = new Date(r.date).getTime();
-    return ms >= startMs && ms <= endMs;
-  });
+  return receipts.filter((r) => isInCalendarRange(r.date, start, end));
 }
 
 function startOfLocalDay(d: Date): Date {

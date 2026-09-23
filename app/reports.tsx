@@ -26,6 +26,7 @@ import { Button } from '../components/ui/Button';
 import { ALL_CATEGORIES } from '../constants/categories';
 import { getAllReceipts, getAllIncomes } from '../lib/database';
 import { computeStats } from '../lib/dashboardStats';
+import { isInCalendarMonth } from '../lib/calendarDate';
 import { computeCashflow } from '../lib/cashflowStats';
 import { filterReceiptsInRange, receiptsToCsv } from '../lib/reports';
 import { generateReceiptsPdf, isPdfExportAvailable } from '../lib/pdfExport';
@@ -113,12 +114,9 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
   const monthReceipts = filterReceiptsInRange(receipts, monthStart, monthEnd);
-  const monthIncomes = incomes.filter((i) => {
-    const d = i.date.slice(0, 10);
-    const start = format(monthStart, 'yyyy-MM-dd');
-    const end = format(monthEnd, 'yyyy-MM-dd');
-    return d >= start && d <= end;
-  });
+  const monthIncomes = incomes.filter((i) =>
+    isInCalendarMonth(i.date, now.getFullYear(), now.getMonth() + 1),
+  );
   const stats: MonthlyStats = computeStats(monthReceipts);
   const cashflow: CashflowStats = computeCashflow(monthIncomes, monthReceipts);
 

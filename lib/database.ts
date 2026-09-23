@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import { calendarMonthSql, calendarMonthSqlParams } from './calendarDate';
 import { Receipt, LineItem, Settlement, Income, IncomeCategory } from '../types';
 import {
   syncReceiptDeletionToCloud,
@@ -917,13 +918,12 @@ export async function getReceiptById(id: string): Promise<Receipt | null> {
 export async function getReceiptsByMonth(year: number, month: number): Promise<Receipt[]> {
   const uid = requireUserId('getReceiptsByMonth');
   const hid = currentHouseholdId;
-  const start = new Date(year, month - 1, 1).toISOString();
-  const end   = new Date(year, month, 0, 23, 59, 59).toISOString();
+  const monthParams = calendarMonthSqlParams(year, month);
   const rows  = await db.getAllAsync<RawRow>(
     `SELECT * FROM receipts
-     WHERE user_id = ? AND date >= ? AND date <= ?${householdFilterSql(hid)}
+     WHERE user_id = ?${calendarMonthSql('date')}${householdFilterSql(hid)}
      ORDER BY date DESC`,
-    hid ? [uid, start, end, hid] : [uid, start, end],
+    hid ? [uid, ...monthParams, hid] : [uid, ...monthParams],
   );
   return await attachLineItems(rows);
 }
@@ -1401,14 +1401,12 @@ export async function getAllIncomes(): Promise<Income[]> {
 export async function getIncomesByMonth(year: number, month: number): Promise<Income[]> {
   const uid = requireUserId('getIncomesByMonth');
   const hid = currentHouseholdId;
-  const start = `${year}-${String(month).padStart(2, '0')}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const end = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const monthParams = calendarMonthSqlParams(year, month);
   const rows = await db.getAllAsync<IncomeRow>(
     `SELECT * FROM incomes
-     WHERE user_id = ? AND date >= ? AND date <= ?${householdFilterSql(hid)}
+     WHERE user_id = ?${calendarMonthSql('date')}${householdFilterSql(hid)}
      ORDER BY date DESC`,
-    hid ? [uid, start, end, hid] : [uid, start, end],
+    hid ? [uid, ...monthParams, hid] : [uid, ...monthParams],
   );
   return rows.map(rowToIncome);
 }
