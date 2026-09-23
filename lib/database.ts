@@ -1437,12 +1437,22 @@ export async function deleteIncome(id: string): Promise<void> {
   }
 }
 
-/** Apply an income pulled from Firestore (upsert by id). */
+/** Apply an income pulled from Firestore. Skip when the local row is
+ *  already at least as fresh — syncIncomeToCloud is fire-and-forget, so
+ *  a killed write leaves a stale cloud doc that a later snapshot would
+ *  otherwise INSERT OR REPLACE over the newer local amount/source/earnedBy. */
 export async function upsertIncomeFromCloud(
   cloud: Income,
   uid: string,
   householdId: string,
 ): Promise<void> {
+  const existing = await db.getFirstAsync<{ updated_at: string }>(
+    `SELECT updated_at FROM incomes WHERE id=?`,
+    [cloud.id],
+  );
+  if (existing && existing.updated_at >= (cloud.updatedAt ?? '')) {
+    return;
+  }
   await db.runAsync(
     `INSERT OR REPLACE INTO incomes (
       id, source_name, date, amount_usd, category, earned_by, notes,
