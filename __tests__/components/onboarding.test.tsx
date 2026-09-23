@@ -36,7 +36,7 @@ describe('OnboardingScreen', () => {
     expect(screen.getByText("Snap a receipt, we'll do the rest")).toBeTruthy();
     expect(
       screen.getByText(
-        'Point your camera at any receipt — amount, merchant and category are captured instantly.',
+        'Photograph a receipt or pay stub. Amount, merchant, and category land in your ledger — included on Free.',
       ),
     ).toBeTruthy();
     expect(screen.getByText('Skip')).toBeTruthy();
@@ -58,5 +58,17 @@ describe('OnboardingScreen', () => {
     render(<OnboardingScreen />);
     expect(screen.getByText('Next')).toBeTruthy();
     expect(screen.queryByText('Get Started')).toBeNull();
+  });
+
+  it('ends on a Free vs Premium breakdown', () => {
+    render(<OnboardingScreen />);
+    fireEvent.press(screen.getByText('Next'));
+    fireEvent.press(screen.getByText('Next'));
+    fireEvent.press(screen.getByText('Next'));
+    expect(screen.getByText('Free vs Premium')).toBeTruthy();
+    expect(screen.getByText('Receipt scan, income, budgets, one household')).toBeTruthy();
+    expect(screen.getByText('Unlimited AI receipt scanning')).toBeTruthy();
+    expect(screen.getByText('PDF export, extra households, savings goals')).toBeTruthy();
+    expect(screen.getByText('Get Started')).toBeTruthy();
   });
 });

@@ -26,6 +26,7 @@ type Slide = {
   title: string;
   body: string;
   accent: AccentKey;
+  points?: { label: string; badge: 'Free' | 'Premium' }[];
 };
 
 const SLIDES: Slide[] = [
@@ -33,29 +34,35 @@ const SLIDES: Slide[] = [
     key: 'capture',
     icon: 'camera-outline',
     title: "Snap a receipt, we'll do the rest",
-    body: 'Point your camera at any receipt — amount, merchant and category are captured instantly.',
+    body: 'Photograph a receipt or pay stub. Amount, merchant, and category land in your ledger — included on Free.',
     accent: 'accent',
   },
   {
-    key: 'organize',
-    icon: 'bar-chart-outline',
-    title: 'See where it goes',
-    body: 'Track spending by category and stay under budget without lifting a finger.',
+    key: 'cashflow',
+    icon: 'swap-vertical-outline',
+    title: 'Income and spending together',
+    body: 'Log paychecks, see earned / spent / net, and open every income on its own page. Budgets and history stay Free.',
     accent: 'success',
   },
   {
     key: 'household',
     icon: 'people-outline',
-    title: 'Share it with your household',
-    body: 'Invite anyone to split costs, and switch between multiple households anytime — everyone sees the same shared expenses and settles up automatically.',
+    title: 'Share one household, free',
+    body: 'Invite a partner, split expenses, and settle up. One household is Free. Extra households are Premium.',
     accent: 'accent',
   },
   {
-    key: 'done',
-    icon: 'checkmark-circle-outline',
-    title: 'One tap, done',
-    body: "No forms, no typing. Scan and you're already tracked.",
+    key: 'plans',
+    icon: 'diamond-outline',
+    title: 'Free vs Premium',
+    body: 'Start Free. Upgrade only if you want more AI scans, exports, or savings goals.',
     accent: 'primary',
+    points: [
+      { badge: 'Free', label: 'Receipt scan, income, budgets, one household' },
+      { badge: 'Free', label: 'Splits, settle up, recurring, All incomes' },
+      { badge: 'Premium', label: 'Unlimited AI receipt scanning' },
+      { badge: 'Premium', label: 'PDF export, extra households, savings goals' },
+    ],
   },
 ];
 
@@ -77,7 +84,13 @@ export default function OnboardingScreen() {
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
   const goToSlide = (i: number) => {
-    listRef.current?.scrollToIndex({ index: i, animated: true });
+    setIndex(i);
+    try {
+      listRef.current?.scrollToIndex({ index: i, animated: true });
+    } catch {
+      // Tests (and a first-layout race) can miss getItemLayout; index
+      // still updates so the CTA / dots stay in sync.
+    }
   };
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -114,6 +127,7 @@ export default function OnboardingScreen() {
         keyExtractor={(s) => s.key}
         horizontal
         pagingEnabled
+        getItemLayout={(_, i) => ({ length: screenWidth, offset: screenWidth * i, index: i })}
         showsHorizontalScrollIndicator={false}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
@@ -201,6 +215,30 @@ function SlideView({ slide, width }: { slide: Slide; width: number }) {
       </View>
       <Text style={styles.title}>{slide.title}</Text>
       <Text style={styles.body}>{slide.body}</Text>
+      {slide.points?.length ? (
+        <View style={styles.points}>
+          {slide.points.map((point) => (
+            <View key={point.label} style={styles.pointRow}>
+              <View
+                style={[
+                  styles.badge,
+                  point.badge === 'Premium' ? styles.badgePremium : styles.badgeFree,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.badgeText,
+                    point.badge === 'Premium' ? styles.badgeTextPremium : styles.badgeTextFree,
+                  ]}
+                >
+                  {point.badge}
+                </Text>
+              </View>
+              <Text style={styles.pointLabel}>{point.label}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -255,9 +293,9 @@ const makeStyles = (t: Theme) => ({
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 6,
+    shadowOpacity: t.isDark ? 0.5 : 0.18,
+    shadowRadius: t.isDark ? 16 : 12,
+    elevation: t.isDark ? 6 : 3,
   },
   title: {
     color: t.colors.textPrimary,
@@ -265,7 +303,7 @@ const makeStyles = (t: Theme) => ({
     fontSize: 26,
     textAlign: 'center' as const,
     marginBottom: t.spacing.md,
-    maxWidth: 280,
+    maxWidth: 300,
   },
   body: {
     color: t.colors.textMuted,
@@ -273,7 +311,45 @@ const makeStyles = (t: Theme) => ({
     fontSize: 15,
     textAlign: 'center' as const,
     lineHeight: 22,
-    maxWidth: 280,
+    maxWidth: 300,
+  },
+  points: {
+    width: '100%',
+    maxWidth: 340,
+    marginTop: t.spacing.lg,
+    gap: 10,
+  },
+  pointRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'flex-start' as const,
+    gap: 10,
+  },
+  badge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: t.radius.full,
+    marginTop: 1,
+  },
+  badgeFree: {
+    backgroundColor: t.colors.successFaint,
+  },
+  badgePremium: {
+    backgroundColor: t.colors.primaryFaint,
+  },
+  badgeText: {
+    fontFamily: t.fonts.display.bold,
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase' as const,
+  },
+  badgeTextFree: { color: t.colors.success },
+  badgeTextPremium: { color: t.isDark ? t.colors.tabActive : t.colors.primary },
+  pointLabel: {
+    flex: 1,
+    color: t.colors.textSecondary,
+    fontFamily: t.fonts.body.regular,
+    fontSize: 13,
+    lineHeight: 18,
   },
   dotsRow: {
     flexDirection: 'row' as const,
