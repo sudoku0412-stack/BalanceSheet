@@ -24,14 +24,15 @@ import { Skeleton } from '../components/ui/Skeleton';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { Button } from '../components/ui/Button';
 import { ALL_CATEGORIES } from '../constants/categories';
-import { getAllReceipts } from '../lib/database';
+import { getAllReceipts, getAllIncomes } from '../lib/database';
 import { computeStats } from '../lib/dashboardStats';
+import { computeCashflow } from '../lib/cashflowStats';
 import { filterReceiptsInRange, receiptsToCsv } from '../lib/reports';
 import { generateReceiptsPdf, isPdfExportAvailable } from '../lib/pdfExport';
 import { getCurrency } from '../lib/secureStorage';
 import { useEntitlements } from '../lib/EntitlementsContext';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
-import { CategorySummary, MonthlyStats, Receipt, Category } from '../types';
+import { CategorySummary, MonthlyStats, Receipt, Category, Income, CashflowStats } from '../types';
 
 /**
  * Build a human-readable filename for the exported receipt report,
@@ -67,6 +68,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const styles = useReportsStyles();
   const { isPremium } = useEntitlements();
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [incomes, setIncomes] = useState<Income[]>([]);
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
 
@@ -74,9 +76,14 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     useCallback(() => {
       let mounted = true;
       (async () => {
-        const [all, code] = await Promise.all([getAllReceipts(), getCurrency()]);
+        const [all, allIncomes, code] = await Promise.all([
+          getAllReceipts(),
+          getAllIncomes(),
+          getCurrency(),
+        ]);
         if (!mounted) return;
         setReceipts(all);
+        setIncomes(allIncomes);
         if (code) setCurrency(code as CurrencyCode);
         setLoading(false);
       })();
@@ -90,8 +97,9 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const all = await getAllReceipts();
+      const [all, allIncomes] = await Promise.all([getAllReceipts(), getAllIncomes()]);
       setReceipts(all);
+      setIncomes(allIncomes);
     } finally {
       setRefreshing(false);
     }
@@ -105,7 +113,14 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const monthStart = startOfMonth(now);
   const monthEnd = endOfMonth(now);
   const monthReceipts = filterReceiptsInRange(receipts, monthStart, monthEnd);
+  const monthIncomes = incomes.filter((i) => {
+    const d = i.date.slice(0, 10);
+    const start = format(monthStart, 'yyyy-MM-dd');
+    const end = format(monthEnd, 'yyyy-MM-dd');
+    return d >= start && d <= end;
+  });
   const stats: MonthlyStats = computeStats(monthReceipts);
+  const cashflow: CashflowStats = computeCashflow(monthIncomes, monthReceipts);
 
   // Separate loading flags per button — a single shared `exporting`
   // flag made tapping either button spin BOTH (each button's `loading`
@@ -259,7 +274,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
           }
         >
           {/* Summary — donut chart + total spend this month */}
-          <SummaryCard stats={stats} currency={currency} theme={theme} />
+          <SummaryCard stats={stats} cashflow={cashflow} currency={currency} theme={theme} />
 
           {/* By category — colored dot + name + percentage + amount */}
           {stats.categories.length > 0 && (
@@ -330,10 +345,12 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
 
 function SummaryCard({
   stats,
+  cashflow,
   currency,
   theme,
 }: {
   stats: MonthlyStats;
+  cashflow: CashflowStats;
   currency: CurrencyCode;
   theme: Theme;
 }) {
@@ -353,6 +370,31 @@ function SummaryCard({
           </Text>
           <Text style={styles.summarySub}>
             total across {count} expense{count === 1 ? '' : 's'}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.cashflowRow}>
+        <View style={styles.cashflowCell}>
+          <Text style={styles.cashflowLabel}>Earned</Text>
+          <Text style={[styles.cashflowValue, { color: theme.colors.success }]}>
+            {formatCurrency(cashflow.totalEarned, currency)}
+          </Text>
+        </View>
+        <View style={styles.cashflowCell}>
+          <Text style={styles.cashflowLabel}>Spent</Text>
+          <Text style={styles.cashflowValue}>
+            {formatCurrency(cashflow.totalSpent, currency)}
+          </Text>
+        </View>
+        <View style={styles.cashflowCell}>
+          <Text style={styles.cashflowLabel}>Net</Text>
+          <Text
+            style={[
+              styles.cashflowValue,
+              { color: cashflow.net >= 0 ? theme.colors.success : theme.colors.error },
+            ]}
+          >
+            {formatCurrency(cashflow.net, currency)}
           </Text>
         </View>
       </View>
@@ -493,6 +535,30 @@ function useReportsStyles() {
     color: theme.colors.textMuted,
     fontSize: theme.font.sm,
     fontFamily: theme.fonts.body.regular,
+  },
+  cashflowRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: theme.spacing.sm,
+    paddingTop: theme.spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  cashflowCell: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+  },
+  cashflowLabel: {
+    color: theme.colors.textMuted,
+    fontSize: theme.font.xs,
+    fontFamily: theme.fonts.body.regular,
+    textTransform: 'uppercase',
+  },
+  cashflowValue: {
+    color: theme.colors.textPrimary,
+    fontSize: theme.font.sm,
+    fontFamily: theme.fonts.mono.medium,
   },
   section: {
     gap: theme.spacing.sm,

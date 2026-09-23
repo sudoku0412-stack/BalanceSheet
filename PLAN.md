@@ -115,14 +115,12 @@ once something is actually live.
 1. **Ship the RN/dependency upgrade**, get an Android build past Play
    Console, get both platforms actually live in production (not just
    Internal/TestFlight).
-2. **Income vs spending (cashflow)** — primary next *product* phase.
-   Spec: [`docs/INCOME_FEATURE.md`](docs/INCOME_FEATURE.md) (**plan only —
-   not started in code**). Multiple incomes per household, each tagged
-   with **whose income** (`earnedBy`) and a free-text **source name**;
-   household total = sum of members. Recurring **investments** are
-   expenses (Investments category + existing recurring flow), not
-   income. Money coming back from investments / other sources is income
-   the user can name.
+2. **Income vs spending (cashflow)** — Phase A landing on branch
+   `cursor/income-phase-a-5efe` (see [`docs/INCOME_FEATURE.md`](docs/INCOME_FEATURE.md)).
+   Multiple incomes with **whose income** (`earnedBy`) + free-text
+   **source name**; household total = sum of members. Recurring
+   **investments** are expenses (Investments category). Home / History /
+   Reports show earned · spent · net.
 3. **Crash reporting** (Firebase Crashlytics or similar) — not set up
    yet, referenced as a gap in the v1.1 doc.
 4. **In-app feedback → Jira pipeline** (spec already written, see

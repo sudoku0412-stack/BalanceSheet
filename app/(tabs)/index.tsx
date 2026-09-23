@@ -5,18 +5,20 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { addMonths, format, isSameMonth, isToday, isYesterday, subMonths } from 'date-fns';
-import { getCurrentHouseholdId, getReceiptsByMonth } from '../../lib/database';
+import { getCurrentHouseholdId, getIncomesByMonth, getReceiptsByMonth } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 import { checkBudgetsAndNotify } from '../../lib/notifications';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
-import { Receipt, MonthlyStats } from '../../types';
+import { CashflowStats, Receipt, MonthlyStats } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { computeStats } from '../../lib/dashboardStats';
+import { computeCashflow } from '../../lib/cashflowStats';
 import { RECURRING_BUDGET_KEY, isRecurringExpense } from '../../lib/recurring';
 import { useAuth } from '../../lib/AuthContext';
 import type { Profile } from '../../lib/profile';
 import { onLocalDataChanged } from '../../lib/dataSync';
+import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { CATEGORY_ICONS, ALL_CATEGORIES } from '../../constants/categories';
 
 /**
@@ -228,6 +230,38 @@ export default function DashboardScreen() {
       fontFamily: t.fonts.body.regular,
       fontSize: 12,
     },
+    cashflowStrip: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      alignItems: 'center',
+      gap: 6,
+      marginTop: t.spacing.sm,
+      paddingTop: t.spacing.sm,
+      borderTopWidth: 1,
+      borderTopColor: 'rgba(255,255,255,0.12)',
+    },
+    cashflowStripText: {
+      color: 'rgba(255,255,255,0.75)',
+      fontFamily: t.fonts.body.regular,
+      fontSize: 12,
+    },
+    cashflowNetPositive: {
+      color: '#9FE0C8',
+      fontFamily: t.fonts.display.bold,
+      fontSize: 12,
+    },
+    cashflowNetNegative: {
+      color: '#F0B4B6',
+      fontFamily: t.fonts.display.bold,
+      fontSize: 12,
+    },
+    cashflowMemberLine: {
+      color: 'rgba(255,255,255,0.55)',
+      fontFamily: t.fonts.body.regular,
+      fontSize: 11,
+      marginTop: 4,
+      width: '100%',
+    },
     trendPill: {
       paddingHorizontal: 10,
       paddingVertical: 3,
@@ -305,10 +339,13 @@ export default function DashboardScreen() {
 
     actionRow: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       gap: t.spacing.sm,
     },
     actionBtn: {
-      flex: 1,
+      flexGrow: 1,
+      flexBasis: '40%',
+      minWidth: 140,
       alignItems: 'center',
       justifyContent: 'center',
       gap: 6,
@@ -448,6 +485,15 @@ export default function DashboardScreen() {
     avgPerReceipt: 0,
     categories: [],
   });
+  const [cashflow, setCashflow] = useState<CashflowStats>({
+    totalEarned: 0,
+    totalSpent: 0,
+    net: 0,
+    incomeCount: 0,
+    byMember: [],
+    byCategory: [],
+  });
+  const [members, setMembers] = useState<HouseholdMember[]>([]);
   const [lastMonthTotal, setLastMonthTotal] = useState<number | null>(null);
   const [budgets, setBudgets] = useState<Record<string, number>>({});
   const [refreshing, setRefreshing] = useState(false);
@@ -460,18 +506,26 @@ export default function DashboardScreen() {
   const load = useCallback(async () => {
     const prevMonth = subMonths(viewedMonth, 1);
     const householdId = getCurrentHouseholdId();
-    const [data, prevData, budgetMap, currencyCode] = await Promise.all([
-      getReceiptsByMonth(viewedMonth.getFullYear(), viewedMonth.getMonth() + 1),
+    const year = viewedMonth.getFullYear();
+    const month = viewedMonth.getMonth() + 1;
+    const [data, incomes, prevData, budgetMap, currencyCode, memberList] = await Promise.all([
+      getReceiptsByMonth(year, month),
+      getIncomesByMonth(year, month),
       getReceiptsByMonth(prevMonth.getFullYear(), prevMonth.getMonth() + 1),
       householdId ? getCategoryBudgets(householdId) : Promise.resolve({}),
       getCurrency(),
+      householdId && user?.uid
+        ? getHouseholdMembers({ householdId, currentUid: user.uid })
+        : Promise.resolve(null),
     ]);
     setReceipts(data);
     setStats(computeStats(data));
+    setCashflow(computeCashflow(incomes, data));
     setLastMonthTotal(prevData.reduce((s, r) => s + r.totalAmount, 0));
     setBudgets(budgetMap);
     setCurrency((currencyCode as CurrencyCode | null) ?? 'USD');
-  }, [monthOffset]);
+    setMembers(memberList ?? []);
+  }, [monthOffset, user?.uid]);
 
   useFocusEffect(
     useCallback(() => {
@@ -673,6 +727,39 @@ export default function DashboardScreen() {
               </View>
             )}
           </View>
+          <View style={styles.cashflowStrip}>
+            <Text style={styles.cashflowStripText}>
+              Earned {formatCurrency(cashflow.totalEarned, currency)}
+            </Text>
+            <Text style={styles.cashflowStripText}>·</Text>
+            <Text style={styles.cashflowStripText}>
+              Spent {formatCurrency(cashflow.totalSpent, currency)}
+            </Text>
+            <Text style={styles.cashflowStripText}>·</Text>
+            <Text
+              style={cashflow.net >= 0 ? styles.cashflowNetPositive : styles.cashflowNetNegative}
+            >
+              Net {formatCurrency(cashflow.net, currency)}
+            </Text>
+            {cashflow.byMember.length > 1 ? (
+              <Text style={styles.cashflowMemberLine} numberOfLines={2}>
+                {cashflow.byMember
+                  .map((m) => {
+                    const member = members.find((x) => x.uid === m.earnedBy);
+                    const name =
+                      member?.isYou
+                        ? 'You'
+                        : member?.displayName?.trim() ||
+                          member?.email?.trim() ||
+                          (m.earnedBy.length > 8
+                            ? `${m.earnedBy.slice(0, 6)}…`
+                            : m.earnedBy);
+                    return `${name} ${formatCurrency(m.total, currency)}`;
+                  })
+                  .join(' · ')}
+              </Text>
+            ) : null}
+          </View>
         </View>
 
         {/* "Where it went" category composition bar */}
@@ -726,6 +813,13 @@ export default function DashboardScreen() {
           >
             <Ionicons name="add-circle-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Add manually</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push('/add-income' as never)}
+          >
+            <Ionicons name="cash-outline" size={20} color={theme.colors.textPrimary} />
+            <Text style={styles.actionBtnText}>Add income</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/recurring' as never)}>
             <Ionicons name="repeat-outline" size={20} color={theme.colors.textPrimary} />

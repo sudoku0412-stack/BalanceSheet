@@ -104,7 +104,20 @@ function ThemedStatusBar() {
 // `target` resolves to `(tabs)` and the user is on one of these, leave
 // them alone — the guard's job is to force users to the auth gate, not
 // to drag them back to /(tabs) every time they open a modal.
-const STICKY_VOLUNTARY = new Set(['settings', 'edit', 'edit-profile', 'reports', 'balances', 'shared-expenses', 'recurring', 'households', 'contacts-sync', 'paywall']);
+const STICKY_VOLUNTARY = new Set([
+  'settings',
+  'edit',
+  'edit-profile',
+  'edit-income',
+  'add-income',
+  'reports',
+  'balances',
+  'shared-expenses',
+  'recurring',
+  'households',
+  'contacts-sync',
+  'paywall',
+]);
 
 function RootStack() {
   const theme = useTheme();
@@ -218,6 +231,18 @@ function RootStack() {
         options={{
           title: 'Edit Receipt',
           headerStyle: { backgroundColor: theme.colors.surface },
+        }}
+      />
+      <Stack.Screen
+        name="add-income"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="edit-income/[id]"
+        options={{
+          headerShown: false,
         }}
       />
       <Stack.Screen

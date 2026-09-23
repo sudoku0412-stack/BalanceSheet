@@ -1,6 +1,6 @@
 # Income vs spending — product plan
 
-**Status**: plan only — no implementation started.
+**Status**: Phase A implemented (types, SQLite/Firestore income CRUD, Home cashflow strip, Add/Edit Income screens, History unified feed, Reports earned/spent/net, Investments expense category, tests).
 **Product**: NestExpenseTracker household cashflow.
 
 This replaces the earlier high-level sketch with the concrete product

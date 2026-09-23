@@ -11,7 +11,18 @@ export type Category =
   | 'Travel'
   | 'Healthcare'
   | 'Electricity'
+  | 'Investments'
   | 'Recurring'
+  | 'Other';
+
+/** Income type chips — separate from expense `Category`. */
+export type IncomeCategory =
+  | 'Salary'
+  | 'Freelance'
+  | 'Gift'
+  | 'Interest'
+  | 'Refund'
+  | 'InvestmentReturn'
   | 'Other';
 
 export interface LineItem {
@@ -144,6 +155,35 @@ export interface Settlement {
   householdId?: string;
 }
 
+/** Money-in ledger entry. Separate from Receipt (expenses) — see
+ *  docs/INCOME_FEATURE.md. Household total income = sum of these. */
+export interface Income {
+  id: string;
+  /** Free-text label — "Acme payroll", "Uber", "Mom birthday gift", … */
+  sourceName: string;
+  date: string;
+  /** USD-canonical amount (same convention as Receipt.totalAmount). */
+  amountUsd: number;
+  category: IncomeCategory;
+  /** Who earned this — household member Firebase uid (required). */
+  earnedBy: string;
+  notes?: string;
+  originalCurrency?: CurrencyCode;
+  /** Optional paycheck schedule — stored in Phase A; auto-materialize
+   *  of occurrences is Phase B (lib/recurring.ts for expenses already
+   *  covers investment contributions as expenses). */
+  recurring?: {
+    frequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
+    nextDueDate: string;
+    endDate: string;
+  };
+  householdId?: string;
+  /** Who logged this entry (may differ from earnedBy). */
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ParsedReceipt {
   storeName: string;
   date: string;
@@ -169,4 +209,15 @@ export interface MonthlyStats {
   topCategory: Category | string | null;
   avgPerReceipt: number;
   categories: CategorySummary[];
+}
+
+export interface CashflowStats {
+  totalEarned: number;
+  totalSpent: number;
+  net: number;
+  incomeCount: number;
+  /** Per earnedBy uid totals for the period. */
+  byMember: { earnedBy: string; total: number; count: number }[];
+  /** Per IncomeCategory totals. */
+  byCategory: { category: IncomeCategory | string; total: number; count: number }[];
 }

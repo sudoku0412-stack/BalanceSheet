@@ -47,6 +47,7 @@ jest.mock('expo-file-system', () => ({
 
 jest.mock('../../lib/database', () => ({
   getAllReceipts: jest.fn(),
+  getAllIncomes: jest.fn(async () => []),
 }));
 
 jest.mock('../../lib/secureStorage', () => ({
@@ -59,10 +60,11 @@ jest.mock('../../lib/pdfExport', () => ({
 }));
 
 import ReportsScreen from '../../app/reports';
-import { getAllReceipts } from '../../lib/database';
+import { getAllReceipts, getAllIncomes } from '../../lib/database';
 import { isPdfExportAvailable, generateReceiptsPdf } from '../../lib/pdfExport';
 
 const mockGetAllReceipts = getAllReceipts as jest.Mock;
+const mockGetAllIncomes = getAllIncomes as jest.Mock;
 const mockIsPdfExportAvailable = isPdfExportAvailable as jest.Mock;
 const mockGenerateReceiptsPdf = generateReceiptsPdf as jest.Mock;
 
@@ -83,6 +85,7 @@ describe('ReportsScreen', () => {
     jest.clearAllMocks();
     mockIsPdfExportAvailable.mockReturnValue(true);
     mockGenerateReceiptsPdf.mockResolvedValue('file:///mock/report.pdf');
+    mockGetAllIncomes.mockResolvedValue([]);
   });
 
   it('renders the total spent and receipt count from mocked receipts in the current month', async () => {
@@ -93,9 +96,11 @@ describe('ReportsScreen', () => {
     render(<ReportsScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText('$50.00')).toBeTruthy();
+      expect(screen.getByText('total across 2 expenses')).toBeTruthy();
     });
-    expect(screen.getByText('total across 2 expenses')).toBeTruthy();
+    expect(screen.getAllByText('$50.00').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Earned')).toBeTruthy();
+    expect(screen.getByText('Net')).toBeTruthy();
   });
 
   it('shows an empty state when there are no receipts in range', async () => {
