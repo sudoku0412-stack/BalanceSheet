@@ -12,7 +12,7 @@ module.exports = ({ config }) => {
     // project/URLs, not user-visible.
     name: 'NestExpenseTracker',
     slug: 'receipt-scanner',
-    version: '1.0.5',
+    version: '1.0.6',
     runtimeVersion: { policy: 'appVersion' },
     updates: {
       url: 'https://u.expo.dev/bbdefab5-4cc5-4480-96a9-8ece7eb913a5',
@@ -59,7 +59,7 @@ module.exports = ({ config }) => {
       // precedence over app.json's ios.buildNumber, which is kept in
       // sync here purely for a human reader, not because anything
       // reads it.
-      buildNumber: '19',
+      buildNumber: '20',
       googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
         NSCameraUsageDescription:
@@ -113,7 +113,7 @@ module.exports = ({ config }) => {
       // Kept in sync BY HAND before each release build — see the
       // buildNumber comment above (autoIncrement is off; this literal
       // is the one actually used).
-      versionCode: 27,
+      versionCode: 28,
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
       // Phase 3 magic-link invites: paired with the iOS associated
       // domain above. autoVerify=true makes Android verify the
