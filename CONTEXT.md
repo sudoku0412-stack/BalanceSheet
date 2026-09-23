@@ -8,10 +8,9 @@ instead — this file is the stable, slow-changing picture.
 
 ## What this app is
 
-**NestExpenseTracker** (public/store name) — repo, package identifiers,
-and internal code still say **BalanceSheet** / **ReceiptScanner** in
-places, on purpose (see "Naming" below). It's a personal + household
-expense tracker built around receipt scanning:
+**NestExpenseTracker** — personal + household expense tracker built
+around receipt scanning. Docs and user-facing strings use this name;
+some package identifiers still say ReceiptScanner (see "Naming" below):
 
 1. Point your phone camera at a receipt (or pick a photo from your library).
 2. On-device ML Kit OCR pulls raw text off the image.
@@ -120,15 +119,20 @@ __tests__/      Jest, 4 projects (unit/component/performance/regression)
 docs/           store-listing copy, older planning docs (see PLAN.md for current status)
 ```
 
-## Naming (don't "fix" this)
+## Naming
 
-The app is marketed as **NestExpenseTracker**. The repo, Android
-package (`com.kaushikmajumder.receiptscanner`), iOS product name
-folders, and various internal strings still say **BalanceSheet** /
-**ReceiptScanner**. This is intentional — renaming these would mean
-losing App Store/Play Store listing continuity, EAS project linkage,
-and Firebase project identity. Only user-visible strings and the
-`name`/display fields in `app.config.js` were rebranded.
+| Layer | Name | Change? |
+|---|---|---|
+| Store / in-app display | **NestExpenseTracker** | Canonical — keep this everywhere user-visible |
+| GitHub repo | historically `BalanceSheet` | Safe to rename in GitHub Settings; update README clone URLs |
+| npm `package.json` `name` | `nest-expense-tracker` | Cosmetic |
+| EAS `slug` / deep-link `scheme` | `receipt-scanner` | **Leave** — tied to EAS project + existing app links |
+| Android/iOS bundle id | `com.*.receiptscanner` | **Leave** — store listing continuity |
+| Native iOS folder names | `ReceiptScanner` / variants | **Leave** unless doing a careful Xcode rename |
+
+Do not "fix" bundle ids or the EAS slug as part of a branding pass.
+Do fix READMEs, store listing copy, and static hosting pages when they
+still say BalanceSheet / Receipt Scanner.
 
 ## Build & release pipeline
 
