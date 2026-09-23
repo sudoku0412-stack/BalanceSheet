@@ -145,9 +145,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		13B07F861A680F5B00A75B9A /* ReceiptScanner */ = {
+		13B07F861A680F5B00A75B9A /* NestExpenseTracker */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "ReceiptScanner" */;
+			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "NestExpenseTracker" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
 				8FEF878B8D318ABAB7CE5856 /* [Expo] Configure project */,
@@ -164,7 +164,7 @@
 			);
 			dependencies = (
 			);
-			name = ReceiptScanner;
+			name = NestExpenseTracker;
 			productName = ReceiptScanner;
 			productReference = 13B07F961A680F5B00A75B9A /* NestExpenseTracker.app */;
 			productType = "com.apple.product-type.application";
@@ -196,7 +196,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				13B07F861A680F5B00A75B9A /* ReceiptScanner */,
+				13B07F861A680F5B00A75B9A /* NestExpenseTracker */,
 			);
 		};
 /* End PBXProject section */
@@ -683,7 +683,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "ReceiptScanner" */ = {
+		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "NestExpenseTracker" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
