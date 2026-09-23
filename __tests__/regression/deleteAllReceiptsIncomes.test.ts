@@ -23,10 +23,12 @@ jest.mock('../../lib/cloudSync', () => ({
   syncSettlementToCloud: jest.fn(),
   syncIncomeToCloud: jest.fn(),
   syncIncomeDeletionToCloud: jest.fn(),
+  syncSavingsGoalToCloud: jest.fn(),
+  syncSavingsGoalDeletionToCloud: jest.fn(),
   uploadReceiptPhoto: jest.fn(),
 }));
 
-import { deleteAllReceipts, setCurrentUserId } from '../../lib/database';
+import { deleteAllReceipts, deleteAllRowsForHousehold, setCurrentUserId } from '../../lib/database';
 
 beforeEach(async () => {
   runs.length = 0;
@@ -40,5 +42,20 @@ describe('deleteAllReceipts', () => {
     const incomeDelete = runs.find((r) => /DELETE FROM incomes/i.test(r.sql));
     expect(incomeDelete).toBeDefined();
     expect(incomeDelete!.params).toEqual(['u-delete']);
+    const goalsDelete = runs.find((r) => /DELETE FROM savings_goals/i.test(r.sql));
+    expect(goalsDelete).toBeDefined();
+    expect(goalsDelete!.params).toEqual(['u-delete']);
+  });
+});
+
+describe('deleteAllRowsForHousehold', () => {
+  it('wipes household savings envelopes with incomes', async () => {
+    await deleteAllRowsForHousehold('hh-gone');
+    const goalsDelete = runs.find((r) => /DELETE FROM savings_goals/i.test(r.sql));
+    expect(goalsDelete).toBeDefined();
+    expect(goalsDelete!.params).toEqual(['hh-gone']);
+    const incomeDelete = runs.find((r) => /DELETE FROM incomes/i.test(r.sql));
+    expect(incomeDelete).toBeDefined();
+    expect(incomeDelete!.params).toEqual(['hh-gone']);
   });
 });

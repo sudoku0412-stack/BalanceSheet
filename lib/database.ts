@@ -1,12 +1,14 @@
 import * as SQLite from 'expo-sqlite';
 import { calendarMonthSql, calendarMonthSqlParams } from './calendarDate';
-import { Receipt, LineItem, Settlement, Income, IncomeCategory } from '../types';
+import { Receipt, LineItem, Settlement, Income, IncomeCategory, SavingsGoal } from '../types';
 import {
   syncReceiptDeletionToCloud,
   syncReceiptToCloud,
   syncSettlementToCloud,
   syncIncomeToCloud,
   syncIncomeDeletionToCloud,
+  syncSavingsGoalToCloud,
+  syncSavingsGoalDeletionToCloud,
   uploadReceiptPhoto,
 } from './cloudSync';
 
@@ -103,6 +105,10 @@ async function backfillHouseholdIdForRows(uid: string, hid: string): Promise<voi
     );
     await db.runAsync(
       `UPDATE incomes SET household_id = ? WHERE household_id IS NULL AND user_id = ?`,
+      [hid, uid],
+    );
+    await db.runAsync(
+      `UPDATE savings_goals SET household_id = ? WHERE household_id IS NULL AND user_id = ?`,
       [hid, uid],
     );
   } catch {
@@ -225,6 +231,22 @@ export async function initDatabase(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS idx_incomes_user ON incomes(user_id);
     CREATE INDEX IF NOT EXISTS idx_incomes_user_date ON incomes(user_id, date);
+
+    -- Savings envelopes. Shadow-written to Firestore
+    -- households/{hid}/savingsGoals (Phase D). Wiped with the account
+    -- / household like incomes.
+    CREATE TABLE IF NOT EXISTS savings_goals (
+      id            TEXT PRIMARY KEY,
+      name          TEXT NOT NULL,
+      target_usd    REAL NOT NULL DEFAULT 0,
+      allocated_usd REAL NOT NULL DEFAULT 0,
+      notes         TEXT,
+      created_at    TEXT NOT NULL,
+      updated_at    TEXT NOT NULL,
+      user_id       TEXT NOT NULL,
+      household_id  TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_savings_goals_user ON savings_goals(user_id);
   `);
 
   // Migrations for columns added after initial release. ALTER TABLE has no
@@ -594,7 +616,8 @@ export async function replaceLineItems(
  * Deletes every receipt and income belonging to the CURRENTLY SIGNED-IN
  * user. Used by the deleteAccount flow. Other users' data on the same
  * device is untouched. Incomes are included so a deleted account does
- * not leave paycheck amounts, source names, or notes in SQLite.
+ * not leave paycheck amounts, source names, notes, or savings
+ * envelopes in SQLite.
  */
 export async function deleteAllReceipts(): Promise<void> {
   const uid = requireUserId('deleteAllReceipts');
@@ -610,12 +633,14 @@ export async function deleteAllReceipts(): Promise<void> {
     await db.runAsync(`DELETE FROM receipts WHERE user_id = ?`, [uid]);
     await db.runAsync(`DELETE FROM receipt_corrections WHERE user_id = ?`, [uid]);
     await db.runAsync(`DELETE FROM incomes WHERE user_id = ?`, [uid]);
+    await db.runAsync(`DELETE FROM savings_goals WHERE user_id = ?`, [uid]);
   });
 }
 
 /**
  * Wipes every LOCAL row (any user_id) for one household on this device
- * — receipts, their line items, settlements, and incomes. Called after
+ * — receipts, their line items, settlements, incomes, and savings
+ *   envelopes. Called after
  * cloudSync.deleteHousehold has already removed the household's cloud
  * data, so this is just cleaning up this device's now-stale mirror.
  * Scoped by household_id only (not user_id): a shared household's local
@@ -632,6 +657,7 @@ export async function deleteAllRowsForHousehold(householdId: string): Promise<vo
     await db.runAsync(`DELETE FROM receipts WHERE household_id = ?`, [householdId]);
     await db.runAsync(`DELETE FROM settlements WHERE household_id = ?`, [householdId]);
     await db.runAsync(`DELETE FROM incomes WHERE household_id = ?`, [householdId]);
+    await db.runAsync(`DELETE FROM savings_goals WHERE household_id = ?`, [householdId]);
   });
 }
 
@@ -1494,6 +1520,124 @@ export async function deleteIncomeFromCloud(
 ): Promise<void> {
   await db.runAsync(`DELETE FROM incomes WHERE id=? AND user_id=? AND household_id=?`, [
     incomeId,
+    uid,
+    householdId,
+  ]);
+}
+
+// ─── savings goals / envelopes (Phase C, local-first) ──────────────────────
+
+type SavingsGoalRow = {
+  id: string;
+  name: string;
+  target_usd: number;
+  allocated_usd: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  household_id: string | null;
+};
+
+function rowToSavingsGoal(row: SavingsGoalRow): SavingsGoal {
+  return {
+    id: row.id,
+    name: row.name,
+    targetUsd: row.target_usd,
+    allocatedUsd: row.allocated_usd,
+    notes: row.notes ?? undefined,
+    householdId: row.household_id ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function saveSavingsGoal(goal: SavingsGoal): Promise<void> {
+  const uid = requireUserId('saveSavingsGoal');
+  const hid = currentHouseholdId;
+  await db.runAsync(
+    `INSERT OR REPLACE INTO savings_goals (
+      id, name, target_usd, allocated_usd, notes, created_at, updated_at,
+      user_id, household_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      goal.id,
+      goal.name,
+      goal.targetUsd,
+      goal.allocatedUsd,
+      goal.notes ?? null,
+      goal.createdAt,
+      goal.updatedAt,
+      uid,
+      hid,
+    ],
+  );
+  if (hid) {
+    void syncSavingsGoalToCloud(goal, hid);
+  }
+}
+
+export async function getAllSavingsGoals(): Promise<SavingsGoal[]> {
+  const uid = requireUserId('getAllSavingsGoals');
+  const hid = currentHouseholdId;
+  const rows = await db.getAllAsync<SavingsGoalRow>(
+    `SELECT * FROM savings_goals WHERE user_id=?${householdFilterSql(hid)} ORDER BY created_at ASC`,
+    hid ? [uid, hid] : [uid],
+  );
+  return rows.map(rowToSavingsGoal);
+}
+
+export async function deleteSavingsGoal(id: string): Promise<void> {
+  const uid = requireUserId('deleteSavingsGoal');
+  const hid = currentHouseholdId;
+  await db.runAsync(
+    `DELETE FROM savings_goals WHERE id=? AND user_id=?${householdFilterSql(hid)}`,
+    hid ? [id, uid, hid] : [id, uid],
+  );
+  if (hid) {
+    void syncSavingsGoalDeletionToCloud(id, hid);
+  }
+}
+
+/** Apply a savings goal pulled from Firestore. Skip when the local row
+ *  is already at least as fresh — same updated_at guard as incomes. */
+export async function upsertSavingsGoalFromCloud(
+  cloud: SavingsGoal,
+  uid: string,
+  householdId: string,
+): Promise<void> {
+  const existing = await db.getFirstAsync<{ updated_at: string }>(
+    `SELECT updated_at FROM savings_goals WHERE id=?`,
+    [cloud.id],
+  );
+  if (existing && existing.updated_at >= (cloud.updatedAt ?? '')) {
+    return;
+  }
+  await db.runAsync(
+    `INSERT OR REPLACE INTO savings_goals (
+      id, name, target_usd, allocated_usd, notes, created_at, updated_at,
+      user_id, household_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      cloud.id,
+      cloud.name,
+      cloud.targetUsd,
+      cloud.allocatedUsd,
+      cloud.notes ?? null,
+      cloud.createdAt,
+      cloud.updatedAt,
+      uid,
+      householdId,
+    ],
+  );
+}
+
+export async function deleteSavingsGoalFromCloud(
+  goalId: string,
+  uid: string,
+  householdId: string,
+): Promise<void> {
+  await db.runAsync(`DELETE FROM savings_goals WHERE id=? AND user_id=? AND household_id=?`, [
+    goalId,
     uid,
     householdId,
   ]);

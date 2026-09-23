@@ -5,11 +5,16 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 import { addMonths, format, isSameMonth, isToday, isYesterday, subMonths } from 'date-fns';
-import { getCurrentHouseholdId, getIncomesByMonth, getReceiptsByMonth } from '../../lib/database';
+import {
+  getAllSavingsGoals,
+  getCurrentHouseholdId,
+  getIncomesByMonth,
+  getReceiptsByMonth,
+} from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 import { checkBudgetsAndNotify } from '../../lib/notifications';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
-import { CashflowStats, Receipt, MonthlyStats } from '../../types';
+import { CashflowStats, Receipt, MonthlyStats, SavingsGoal } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { computeStats } from '../../lib/dashboardStats';
@@ -237,11 +242,6 @@ export default function DashboardScreen() {
       borderTopColor: 'rgba(255,255,255,0.12)',
       gap: 8,
     },
-    cashflowHint: {
-      color: 'rgba(255,255,255,0.45)',
-      fontFamily: t.fonts.body.regular,
-      fontSize: 10,
-    },
     cashflowBarRow: {
       gap: 6,
     },
@@ -274,19 +274,42 @@ export default function DashboardScreen() {
     },
     cashflowNetPositive: {
       color: '#9FE0C8',
-      fontFamily: t.fonts.display.bold,
-      fontSize: 12,
+      fontFamily: t.fonts.mono.medium,
+      fontSize: 13,
     },
     cashflowNetNegative: {
       color: '#F0B4B6',
-      fontFamily: t.fonts.display.bold,
+      fontFamily: t.fonts.mono.medium,
+      fontSize: 13,
+    },
+    cashflowMembers: {
+      gap: 8,
+      marginTop: 4,
+      paddingTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: 'rgba(255,255,255,0.1)',
+    },
+    cashflowMemberRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      gap: 12,
+    },
+    cashflowMemberName: {
+      flex: 1,
+      color: 'rgba(255,255,255,0.72)',
+      fontFamily: t.fonts.body.medium,
       fontSize: 12,
     },
-    cashflowMemberLine: {
+    cashflowMemberAmt: {
+      color: '#fff',
+      fontFamily: t.fonts.mono.medium,
+      fontSize: 12,
+    },
+    cashflowInvested: {
       color: 'rgba(255,255,255,0.55)',
       fontFamily: t.fonts.body.regular,
       fontSize: 11,
-      width: '100%',
     },
     trendPill: {
       paddingHorizontal: 10,
@@ -386,9 +409,9 @@ export default function DashboardScreen() {
     },
     actionBtnText: {
       color: t.colors.textPrimary,
-      fontFamily: t.fonts.display.bold,
+      fontFamily: t.fonts.body.medium,
       fontSize: t.font.xs,
-      letterSpacing: 0.2,
+      textAlign: 'center' as const,
     },
 
     section: { gap: t.spacing.sm },
@@ -500,6 +523,18 @@ export default function DashboardScreen() {
       color: t.colors.textPrimary,
       paddingLeft: t.spacing.sm,
     },
+    goalTrack: {
+      height: 8,
+      borderRadius: 999,
+      backgroundColor: t.colors.surfaceHigh,
+      overflow: 'hidden' as const,
+      marginTop: 8,
+    },
+    goalFill: {
+      height: '100%' as const,
+      borderRadius: 999,
+      backgroundColor: t.colors.success,
+    },
   }));
 
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
@@ -526,6 +561,7 @@ export default function DashboardScreen() {
   const [lastMonthTotal, setLastMonthTotal] = useState<number | null>(null);
   const [budgets, setBudgets] = useState<Record<string, number>>({});
   const [refreshing, setRefreshing] = useState(false);
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>([]);
   // 0 = current calendar month, negative = further back. Lets the
   // dashboard browse older months instead of only ever showing "now".
   const [monthOffset, setMonthOffset] = useState(0);
@@ -537,7 +573,7 @@ export default function DashboardScreen() {
     const householdId = getCurrentHouseholdId();
     const year = viewedMonth.getFullYear();
     const month = viewedMonth.getMonth() + 1;
-    const [data, incomes, prevData, budgetMap, currencyCode, memberList] = await Promise.all([
+    const [data, incomes, prevData, budgetMap, currencyCode, memberList, goals] = await Promise.all([
       getReceiptsByMonth(year, month),
       getIncomesByMonth(year, month),
       getReceiptsByMonth(prevMonth.getFullYear(), prevMonth.getMonth() + 1),
@@ -546,6 +582,7 @@ export default function DashboardScreen() {
       householdId && user?.uid
         ? getHouseholdMembers({ householdId, currentUid: user.uid })
         : Promise.resolve(null),
+      getAllSavingsGoals().catch(() => []),
     ]);
     setReceipts(data);
     setStats(computeStats(data));
@@ -554,6 +591,7 @@ export default function DashboardScreen() {
     setBudgets(budgetMap);
     setCurrency((currencyCode as CurrencyCode | null) ?? 'USD');
     setMembers(memberList ?? []);
+    setSavingsGoals(goals);
   }, [monthOffset, user?.uid]);
 
   useFocusEffect(
@@ -834,19 +872,21 @@ export default function DashboardScreen() {
                       </Text>
                     </View>
                   </TouchableOpacity>
-                  <Text
-                    style={cashflow.net >= 0 ? styles.cashflowNetPositive : styles.cashflowNetNegative}
-                  >
-                    Net {formatCurrency(cashflow.net, currency)}
-                  </Text>
-                  <Text style={styles.cashflowHint}>
-                    Tap earned for all incomes · tap bars to see by person
-                  </Text>
+                  <View style={styles.cashflowBarHead}>
+                    <Text style={styles.cashflowBarLabel}>Net</Text>
+                    <Text
+                      style={
+                        cashflow.net >= 0 ? styles.cashflowNetPositive : styles.cashflowNetNegative
+                      }
+                    >
+                      {formatCurrency(cashflow.net, currency)}
+                    </Text>
+                  </View>
                 </>
               );
             })()}
             {cashflow.investedUsd > 0 ? (
-              <Text style={styles.cashflowMemberLine}>
+              <Text style={styles.cashflowInvested}>
                 Invested {formatCurrency(cashflow.investedUsd, currency)}
                 {cashflow.savingsRate != null
                   ? ` · Saved ${(cashflow.savingsRate * 100).toFixed(0)}% of earned`
@@ -854,22 +894,45 @@ export default function DashboardScreen() {
               </Text>
             ) : null}
             {cashflow.byMember.length > 1 ? (
-              <Text style={styles.cashflowMemberLine} numberOfLines={2}>
-                {cashflow.byMember
-                  .map((m) => {
-                    const member = members.find((x) => x.uid === m.earnedBy);
-                    const name =
-                      member?.isYou
-                        ? 'You'
-                        : member?.displayName?.trim() ||
-                          member?.email?.trim() ||
-                          (m.earnedBy.length > 8
-                            ? `${m.earnedBy.slice(0, 6)}…`
-                            : m.earnedBy);
-                    return `${name} ${formatCurrency(m.total, currency)}`;
-                  })
-                  .join(' · ')}
-              </Text>
+              <View style={styles.cashflowMembers}>
+                {cashflow.byMember.map((m) => {
+                  const member = members.find((x) => x.uid === m.earnedBy);
+                  const name =
+                    member?.isYou
+                      ? 'You'
+                      : member?.displayName?.trim() ||
+                        member?.email?.trim() ||
+                        (m.earnedBy.length > 8
+                          ? `${m.earnedBy.slice(0, 6)}…`
+                          : m.earnedBy);
+                  return (
+                    <TouchableOpacity
+                      key={m.earnedBy}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/(tabs)/history',
+                          params: {
+                            kind: 'income',
+                            group: 'member',
+                            year: String(viewedMonth.getFullYear()),
+                            month: String(viewedMonth.getMonth() + 1),
+                          },
+                        })
+                      }
+                      accessibilityRole="button"
+                      accessibilityLabel={`${name} income`}
+                      style={styles.cashflowMemberRow}
+                    >
+                      <Text style={styles.cashflowMemberName} numberOfLines={1}>
+                        {name}
+                      </Text>
+                      <Text style={styles.cashflowMemberAmt}>
+                        {formatCurrency(m.total, currency)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             ) : null}
           </View>
         </View>
@@ -924,7 +987,7 @@ export default function DashboardScreen() {
             onPress={() => router.push('/(tabs)/scan?mode=manual' as never)}
           >
             <Ionicons name="add-circle-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>Add manually</Text>
+            <Text style={styles.actionBtnText}>Add expense</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.actionBtn}
@@ -941,8 +1004,45 @@ export default function DashboardScreen() {
             <Ionicons name="wallet-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>Balances</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => router.push('/savings-goals' as never)}
+          >
+            <Ionicons name="flag-outline" size={20} color={theme.colors.textPrimary} />
+            <Text style={styles.actionBtnText}>Goals</Text>
+          </TouchableOpacity>
         </View>
   
+        {savingsGoals.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Savings goals</Text>
+              <TouchableOpacity onPress={() => router.push('/savings-goals' as never)} hitSlop={8}>
+                <Text style={styles.sectionLink}>Manage</Text>
+              </TouchableOpacity>
+            </View>
+            {savingsGoals.map((goal) => {
+              const ratio = goal.targetUsd > 0 ? Math.min(goal.allocatedUsd / goal.targetUsd, 1) : 0;
+              return (
+                <TouchableOpacity
+                  key={goal.id}
+                  onPress={() => router.push('/savings-goals' as never)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.budgetChipName}>{goal.name}</Text>
+                  <Text style={styles.budgetChipAmt}>
+                    {formatCurrency(goal.allocatedUsd, currency)} of{' '}
+                    {formatCurrency(goal.targetUsd, currency)}
+                  </Text>
+                  <View style={styles.goalTrack}>
+                    <View style={[styles.goalFill, { width: `${ratio * 100}%` }]} />
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        )}
+
         {/* Budgets */}
         {budgetRows.length > 0 && (
           <View style={styles.section}>

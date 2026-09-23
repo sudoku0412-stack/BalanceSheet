@@ -1058,6 +1058,20 @@ export default function SettingsScreen() {
           >
             <Text style={styles.leaveHouseholdText}>View recurring schedule</Text>
           </Pressable>
+          <Pressable
+            onPress={() => router.push('/import-income' as never)}
+            style={styles.leaveHouseholdBtn}
+            hitSlop={4}
+          >
+            <Text style={styles.leaveHouseholdText}>Import bank CSV</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push('/savings-goals' as never)}
+            style={styles.leaveHouseholdBtn}
+            hitSlop={4}
+          >
+            <Text style={styles.leaveHouseholdText}>Savings goals</Text>
+          </Pressable>
           <View style={styles.alertRow}>
             {/* Now the single on/off switch for every push notification
                 this app sends — budget alerts, a new shared expense,

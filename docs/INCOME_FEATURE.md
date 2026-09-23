@@ -1,6 +1,6 @@
 # Income vs spending — product plan
 
-**Status**: Phase A shipped. Phase B implemented (recurring paycheck auto-materialize, recent source-name chips, PDF/reports cashflow + investments/savings-rate). Joint `earnedBy` stays member-only.
+**Status**: Phases A–C shipped. Phase D syncs savings envelopes to Firestore (`households/{hid}/savingsGoals`) so household members share goals. Joint `earnedBy` stays member-only.
 **Product**: NestExpenseTracker household cashflow.
 
 This replaces the earlier high-level sketch with the concrete product
@@ -68,7 +68,7 @@ doc (or leave a follow-up that says "build Phase A").
 
 ### 5. What we are not doing in v1
 
-- Pay-stub OCR, bank CSV import.
+- Pay-stub OCR, bank CSV import (Phase C).
 - Splitting one income across members (one income = one `earnedBy`).
 - Treating investment contributions as income or as a third ledger
   type — they stay expenses.
@@ -194,9 +194,21 @@ recurring "Investments" expense; custom Other sources work by name.
 - Optional: savings-rate view that treats Investments spend as
   "saved" rather than "consumed" — **done** (Home + Reports; Spent still includes Investments)
 
-### Phase C — later
+### Phase C — import + envelopes
 
-- Pay-stub OCR, bank import, savings goals / envelopes
+- Pay-stub OCR (on-device, same ML Kit as receipts) prefills Add Income
+- Bank CSV paste-import (no new native picker); deposits only by default; dedupes date+amount+description
+- Savings goals / envelopes (local SQLite, Home + Settings)
+
+**Exit criteria**: user can scan a stub or paste a statement and confirm incomes; named envelopes show progress without changing Spent.
+
+### Phase D — shared envelopes
+
+- Shadow-write savings goals to Firestore (same household-membership gate as incomes)
+- Live listener + `updated_at` guard so a stale cloud doc cannot overwrite a newer local envelope
+- Solo account / household delete wipes `savingsGoals` before the parent household doc; leaving a shared household keeps the envelopes
+
+**Exit criteria**: two devices in the same household see the same envelopes; deleting the household does not orphan cloud goal docs.
 
 ---
 

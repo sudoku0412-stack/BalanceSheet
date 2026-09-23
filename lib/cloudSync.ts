@@ -1,4 +1,4 @@
-import { Receipt, Settlement, Income } from '../types';
+import { Receipt, Settlement, Income, SavingsGoal } from '../types';
 import {
   applyBudgetsSnapshot,
   BudgetsSnapshot,
@@ -757,6 +757,124 @@ export function subscribeToHouseholdIncomes(
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[cloudSync] subscribeToHouseholdIncomes failed:', (e as Error)?.message);
+    return null;
+  }
+}
+
+// ─── savings goals / envelopes (Phase D cloud mirror) ───────────────────────
+
+export async function syncSavingsGoalToCloud(
+  goal: SavingsGoal,
+  householdId: string,
+): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return;
+  try {
+    const db = firestore();
+    await db
+      .collection('households')
+      .doc(householdId)
+      .collection('savingsGoals')
+      .doc(goal.id)
+      .set({
+        name: goal.name,
+        targetUsd: goal.targetUsd,
+        allocatedUsd: goal.allocatedUsd,
+        notes: goal.notes ?? null,
+        createdAt: goal.createdAt,
+        updatedAt: goal.updatedAt,
+      });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncSavingsGoalToCloud failed:', (e as Error)?.message);
+  }
+}
+
+export async function syncSavingsGoalDeletionToCloud(
+  goalId: string,
+  householdId: string,
+): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return;
+  try {
+    const db = firestore();
+    await db
+      .collection('households')
+      .doc(householdId)
+      .collection('savingsGoals')
+      .doc(goalId)
+      .delete();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncSavingsGoalDeletionToCloud failed:', (e as Error)?.message);
+  }
+}
+
+export function subscribeToHouseholdSavingsGoals(
+  householdId: string,
+  uid: string,
+): (() => void) | null {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId || !uid) return null;
+  try {
+    const db = firestore();
+    const col = db.collection('households').doc(householdId).collection('savingsGoals');
+    const unsub = col.onSnapshot(
+      async (snapshot) => {
+        if (!snapshot) return;
+        for (const change of snapshot.docChanges()) {
+          try {
+            if (change.doc.metadata.hasPendingWrites) continue;
+            // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+            const {
+              upsertSavingsGoalFromCloud,
+              deleteSavingsGoalFromCloud,
+            } = require('./database') as {
+              upsertSavingsGoalFromCloud: (
+                cloud: SavingsGoal,
+                uid: string,
+                householdId: string,
+              ) => Promise<void>;
+              deleteSavingsGoalFromCloud: (
+                goalId: string,
+                uid: string,
+                householdId: string,
+              ) => Promise<void>;
+            };
+            if (change.type === 'removed') {
+              await deleteSavingsGoalFromCloud(change.doc.id, uid, householdId);
+              continue;
+            }
+            const data = change.doc.data();
+            await upsertSavingsGoalFromCloud(
+              {
+                id: change.doc.id,
+                name: (data.name as string) || '',
+                targetUsd: (data.targetUsd as number) || 0,
+                allocatedUsd: (data.allocatedUsd as number) || 0,
+                notes: (data.notes as string | null) ?? undefined,
+                createdAt: (data.createdAt as string) || new Date().toISOString(),
+                updatedAt: (data.updatedAt as string) || new Date().toISOString(),
+              },
+              uid,
+              householdId,
+            );
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.warn('[cloudSync] savingsGoal snapshot apply failed:', (e as Error)?.message);
+          }
+        }
+        if (snapshot.docChanges().length > 0) notifyLocalDataChanged();
+      },
+      (err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[cloudSync] savingsGoals listener errored:', err?.message);
+      },
+    );
+    return unsub;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] subscribeToHouseholdSavingsGoals failed:', (e as Error)?.message);
     return null;
   }
 }
@@ -1849,6 +1967,7 @@ async function deleteDocsInChunks(
  *   Solo household (memberCount <= 1):
  *     - Delete every receipt doc under households/{hid}/receipts/.
  *     - Delete every income doc under households/{hid}/incomes/.
+ *     - Delete every savingsGoals doc under households/{hid}/savingsGoals/.
  *     - Delete every photo under households/{hid}/photos/ (best effort —
  *       only fires when Cloud Storage is wired up).
  *     - Delete the household doc itself.
@@ -1918,6 +2037,8 @@ export async function deleteCloudUserData(args: {
             // is gone the rules can no longer authorize the cleanup.
             const incomesSnap = await hRef.collection('incomes').get();
             await deleteDocsInChunks(db, incomesSnap.docs);
+            const goalsSnap = await hRef.collection('savingsGoals').get();
+            await deleteDocsInChunks(db, goalsSnap.docs);
             // Best-effort photo cleanup. The Storage module is only
             // available on a Blaze-upgraded project; on Spark this
             // silently no-ops.
@@ -1988,7 +2109,7 @@ export async function deleteCloudUserData(args: {
  * in this codebase (see leaveHousehold's doc comment) rather than
  * introducing a new cross-user write rule just for this.
  *
- * Order matters: receipts/settlements/incomes/photos must be deleted
+ * Order matters: receipts/settlements/incomes/savingsGoals/photos must be deleted
  * BEFORE the household doc, because their security rule looks up the
  * parent household via get() — deleting the household doc first would
  * make every subsequent subcollection delete get denied.
@@ -2018,6 +2139,9 @@ export async function deleteHousehold(args: {
 
     const incomesSnap = await hRef.collection('incomes').get();
     await deleteDocsInChunks(db, incomesSnap.docs);
+
+    const goalsSnap = await hRef.collection('savingsGoals').get();
+    await deleteDocsInChunks(db, goalsSnap.docs);
 
     await hRef.delete();
     await db.collection('users').doc(args.uid).collection('memberships').doc(args.householdId).delete();

@@ -144,6 +144,22 @@ describe('ScanScreen (smoke test)', () => {
     });
   });
 
+  it('offers pay-stub scan and bank CSV import on the create sheet', async () => {
+    render(<ScanScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Align receipt within frame')).toBeTruthy();
+    });
+    const createButton = screen
+      .UNSAFE_getAllByType(TouchableOpacity)
+      .find((el) => el.props.onPress?.name === 'showCreateOptions');
+    expect(createButton).toBeTruthy();
+    fireEvent.press(createButton!);
+    const buttons = alertSpy.mock.calls[0][2] as { text: string }[];
+    expect(buttons.map((b) => b.text)).toEqual(
+      expect.arrayContaining(['Add expense', 'Add income', 'Scan pay stub', 'Import bank CSV']),
+    );
+  });
+
   // The "Repeat this expense" Switch's thumbColor branches on
   // Platform.OS (see app/(tabs)/scan.tsx: `Platform.OS === 'android' ?
   // '#fff' : undefined`) — undefined on iOS lets the native default
