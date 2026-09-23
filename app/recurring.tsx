@@ -6,14 +6,28 @@ import { format } from 'date-fns';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useStyles, useTheme } from '../constants/theme';
-import { getAllReceipts } from '../lib/database';
+import { getAllIncomes, getAllReceipts } from '../lib/database';
 import { getCurrency } from '../lib/secureStorage';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { parseYmdLocal } from '../lib/parser';
-import { Receipt } from '../types';
+import { Income, Receipt } from '../types';
 import { CATEGORY_ICONS } from '../constants/categories';
 
-type Template = { receipt: Receipt; nextDueDate: string; endDate: string; frequency: string };
+type ExpenseTemplate = {
+  kind: 'expense';
+  receipt: Receipt;
+  nextDueDate: string;
+  endDate: string;
+  frequency: string;
+};
+type IncomeTemplate = {
+  kind: 'income';
+  income: Income;
+  nextDueDate: string;
+  endDate: string;
+  frequency: string;
+};
+type Template = ExpenseTemplate | IncomeTemplate;
 
 const FREQUENCY_LABEL: Record<string, string> = {
   weekly: 'Weekly',
@@ -39,17 +53,33 @@ export default function RecurringScreen() {
     useCallback(() => {
       let mounted = true;
       (async () => {
-        const [receipts, rawCurrency] = await Promise.all([getAllReceipts(), getCurrency()]);
+        const [receipts, incomes, rawCurrency] = await Promise.all([
+          getAllReceipts(),
+          getAllIncomes().catch(() => [] as Income[]),
+          getCurrency(),
+        ]);
         if (!mounted) return;
-        const active = (receipts as Receipt[])
+        const expenseRows: Template[] = (receipts as Receipt[])
           .filter((r) => r.recurring)
           .map((r) => ({
+            kind: 'expense' as const,
             receipt: r,
             nextDueDate: r.recurring!.nextDueDate,
             endDate: r.recurring!.endDate,
             frequency: r.recurring!.frequency,
-          }))
-          .sort((a, b) => a.nextDueDate.localeCompare(b.nextDueDate));
+          }));
+        const incomeRows: Template[] = incomes
+          .filter((i) => i.recurring)
+          .map((i) => ({
+            kind: 'income' as const,
+            income: i,
+            nextDueDate: i.recurring!.nextDueDate,
+            endDate: i.recurring!.endDate,
+            frequency: i.recurring!.frequency,
+          }));
+        const active = [...expenseRows, ...incomeRows].sort((a, b) =>
+          a.nextDueDate.localeCompare(b.nextDueDate),
+        );
         setTemplates(active);
         if (rawCurrency) setCurrency(rawCurrency as CurrencyCode);
         setLoading(false);
@@ -71,12 +101,47 @@ export default function RecurringScreen() {
       {!loading && templates.length === 0 ? (
         <EmptyState
           icon="repeat-outline"
-          title="No recurring expenses"
-          description={'Turn on "Repeat this expense" when adding or editing an expense to see its schedule here.'}
+          title="No recurring items"
+          description={'Turn on Repeat when adding an expense or income to see its schedule here.'}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
-          {templates.map(({ receipt: r, nextDueDate, endDate, frequency }) => (
+          {templates.map((row) => {
+            if (row.kind === 'income') {
+              const { income: i, nextDueDate, endDate, frequency } = row;
+              return (
+                <TouchableOpacity
+                  key={`inc-${i.id}`}
+                  activeOpacity={0.7}
+                  style={[styles.card, { borderLeftColor: theme.colors.success }]}
+                  onPress={() => router.push(`/edit-income/${i.id}`)}
+                >
+                  <View style={styles.row}>
+                    <View
+                      style={[
+                        styles.categoryIcon,
+                        { backgroundColor: `${theme.colors.success}26` },
+                      ]}
+                    >
+                      <Text style={styles.categoryIconGlyph}>💰</Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
+                      <Text style={styles.name} numberOfLines={1}>{i.sourceName}</Text>
+                      <Text style={styles.meta}>
+                        Income · {FREQUENCY_LABEL[frequency] ?? frequency} · Next:{' '}
+                        {formatScheduleDate(nextDueDate)}
+                      </Text>
+                      <Text style={styles.metaMuted}>Ends {formatScheduleDate(endDate)}</Text>
+                    </View>
+                    <Text style={[styles.amount, { color: theme.colors.success }]}>
+                      {formatCurrency(i.amountUsd, currency)}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              );
+            }
+            const { receipt: r, nextDueDate, endDate, frequency } = row;
+            return (
             <TouchableOpacity
               key={r.id}
               activeOpacity={0.7}
@@ -102,7 +167,8 @@ export default function RecurringScreen() {
                 <Text style={styles.amount}>{formatCurrency(r.totalAmount, currency)}</Text>
               </View>
             </TouchableOpacity>
-          ))}
+            );
+          })}
         </ScrollView>
       )}
     </SafeAreaView>

@@ -1,7 +1,8 @@
 import { addMonths, addWeeks, addYears, format, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
-import { getAllReceipts, saveReceipt, updateReceipt } from './database';
-import { Receipt } from '../types';
+import { getAllIncomes, getAllReceipts, saveIncome, saveReceipt, updateReceipt } from './database';
+import { parseYmdLocal } from './parser';
+import { Income, Receipt } from '../types';
 
 const YMD = 'yyyy-MM-dd';
 
@@ -48,6 +49,38 @@ export function advance(
  *  duplicating the date-fns call. */
 export function computeRecurringEndDate(startDate: string, durationMonths: number): string {
   return format(addMonths(parseISO(startDate), durationMonths), YMD);
+}
+
+export function resolveRecurringFromForm(args: {
+  enabled: boolean;
+  frequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
+  nextDueDate: string;
+  duration: string;
+  startDate: string;
+  existingEndDate?: string;
+}):
+  | { ok: true; schedule: Income['recurring'] | undefined }
+  | { ok: false; message: string } {
+  if (!args.enabled) return { ok: true, schedule: undefined };
+  const next = parseYmdLocal(args.nextDueDate.trim());
+  if (!next) return { ok: false, message: 'Pick a valid next auto-add date.' };
+  const trimmed = args.duration.trim();
+  const months = parseInt(trimmed, 10);
+  const validDuration = trimmed.length > 0 && !Number.isNaN(months) && months > 0 && String(months) === trimmed;
+  if (!args.existingEndDate && !validDuration) {
+    return { ok: false, message: 'Enter how many months this should repeat.' };
+  }
+  const endDate = validDuration
+    ? computeRecurringEndDate(args.startDate, months)
+    : args.existingEndDate!;
+  return {
+    ok: true,
+    schedule: {
+      frequency: args.frequency,
+      nextDueDate: format(next, YMD),
+      endDate,
+    },
+  };
 }
 
 /**
@@ -104,6 +137,58 @@ export async function processRecurringReceipts(): Promise<number> {
         ...template,
         lineItems: undefined, // leave the template's own items untouched
         recurring: { frequency, nextDueDate, endDate },
+      });
+    }
+  }
+
+  return created;
+}
+
+export function isRecurringIncome(income: Income): boolean {
+  return Boolean(income.recurring) || Boolean(income.isRecurringOccurrence);
+}
+
+/**
+ * Same walk as processRecurringReceipts, for paycheck / repeating
+ * income templates. Generated rows are plain incomes (no schedule)
+ * flagged isRecurringOccurrence.
+ */
+export async function processRecurringIncomes(): Promise<number> {
+  const incomes = await getAllIncomes();
+  const t = today();
+  let created = 0;
+
+  for (const template of incomes) {
+    const schedule = template.recurring;
+    if (!schedule) continue;
+
+    let { nextDueDate } = schedule;
+    const { endDate, frequency } = schedule;
+    let guard = 0;
+    let advanced = false;
+
+    while (nextDueDate <= t && nextDueDate <= endDate && guard < 60) {
+      const occurrence: Income = {
+        ...template,
+        id: uuidv4(),
+        date: nextDueDate,
+        recurring: undefined,
+        isRecurringOccurrence: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      await saveIncome(occurrence);
+      created += 1;
+      nextDueDate = advance(nextDueDate, frequency);
+      advanced = true;
+      guard += 1;
+    }
+
+    if (advanced) {
+      await saveIncome({
+        ...template,
+        recurring: { frequency, nextDueDate, endDate },
+        updatedAt: new Date().toISOString(),
       });
     }
   }

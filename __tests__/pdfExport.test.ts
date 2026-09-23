@@ -108,4 +108,27 @@ describe('buildHtmlForPreview', () => {
     const html = buildHtmlForPreview({ receipts: [], startLabel: 'A', endLabel: 'B' });
     expect(html).toContain('No receipts in this range.');
   });
+
+  it('adds a cashflow section when incomes are provided', () => {
+    const html = buildHtmlForPreview({
+      receipts: [receipt({ totalAmount: 100, category: 'Investments' })],
+      incomes: [
+        {
+          id: 'i1',
+          sourceName: 'Payroll',
+          date: '2026-05-01',
+          amountUsd: 1000,
+          category: 'Salary',
+          earnedBy: 'u1',
+          createdAt: '2026-05-01T00:00:00.000Z',
+          updatedAt: '2026-05-01T00:00:00.000Z',
+        },
+      ],
+      startLabel: 'A',
+      endLabel: 'B',
+    });
+    expect(html).toContain('Cashflow');
+    expect(html).toContain('Earned');
+    expect(html).toContain('Investments');
+  });
 });

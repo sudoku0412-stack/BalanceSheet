@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, waitFor, screen } from '@testing-library/react-native';
+import { fireEvent, render, waitFor, screen } from '@testing-library/react-native';
 import { StyleSheet } from 'react-native';
 import type { Receipt } from '../../types';
 
@@ -85,6 +85,7 @@ jest.mock('uuid', () => ({
   v4: () => 'mock-uuid',
 }));
 
+import { router } from 'expo-router';
 import DashboardScreen from '../../app/(tabs)/index';
 import { getReceiptsByMonth, getIncomesByMonth } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
@@ -127,7 +128,7 @@ describe('DashboardScreen', () => {
     render(<DashboardScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText('$50.00')).toBeTruthy();
+      expect(screen.getAllByText('$50.00').length).toBeGreaterThan(0);
     });
     expect(screen.getByText('2 expenses this month')).toBeTruthy();
   });
@@ -316,6 +317,41 @@ describe('DashboardScreen', () => {
         shadowOpacity: expect.anything(),
         shadowRadius: expect.anything(),
         elevation: expect.anything(),
+      }),
+    );
+  });
+
+  it('opens all incomes when earned is tapped and by-person when the bars are tapped', async () => {
+    mockGetIncomesByMonth.mockResolvedValue([
+      {
+        id: 'i1',
+        sourceName: 'Payroll',
+        date: new Date().toISOString().slice(0, 10),
+        amountUsd: 1000,
+        category: 'Salary',
+        earnedBy: 'uid-self',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+    mockGetReceiptsByMonth.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('cashflow-earned')).toBeTruthy();
+    });
+    fireEvent.press(screen.getByTestId('cashflow-earned'));
+    expect(router.push).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pathname: '/(tabs)/history',
+        params: expect.objectContaining({ kind: 'income' }),
+      }),
+    );
+    fireEvent.press(screen.getByTestId('cashflow-bars'));
+    expect(router.push).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pathname: '/(tabs)/history',
+        params: expect.objectContaining({ kind: 'income', group: 'member' }),
       }),
     );
   });

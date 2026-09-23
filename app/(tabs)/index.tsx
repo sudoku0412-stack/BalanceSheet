@@ -231,19 +231,46 @@ export default function DashboardScreen() {
       fontSize: 12,
     },
     cashflowStrip: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      alignItems: 'center',
-      gap: 6,
       marginTop: t.spacing.sm,
       paddingTop: t.spacing.sm,
       borderTopWidth: 1,
       borderTopColor: 'rgba(255,255,255,0.12)',
+      gap: 8,
     },
-    cashflowStripText: {
-      color: 'rgba(255,255,255,0.75)',
+    cashflowHint: {
+      color: 'rgba(255,255,255,0.45)',
       fontFamily: t.fonts.body.regular,
-      fontSize: 12,
+      fontSize: 10,
+    },
+    cashflowBarRow: {
+      gap: 6,
+    },
+    cashflowBarHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    cashflowBarLabel: {
+      color: 'rgba(255,255,255,0.7)',
+      fontFamily: t.fonts.display.bold,
+      fontSize: 11,
+      letterSpacing: 0.4,
+      textTransform: 'uppercase',
+    },
+    cashflowBarValue: {
+      color: '#fff',
+      fontFamily: t.fonts.mono.medium,
+      fontSize: 13,
+    },
+    cashflowTrack: {
+      height: 8,
+      borderRadius: 999,
+      backgroundColor: 'rgba(255,255,255,0.12)',
+      overflow: 'hidden',
+    },
+    cashflowFill: {
+      height: '100%',
+      borderRadius: 999,
     },
     cashflowNetPositive: {
       color: '#9FE0C8',
@@ -259,7 +286,6 @@ export default function DashboardScreen() {
       color: 'rgba(255,255,255,0.55)',
       fontFamily: t.fonts.body.regular,
       fontSize: 11,
-      marginTop: 4,
       width: '100%',
     },
     trendPill: {
@@ -490,6 +516,9 @@ export default function DashboardScreen() {
     totalSpent: 0,
     net: 0,
     incomeCount: 0,
+    investedUsd: 0,
+    consumedUsd: 0,
+    savingsRate: null,
     byMember: [],
     byCategory: [],
   });
@@ -728,19 +757,102 @@ export default function DashboardScreen() {
             )}
           </View>
           <View style={styles.cashflowStrip}>
-            <Text style={styles.cashflowStripText}>
-              Earned {formatCurrency(cashflow.totalEarned, currency)}
-            </Text>
-            <Text style={styles.cashflowStripText}>·</Text>
-            <Text style={styles.cashflowStripText}>
-              Spent {formatCurrency(cashflow.totalSpent, currency)}
-            </Text>
-            <Text style={styles.cashflowStripText}>·</Text>
-            <Text
-              style={cashflow.net >= 0 ? styles.cashflowNetPositive : styles.cashflowNetNegative}
-            >
-              Net {formatCurrency(cashflow.net, currency)}
-            </Text>
+            {(() => {
+              const scale = Math.max(cashflow.totalEarned, cashflow.totalSpent, 1);
+              const earnedPct = Math.max(0.04, cashflow.totalEarned / scale);
+              const spentPct = Math.max(0.04, cashflow.totalSpent / scale);
+              const monthParams = {
+                year: String(viewedMonth.getFullYear()),
+                month: String(viewedMonth.getMonth() + 1),
+              };
+              const openAllIncomes = () =>
+                router.push({
+                  pathname: '/(tabs)/history',
+                  params: { kind: 'income', ...monthParams },
+                });
+              const openIncomesByMember = () =>
+                router.push({
+                  pathname: '/(tabs)/history',
+                  params: { kind: 'income', group: 'member', ...monthParams },
+                });
+              return (
+                <>
+                  <TouchableOpacity
+                    onPress={openAllIncomes}
+                    accessibilityRole="button"
+                    accessibilityLabel="View all incomes"
+                    testID="cashflow-earned"
+                    style={styles.cashflowBarRow}
+                  >
+                    <View style={styles.cashflowBarHead}>
+                      <Text style={styles.cashflowBarLabel}>Earned</Text>
+                      <Text style={styles.cashflowBarValue}>
+                        {formatCurrency(cashflow.totalEarned, currency)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={openIncomesByMember}
+                    accessibilityRole="button"
+                    accessibilityLabel="View incomes by person"
+                    testID="cashflow-bars"
+                    style={{ gap: 8 }}
+                  >
+                    <View style={styles.cashflowTrack}>
+                      <View
+                        style={[
+                          styles.cashflowFill,
+                          { width: `${earnedPct * 100}%`, backgroundColor: '#9FE0C8' },
+                        ]}
+                      />
+                    </View>
+                    <View style={styles.cashflowTrack}>
+                      <View
+                        style={[
+                          styles.cashflowFill,
+                          { width: `${spentPct * 100}%`, backgroundColor: '#F0B4B6' },
+                        ]}
+                      />
+                    </View>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(tabs)/history',
+                        params: { kind: 'expenses', ...monthParams },
+                      })
+                    }
+                    accessibilityRole="button"
+                    accessibilityLabel="View expenses"
+                    testID="cashflow-spent"
+                    style={styles.cashflowBarRow}
+                  >
+                    <View style={styles.cashflowBarHead}>
+                      <Text style={styles.cashflowBarLabel}>Spent</Text>
+                      <Text style={styles.cashflowBarValue}>
+                        {formatCurrency(cashflow.totalSpent, currency)}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                  <Text
+                    style={cashflow.net >= 0 ? styles.cashflowNetPositive : styles.cashflowNetNegative}
+                  >
+                    Net {formatCurrency(cashflow.net, currency)}
+                  </Text>
+                  <Text style={styles.cashflowHint}>
+                    Tap earned for all incomes · tap bars to see by person
+                  </Text>
+                </>
+              );
+            })()}
+            {cashflow.investedUsd > 0 ? (
+              <Text style={styles.cashflowMemberLine}>
+                Invested {formatCurrency(cashflow.investedUsd, currency)}
+                {cashflow.savingsRate != null
+                  ? ` · Saved ${(cashflow.savingsRate * 100).toFixed(0)}% of earned`
+                  : ''}
+              </Text>
+            ) : null}
             {cashflow.byMember.length > 1 ? (
               <Text style={styles.cashflowMemberLine} numberOfLines={2}>
                 {cashflow.byMember

@@ -36,10 +36,19 @@ import {
   deleteIncome,
   getCurrentHouseholdId,
   getIncomeById,
+  getRecentIncomeSourceNames,
   saveIncome,
 } from '../../lib/database';
 import { notifySuccess, tapLight } from '../../lib/haptics';
+import {
+  advance as advanceRecurringDate,
+  resolveRecurringFromForm,
+} from '../../lib/recurring';
 import { getCurrency } from '../../lib/secureStorage';
+import {
+  RecurringScheduleFields,
+  RecurringFrequency,
+} from '../../components/RecurringScheduleFields';
 import { Income, IncomeCategory } from '../../types';
 
 function memberLabel(m: HouseholdMember): string {
@@ -162,6 +171,20 @@ export default function EditIncomeScreen() {
     },
     saveBtn: { marginTop: t.spacing.sm },
     deleteBtn: { marginTop: t.spacing.xs },
+    suggestionRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 8 },
+    suggestionChip: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: t.radius.full,
+      backgroundColor: t.colors.surfaceHigh,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+    },
+    suggestionText: {
+      color: t.colors.textSecondary,
+      fontSize: t.font.xs,
+      fontFamily: t.fonts.body.medium,
+    },
   }));
 
   const [loading, setLoading] = useState(true);
@@ -178,6 +201,13 @@ export default function EditIncomeScreen() {
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [recentSources, setRecentSources] = useState<string[]>([]);
+  const [recurringEnabled, setRecurringEnabled] = useState(false);
+  const [recurringFrequency, setRecurringFrequency] = useState<RecurringFrequency>('monthly');
+  const [recurringDuration, setRecurringDuration] = useState('');
+  const [recurringNextDate, setRecurringNextDate] = useState('');
+  const [recurringNextDateTouched, setRecurringNextDateTouched] = useState(false);
+  const [originalRecurring, setOriginalRecurring] = useState<Income['recurring'] | undefined>();
 
   const load = useCallback(async () => {
     if (!id) {
@@ -207,6 +237,17 @@ export default function EditIncomeScreen() {
       setCreatedAt(income.createdAt);
       setCreatedBy(income.createdBy);
       setNotFound(false);
+      if (income.recurring) {
+        setRecurringEnabled(true);
+        setRecurringFrequency(income.recurring.frequency);
+        setRecurringNextDate(income.recurring.nextDueDate);
+        setOriginalRecurring(income.recurring);
+      } else {
+        setRecurringEnabled(false);
+        setOriginalRecurring(undefined);
+      }
+      const sources = await getRecentIncomeSourceNames(8).catch(() => []);
+      setRecentSources(sources);
 
       if (user?.uid) {
         const hid = getCurrentHouseholdId();
@@ -228,6 +269,12 @@ export default function EditIncomeScreen() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!recurringEnabled || recurringNextDateTouched || originalRecurring) return;
+    if (!date) return;
+    setRecurringNextDate(advanceRecurringDate(date, recurringFrequency));
+  }, [recurringEnabled, recurringFrequency, recurringNextDateTouched, originalRecurring, date]);
 
   const otherMembers = members.filter((m) => !m.isYou);
 
@@ -251,6 +298,18 @@ export default function EditIncomeScreen() {
       Alert.alert('Whose income?', 'Pick who earned this income.');
       return;
     }
+    const recurringRes = resolveRecurringFromForm({
+      enabled: recurringEnabled,
+      frequency: recurringFrequency,
+      nextDueDate: recurringNextDate,
+      duration: recurringDuration,
+      startDate: date,
+      existingEndDate: originalRecurring?.endDate,
+    });
+    if (!recurringRes.ok) {
+      Alert.alert('Repeat schedule', recurringRes.message);
+      return;
+    }
 
     setSaving(true);
     try {
@@ -265,6 +324,7 @@ export default function EditIncomeScreen() {
         earnedBy,
         notes: notes.trim() || undefined,
         originalCurrency: currency,
+        recurring: recurringRes.schedule,
         createdBy: createdBy ?? user.uid,
         createdAt: createdAt || now,
         updatedAt: now,
@@ -466,7 +526,40 @@ export default function EditIncomeScreen() {
               placeholderTextColor={theme.colors.textMuted}
               autoCorrect={false}
             />
+            {recentSources.length > 0 ? (
+              <View style={styles.suggestionRow}>
+                {recentSources.map((name) => (
+                  <TouchableOpacity
+                    key={name}
+                    style={styles.suggestionChip}
+                    onPress={() => {
+                      tapLight();
+                      setSourceName(name);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.suggestionText}>{name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
           </Card>
+
+          <RecurringScheduleFields
+            title="Repeat this income"
+            enabled={recurringEnabled}
+            onEnabledChange={setRecurringEnabled}
+            frequency={recurringFrequency}
+            onFrequencyChange={setRecurringFrequency}
+            nextDueDate={recurringNextDate}
+            onNextDueDateChange={(v) => {
+              setRecurringNextDateTouched(true);
+              setRecurringNextDate(v);
+            }}
+            duration={recurringDuration}
+            onDurationChange={setRecurringDuration}
+            durationOptional={Boolean(originalRecurring)}
+          />
 
           <Card style={styles.fieldCard}>
             <Text style={styles.fieldLabel}>Notes (optional)</Text>
