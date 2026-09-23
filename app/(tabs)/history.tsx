@@ -33,6 +33,7 @@ import { EmptyState } from '../../components/ui/EmptyState';
 import { ReceiptListSkeleton } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
 import { receiptMatchesCategory } from '../../lib/receiptFilter';
+import { isInCalendarMonth } from '../../lib/calendarDate';
 import { findRecurring } from '../../lib/reports';
 import { onLocalDataChanged } from '../../lib/dataSync';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
@@ -57,6 +58,30 @@ function dateGroupLabel(dateStr: string): string {
 
 /** Groups an already date-sorted (DESC) feed into consecutive
  *  { title, data } sections keyed by date-group label. */
+function groupIncomesByMember(
+  items: FeedItem[],
+  members: HouseholdMember[],
+  currentUid: string | undefined,
+): { title: string; data: FeedItem[] }[] {
+  const buckets = new Map<string, FeedItem[]>();
+  for (const item of items) {
+    if (item.kind !== 'income') continue;
+    const key = item.income.earnedBy || 'unknown';
+    const list = buckets.get(key) ?? [];
+    list.push(item);
+    buckets.set(key, list);
+  }
+  return [...buckets.entries()]
+    .map(([uid, data]) => ({
+      uid,
+      title: memberDisplayName(uid, members, currentUid),
+      total: data.reduce((s, i) => s + (i.kind === 'income' ? i.income.amountUsd : 0), 0),
+      data,
+    }))
+    .sort((a, b) => b.total - a.total)
+    .map(({ title, data }) => ({ title, data }));
+}
+
 function groupByDate(items: FeedItem[]): { title: string; data: FeedItem[] }[] {
   const sections: { title: string; data: FeedItem[] }[] = [];
   for (const item of items) {
@@ -268,7 +293,13 @@ export default function HistoryScreen() {
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
-  const params = useLocalSearchParams<{ category?: string }>();
+  const params = useLocalSearchParams<{
+    category?: string;
+    kind?: string;
+    group?: string;
+    year?: string;
+    month?: string;
+  }>();
 
   // This screen renders its own "Activity" headline + add button per the
   // design spec, so the default per-tab native header ("History") is
@@ -277,9 +308,13 @@ export default function HistoryScreen() {
     navigation.setOptions({ headerShown: false });
   }, [navigation]);
 
-  // When the dashboard navigates here with `?category=X`, pre-select X
-  // as the filter and switch to expenses so category chips apply.
+  // Dashboard (and others) can deep-link: kind=income|expenses,
+  // group=member, year+month, and/or category=X for expenses.
   useEffect(() => {
+    if (params.kind === 'income' || params.kind === 'expenses' || params.kind === 'all') {
+      setKindFilter(params.kind);
+      if (params.kind === 'income') setActiveFilter(FILTER_ALL);
+    }
     if (
       params.category &&
       (ALL_CATEGORIES as readonly string[]).includes(params.category)
@@ -287,7 +322,7 @@ export default function HistoryScreen() {
       setKindFilter('expenses');
       setActiveFilter(params.category as Category);
     }
-  }, [params.category]);
+  }, [params.kind, params.category]);
 
   const [refreshing, setRefreshing] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -441,16 +476,24 @@ export default function HistoryScreen() {
 
   // Category chips only apply to expenses; kind filter gates which
   // ledgers contribute to the unified feed.
+  const monthYear = params.year ? Number(params.year) : NaN;
+  const monthNum = params.month ? Number(params.month) : NaN;
+  const hasMonthFilter = Number.isInteger(monthYear) && Number.isInteger(monthNum) && monthNum >= 1 && monthNum <= 12;
+
   const filteredReceiptsForFeed = useMemo(() => {
     if (kindFilter === 'income') return [];
-    if (activeFilter === FILTER_ALL) return receipts;
-    return receipts.filter((r) => receiptMatchesCategory(r, activeFilter));
-  }, [receipts, kindFilter, activeFilter]);
+    const scoped = hasMonthFilter
+      ? receipts.filter((r) => isInCalendarMonth(r.date, monthYear, monthNum))
+      : receipts;
+    if (activeFilter === FILTER_ALL) return scoped;
+    return scoped.filter((r) => receiptMatchesCategory(r, activeFilter));
+  }, [receipts, kindFilter, activeFilter, hasMonthFilter, monthYear, monthNum]);
 
   const filteredIncomesForFeed = useMemo(() => {
     if (kindFilter === 'expenses') return [];
-    return incomes;
-  }, [incomes, kindFilter]);
+    if (!hasMonthFilter) return incomes;
+    return incomes.filter((i) => isInCalendarMonth(i.date, monthYear, monthNum));
+  }, [incomes, kindFilter, hasMonthFilter, monthYear, monthNum]);
 
   const feed: FeedItem[] = useMemo(() => {
     const items: FeedItem[] = [
@@ -471,9 +514,16 @@ export default function HistoryScreen() {
     return items;
   }, [filteredReceiptsForFeed, filteredIncomesForFeed]);
 
+  const groupByMember = params.group === 'member' && kindFilter === 'income';
   const isFiltering =
-    query.trim().length > 0 || kindFilter !== 'all' || activeFilter !== FILTER_ALL;
-  const sections = groupByDate(feed);
+    query.trim().length > 0 ||
+    kindFilter !== 'all' ||
+    activeFilter !== FILTER_ALL ||
+    hasMonthFilter ||
+    groupByMember;
+  const sections = groupByMember
+    ? groupIncomesByMember(feed, members, user?.uid)
+    : groupByDate(feed);
 
   // Real recurring-charge detection (lib/reports.findRecurring) run against
   // the full receipt set, independent of the active search/filter — a
@@ -498,7 +548,9 @@ export default function HistoryScreen() {
       {/* Header: activity headline + circular add → ActionSheet for
           expense vs income. */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Activity</Text>
+        <Text style={styles.headerTitle}>
+          {kindFilter === 'income' ? (groupByMember ? 'Income by person' : 'Income') : 'Activity'}
+        </Text>
         <TouchableOpacity
           style={styles.addButton}
           onPress={showAddSheet}
