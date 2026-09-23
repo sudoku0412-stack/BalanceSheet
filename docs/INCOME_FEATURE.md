@@ -1,154 +1,227 @@
-# Next product phase — Income vs spending
+# Income vs spending — product plan
 
-NestExpenseTracker today is **expense-only**: every money record is a
-`Receipt` (see `types/index.ts`). Dashboards, budgets, reports, PDF
-export, and household splits all assume positive spend. Adding income
-turns the app into a real cashflow tracker without throwing away the
-receipt-scanning core.
+**Status**: plan only — no implementation started.
+**Product**: NestExpenseTracker household cashflow.
 
-This doc is the recommended build order. Implement after the current
-Play Store release blockers in [`PLAN.md`](../PLAN.md) are clear enough
-that you're shipping product work again — or in parallel on a feature
-branch if you want it ready for the next store version.
+This replaces the earlier high-level sketch with the concrete product
+rules you asked for. Do not start coding until you sign off on this
+doc (or leave a follow-up that says "build Phase A").
 
 ---
 
-## Why this is the right next product feature
+## Product rules (source of truth)
 
-1. **User mental model** — "Nest" + expense tracker already implies a
-   household money nest; income vs spending is the natural second half.
-2. **Data model is ready to extend** — local-first SQLite + Firestore
-   shadow-write already support a second collection/table the same way
-   `settlements` was added beside `receipts`.
-3. **UI surfaces already exist** — Home hero ring, History list, Reports
-   month picker, Recurring processor. Income plugs into those rather
-   than inventing a new app shell.
-4. **Differentiator vs pure receipt scanners** — most OCR receipt apps
-   stop at spend; cashflow + net balance is closer to Mint/YNAB lite.
+### 1. Multiple incomes per household
+
+- Anyone in the household can log **many** income entries (paycheck,
+  side gig, gift, dividend, custom source, …).
+- Each entry is its own record (date, amount, source, owner).
+- There is no single "household income" field — the household total is
+  always **sum of member incomes** for the selected period.
+
+### 2. Whose income it is
+
+- Every income **must** name an owner: a household member
+  (`earnedBy` = that member's Firebase uid, or `'self'` for the
+  signed-in user — same id style as expense splits today).
+- Optional later: a **Joint / Household** owner for income that isn't
+  one person's (e.g. shared rental). Not required for v1 if you want
+  to keep the first ship simpler — default is always a real member.
+- Home / reports show:
+  - **Household total income** (all members)
+  - **Per-member breakdown** (whose income contributed what)
+- Solo households: owner defaults to the only member; picker still
+  exists so multi-member works the day a partner joins.
+
+### 3. Custom / "other" income sources
+
+- Built-in source *types* (category): e.g. Salary, Freelance, Gift,
+  Interest, Refund, Investment return, Other.
+- **Source name is always free-text** (required): "Acme Corp payroll",
+  "Uber", "Mom birthday gift", "Questrade dividend".
+- When type = **Other** (or always), the user names the source — no
+  closed list of employer names. Recent source names can be suggested
+  for fast re-entry.
+- Multiple incomes can share the same source name (e.g. two months of
+  "Acme Corp payroll").
+
+### 4. Recurring investments = expenses (not income)
+
+- Money **going out** to investments (RRSP/401k contribution, brokerage
+  transfer, crypto buy, etc.) is an **expense**, not negative income.
+- Use the existing expense + recurring pipeline (`Receipt` +
+  `lib/recurring.ts`):
+  - Add/ensure an expense category **Investments** (or "Savings &
+    Investments").
+  - User sets amount + frequency (weekly / biweekly / monthly / yearly)
+    like any other recurring expense.
+- Money **coming back** from investments (dividend, interest, sale
+  proceeds) is logged as **income** with type "Investment return" (or
+  a custom Other name).
+- Cashflow math stays clean:
+  - Income = money in
+  - Spending = money out (including investment contributions)
+  - Net = income − spending  
+  (Net can be negative in a month where you invest a lot — that's
+  correct for cashflow; a later "savings rate" view can treat
+  Investments as a special bucket if you want.)
+
+### 5. What we are not doing in v1
+
+- Pay-stub OCR, bank CSV import.
+- Splitting one income across members (one income = one `earnedBy`).
+- Treating investment contributions as income or as a third ledger
+  type — they stay expenses.
+- Changing bundle ids / EAS slug.
 
 ---
 
-## Recommended approach (do not overload `Receipt`)
+## Data model (proposed)
 
-**Add a separate `Income` record** — do not reuse `Receipt` with a
-negative amount or a boolean flag jammed onto expenses.
+```ts
+// types/index.ts (concept — not checked in as code yet)
 
-| | Expense (`Receipt`) | Income (`Income`) |
-|---|---|---|
-| Source | Scan / manual / recurring | Manual / recurring (later: pay stubs) |
-| Categories | Groceries, Dining, … | Salary, Freelance, Gift, Refund, Interest, Transfer, Other |
-| Line items | Yes | Optional / usually no |
-| Household split | Yes (Splitwise-style) | No for v1 (or "shared household income" later) |
-| Budgets | Category spend caps | Optional income goals later |
-| Storage | `receipts` + `line_items` | New `incomes` table + `households/{hid}/incomes/{id}` |
+type IncomeCategory =
+  | 'Salary'
+  | 'Freelance'
+  | 'Gift'
+  | 'Interest'
+  | 'Refund'
+  | 'InvestmentReturn'
+  | 'Other';
 
-Reasons:
-- Reports and budget math stay simple (`SUM(expenses)` vs `SUM(income)`).
-- Split / `paidBy` / `createdBy` semantics don't get weird for paychecks.
-- OCR pipeline stays expense-only; no accidental "income receipt" parsing.
+interface Income {
+  id: string;
+  /** Free-text label the user typed — "Acme payroll", "Side hustle", … */
+  sourceName: string;
+  date: string;                 // YYYY-MM-DD
+  amountUsd: number;            // USD-canonical, same as receipts
+  category: IncomeCategory;
+  /** Who earned this — household member uid (required). */
+  earnedBy: string;
+  notes?: string;
+  originalCurrency?: CurrencyCode;
+  recurring?: {                 // optional paycheck schedule
+    frequency: 'weekly' | 'biweekly' | 'monthly' | 'yearly';
+    nextDueDate: string;
+    endDate: string;
+  };
+  householdId?: string;         // local SQLite only, like Receipt
+  createdBy?: string;           // who logged it (may differ from earnedBy)
+  createdAt: string;
+  updatedAt: string;
+}
+```
 
-USD-canonical storage and `originalCurrency` should match receipts
-(`lib/currency.ts`).
+Storage:
+- SQLite `incomes` table (local-first), scoped by `user_id` + `household_id`.
+- Firestore `households/{hid}/incomes/{id}` shadow-write + listener
+  (same pattern as receipts / settlements).
+- Expense side: add **Investments** to expense `Category` (or as a
+  first-class tag) and allow recurring on it — no new table.
+
+Household overall income for a month:
+
+```
+householdIncome = SUM(incomes where date in month)
+perMember[uid]  = SUM(incomes where earnedBy = uid and date in month)
+householdSpend  = SUM(receipts where date in month)   // includes Investments
+netCashflow     = householdIncome - householdSpend
+```
 
 ---
 
-## Phase A — Foundation (shippable alone)
+## UX (Phase A)
 
-**Goal**: user can add income, see it on Home + History, and get a
-net cashflow number for the month.
+### Add income
 
-### Data
+Entry from Scan tab (or FAB): **Add expense** | **Add income**.
 
-- `types/index.ts`: `IncomeCategory`, `Income` interface
-  (`id`, `sourceName`, `date`, `amountUsd`, `category`, `notes?`,
-  `originalCurrency?`, `recurring?`, `householdId?`, `createdBy?`,
-  `createdAt`, `updatedAt`).
-- `lib/database.ts`: `CREATE TABLE incomes (...)`, CRUD helpers,
-  `getIncomesByMonth`, migrate via same `ALTER`/`IF NOT EXISTS` pattern
-  used for receipts.
-- `lib/cloudSync.ts`: mirror to `households/{hid}/incomes/{id}`;
-  `onSnapshot` merge into SQLite like receipts.
-- `firestore.rules`: same membership checks as receipts.
+Form fields:
+1. **Amount** (required) — reuse `lib/amountValidation.ts`
+2. **Date** (required)
+3. **Whose income** (required) — picker of current household members
+4. **Type** (required) — Salary / Freelance / … / Other
+5. **Source name** (required) — free text; placeholder changes with type
+   ("Employer name", "Client / platform", "Describe the source")
+6. **Notes** (optional)
+7. **Repeat** (optional) — same frequency controls as recurring expenses
 
-### UI
+### Home
 
-- Scan tab (or a small FAB menu): **Add expense** | **Add income**.
-  Income form: source, amount, date, category, notes — no camera for v1.
-- Home (`app/(tabs)/index.tsx`):
-  - Hero shows **Spent / Earned / Net** for the selected month
-    (or a segmented control: Spend | Cashflow).
-  - Keep existing budget rings for expenses only.
-- History: unified feed with expense (red/−) and income (green/+)
-  rows, or a filter chip (All / Expenses / Income).
-- Edit: `app/edit-income/[id].tsx` (or a shared editor with a `kind`).
+For the selected month:
+- **Earned** (household total) · **Spent** · **Net**
+- Expandable or secondary row: per-member earned (A: $X · B: $Y)
+- Existing budget rings stay expense-only
+- Investment contributions appear inside Spent (and under Investments
+  in category breakdown)
+
+### History
+
+- Unified feed: income rows (green / +) and expense rows (red / −)
+- Filter chips: All | Income | Expenses
+- Income row subtitle: `{sourceName} · {member display name}`
 
 ### Reports / PDF
 
-- Month summary: total income, total spend, net.
-- Income category breakdown (simple bar or list).
-- PDF export section for income (optional in A; required in B).
-
-### Tests
-
-- Unit: CRUD, month filters, stats (`computeCashflowStats`).
-- Component: income form validation (reuse `lib/amountValidation.ts`).
-- Regression: existing expense dashboards unchanged when incomes = 0.
-
-**Exit criteria**: solo user can log a paycheck, see net cashflow on
-Home, and data syncs across two devices in the same household.
+- Month: total income, total spend (call out Investments subcategory),
+  net, income by member, income by type/source
 
 ---
 
-## Phase B — Recurring income + polish
+## Build phases (still plan-only)
 
-- Reuse `lib/recurring.ts` patterns for weekly/biweekly/monthly salary.
-- Income category budgets / "expected paycheck" soft targets (optional).
-- Refunds: quick action "Log refund" that creates income linked to a
-  receipt id (`linkedReceiptId?`) so reports can show net of returns.
-- PDF + reports polish: income vs spend chart for the month.
-- Push: optional "paycheck logged" / "expected income missing" alerts.
+### Phase A — shippable cashflow
+
+- `Income` type + SQLite + Firestore sync + rules
+- Add Income form with **earnedBy** + free-text **sourceName**
+- Expense category **Investments** + recurring investments via existing
+  recurring expense flow
+- Home earned / spent / net + per-member income
+- History filter
+- Basic report numbers + tests
+
+**Exit criteria**: two household members can each log incomes under
+their name; household total = sum; one member can set a monthly
+recurring "Investments" expense; custom Other sources work by name.
+
+### Phase B — polish
+
+- Recurring income (paychecks) auto-materialize like recurring expenses
+- Recent source-name suggestions / autocomplete
+- "Joint" earnedBy option if you want it
+- PDF section for cashflow + investments callout
+- Optional: savings-rate view that treats Investments spend as
+  "saved" rather than "consumed"
+
+### Phase C — later
+
+- Pay-stub OCR, bank import, savings goals / envelopes
 
 ---
 
-## Phase C — Defer until A/B are live
+## Files that would change when you approve build
 
-- Pay-stub / deposit slip OCR (new parser prompt; not the grocery path).
-- Bank/CSV import.
-- Shared "household income" attribution (whose paycheck vs joint).
-- Savings goals / envelopes that allocate net cashflow.
-- Subscription tier gating of cashflow charts (RevenueCat already in tree).
-
----
-
-## Touch points in this codebase (checklist)
-
-When implementing Phase A, expect to touch at least:
-
-| Area | Files |
+| Area | Touch |
 |---|---|
 | Types | `types/index.ts` |
-| Local DB | `lib/database.ts` |
-| Sync + rules | `lib/cloudSync.ts`, `firestore.rules` |
-| Stats | new `lib/cashflowStats.ts` (or extend `dashboardStats.ts`) |
-| Categories | `constants/categories.ts` (income list separate) |
-| Screens | `app/(tabs)/index.tsx`, history tab, new add/edit income |
-| Reports / PDF | `lib/reports.ts`, `lib/pdfExport.ts`, `app/reports.tsx` |
-| Tests | `__tests__/` mirrors of the above |
-
-Do **not** change package/bundle ids (`com.*.receiptscanner`) as part of
-this feature — those stay locked for store continuity (see CONTEXT.md).
+| DB | `lib/database.ts` |
+| Sync | `lib/cloudSync.ts`, `firestore.rules` |
+| Stats | new `lib/cashflowStats.ts` |
+| Categories | `constants/categories.ts` (+ Investments expense) |
+| UI | add-income screen, Home, History, Reports, PDF |
+| Recurring | reuse `lib/recurring.ts` for income + Investments expense |
+| Tests | CRUD, cashflow math, earnedBy rollup, form validation |
 
 ---
 
-## Ordering vs other backlog
+## Open decisions (need your call before code)
 
-Suggested overall sequence once release pressure eases:
+| # | Question | Default if you don't decide |
+|---|---|---|
+| 1 | Allow **Joint / Household** as `earnedBy`, or member-only? | Member-only in Phase A |
+| 2 | Should Investment contributions count in "Spent" on Home, or a third "Invested" number? | Count in Spent; show Investments in category breakdown |
+| 3 | Is free-text source name required for every type, or only for Other? | Required for every type (better history labels) |
+| 4 | Start Phase A now, or after the next store release? | After blockers in `PLAN.md` ease — your call |
 
-1. Clear Play/App Store blockers still open in `PLAN.md`.
-2. **Phase A income** (this doc) — highest user-visible product value.
-3. Crash reporting (Crashlytics) — ops hygiene.
-4. In-app feedback → Jira (`docs/V1.1_ROADMAP.md` §1).
-5. Revisit admin web app only after real support load appears.
-
-Income Phase A is intentionally smaller and more user-visible than the
-admin/Jira work — prefer shipping cashflow first.
+Reply with tweaks or "build Phase A" when you want implementation to start.
