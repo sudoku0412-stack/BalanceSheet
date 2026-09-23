@@ -1,34 +1,34 @@
-# BalanceSheet
+# NestExpenseTracker
 
-A receipt scanner that turns a photo of a receipt into structured, categorized
-spending data you can search, chart, and share with your family. Built as a
-React Native (Expo) app for Android and iOS, with Firebase for auth + cloud
-sync and a Cloudflare Workers AI fallback so receipt parsing keeps working
-even when the primary AI provider's free tier is exhausted.
+Personal + household expense tracker built around receipt scanning. Point
+your phone at a receipt → on-device OCR + AI turns it into structured,
+categorized spending you can search, chart, split with family, and export.
+
+> **Repo note:** the GitHub repository may still be named `BalanceSheet`
+> (legacy). The product name everywhere user-facing is **NestExpenseTracker**.
+> Rename the GitHub repo under *Settings → General → Repository name* when
+> you're ready; clone URLs below use the current remote.
+
+Built with React Native (Expo) for Android and iOS, Firebase for auth +
+cloud sync, and a Cloudflare Workers AI fallback so receipt parsing keeps
+working even when the primary AI provider's free tier is exhausted.
 
 ## What it does
 
-- **Scan a receipt with your phone camera** → on-device ML Kit OCR pulls
-  the raw text → Gemini 2.5 Flash (or a Cloudflare Workers AI fallback)
-  parses it into a structured receipt with store name, date, line items,
+- **Scan a receipt** → on-device ML Kit OCR → Gemini 2.5 Flash (or
+  Cloudflare Workers AI fallback) parses store name, date, line items,
   per-item categories, subtotal, tax, and total.
 - **Dashboards & reports**: month-over-month spending, category
-  breakdowns, recurring-purchase detection, top-stores list, PDF
-  export with a branded layout.
-- **Multi-user, multi-device**: every user has their own private data
-  by default. Invite a family member by email — a personalized HTML
-  email goes out via EmailJS (sent from a connected Gmail account)
-  with a one-tap link. Tap → app opens to a signup screen pre-filled
-  with the invited email → set a password → sign in → all receipts
-  sync across both devices in real time.
-- **Offline-first**: receipts live in a local SQLite database first;
-  cloud sync is a shadow-write on top, so the app feels instant and
-  works without a network.
+  breakdowns, recurring-purchase detection, top-stores list, PDF export.
+- **Household sharing**: invite by email or phone, Splitwise-style
+  splits (equal / percent / amount / shares), settle-up balances.
+- **Offline-first**: SQLite is the source of truth; Firestore is a
+  shadow-write for durability and multi-device sync.
 
 ## Quick start (development)
 
 ```bash
-git clone https://github.com/kaushik-majumder/BalanceSheet.git
+git clone https://github.com/sudoku0412-stack/BalanceSheet.git
 cd BalanceSheet
 npm install --legacy-peer-deps
 npx expo prebuild --platform android   # or ios
@@ -37,19 +37,14 @@ npx expo start
 
 You'll also need:
 
-- `google-services.json` for Android Firebase (download from
-  the Firebase console, place at repo root).
+- `google-services.json` for Android Firebase (download from the
+  Firebase console, place at repo root).
 - `GoogleService-Info.plist` for iOS Firebase (same).
 - `GEMINI_API_KEY` env var, OR a deployed Cloudflare Workers AI
   parser (see [`scripts/PARSE_WORKER_README.md`](scripts/PARSE_WORKER_README.md)).
 - For household invite emails: `EMAILJS_SERVICE_ID`,
-  `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY` — sign up at
-  [emailjs.com](https://www.emailjs.com), connect a Gmail service,
-  create an HTML template with `{{inviter_name}}` + `{{accept_link}}`
-  variables, then set the three values via
-  `eas env:create --name EMAILJS_* --environment {preview|production}`.
-  Without them the in-app invite UI still records the Firestore
-  invite doc but no email goes out.
+  `EMAILJS_TEMPLATE_ID`, `EMAILJS_PUBLIC_KEY` — see
+  [`scripts/PHASE3_EMAIL_INVITE_SETUP.md`](scripts/PHASE3_EMAIL_INVITE_SETUP.md).
 
 ## Architecture in 30 seconds
 
@@ -78,133 +73,81 @@ You'll also need:
                      └────────────────────────────────────┘
 ```
 
-**Why local-first**: the dashboard renders thousands of receipts
-fast because every read is a SQLite query, not a network round-trip.
-The cloud is durability + the data plane for family sharing — never
-on the hot path of a render.
+**Why local-first**: the dashboard renders thousands of receipts fast
+because every read is a SQLite query, not a network round-trip.
 
-**Why a regex parser AND an AI parser**: the regex output is what
-the user sees instantly while the AI request is in flight (1–4
-seconds). When the AI returns, it replaces the regex result in-
-place. If the AI fails (rate limit, network, parse error), the
-regex result is what's already on screen — graceful degradation.
+**Why a regex parser AND an AI parser**: the regex result shows
+instantly while AI runs (1–4s). If AI fails, the regex result is
+already on screen — graceful degradation.
 
 ## Receipt parsing in detail
 
-The interesting bit. Receipts are filthy data — multi-column OCR,
-implicit discounts, "3 For $4" deal qualifiers that look like prices,
-embedded tax flags. The pipeline:
-
-1. **OCR** (`react-native-text-recognition`) — on-device, no network.
-2. **Regex parser** ([`lib/parser.ts`](lib/parser.ts)) — handles
-   inline `Name $1.23` formats AND two-column "all names then all
-   prices" layouts via `extractPairedItems`. Detects subtotal /
-   tax / total via keyword + amount heuristics. Folds discount
-   lines (`-$2.98`, `TPD/SKU`, parenthesized accounting style) into
-   the parent item.
-3. **AI parser** ([`lib/geminiParseReceipt.ts`](lib/geminiParseReceipt.ts)):
-   structured JSON output via Gemini 2.5 Flash with
-   `thinkingConfig: { thinkingBudget: 0 }` (the model's chain-of-
-   thought tokens would otherwise burn through the output budget
-   before any JSON is emitted on long receipts). Prompted with
-   examples spanning Skechers BOGO, Costco TPD markdown, and
-   grocery-style receipts with embedded discounts + multi-buy
-   qualifiers.
-4. **Worker fallback** ([`scripts/parse-receipt-worker.ts`](scripts/parse-receipt-worker.ts)):
-   when Gemini is rate-limited or absent, the same prompt runs
-   on a Cloudflare Workers AI deployment (Llama 3.3 70B). Free
-   tier of Workers AI covers ~250 receipts/day.
-5. **Sanity check** ([`lib/itemsTotalCheck.ts`](lib/itemsTotalCheck.ts)):
-   before save, compares line items sum vs printed subtotal. A
-   mismatch beyond $0.50 surfaces an alert with a hint ("Item X
-   matches the difference — may be double-counted").
+1. **OCR** — on-device, no network.
+2. **Regex parser** ([`lib/parser.ts`](lib/parser.ts)) — inline and
+   two-column layouts, discounts, subtotal/tax/total heuristics.
+3. **AI parser** ([`lib/geminiParseReceipt.ts`](lib/geminiParseReceipt.ts))
+   — Gemini 2.5 Flash structured JSON.
+4. **Worker fallback** ([`scripts/parse-receipt-worker.ts`](scripts/parse-receipt-worker.ts))
+   — Cloudflare Workers AI when Gemini is rate-limited.
+5. **Sanity check** ([`lib/itemsTotalCheck.ts`](lib/itemsTotalCheck.ts))
+   — line-items sum vs printed subtotal before save.
 
 ## Multi-user & family sharing
 
-Built in three phases, all live:
+- **Per-user isolation** in SQLite (`user_id`).
+- **Cloud shadow-write** to `households/{hid}/receipts/{rid}`.
+- **Household invites** (email via EmailJS, phone via share sheet) +
+  contacts sync + live Firestore listeners.
 
-- **Phase 1 — per-user data isolation**: every SQLite row carries a
-  `user_id`. Sign out + sign in by a different user on the same
-  device → that user sees an empty receipt list, not yours.
-- **Phase 2 — cloud shadow-write**: receipts mirror to Firestore at
-  `households/{hid}/receipts/{rid}`. Local SQLite stays primary;
-  the cloud copy is durable backup + the substrate for sharing.
-- **Phase 3 — household sharing**: invite a family member by email →
-  the app writes an `invites/{email}` doc in Firestore AND fires
-  EmailJS to send a personalized HTML invite from a Gmail account
-  → invitee taps the link → Android app-link verification routes
-  them straight into a dedicated `/invite` screen pre-filled with
-  their email → they set a password + display name → the
-  `acceptInvite` transaction adds them to `memberUids` and deletes
-  the invite atomically → they sign in → an `onSnapshot` listener
-  on the receipts collection means every scan on either device
-  shows up on both within a couple of seconds.
+Setup: [`scripts/PHASE2_FIRESTORE_RULES.md`](scripts/PHASE2_FIRESTORE_RULES.md),
+[`scripts/PHASE3_EMAIL_INVITE_SETUP.md`](scripts/PHASE3_EMAIL_INVITE_SETUP.md).
 
-Setup details in
-[`scripts/PHASE2_FIRESTORE_RULES.md`](scripts/PHASE2_FIRESTORE_RULES.md)
-(Firestore rules, free tier) and
-[`scripts/PHASE3_EMAIL_INVITE_SETUP.md`](scripts/PHASE3_EMAIL_INVITE_SETUP.md)
-(EmailJS-based email flow, also free — no Blaze plan required).
+## What's next
+
+See [`PLAN.md`](PLAN.md) for release blockers and ordered next work, and
+[`docs/INCOME_FEATURE.md`](docs/INCOME_FEATURE.md) for the proposed
+**income vs spending** phase (cashflow dashboard, income categories,
+recurring paychecks).
+
+Older ops/planning notes: [`docs/V1.1_ROADMAP.md`](docs/V1.1_ROADMAP.md)
+(feedback → Jira, admin web app).
 
 ## Build & ship
 
-### OTA updates (JS/asset-only changes)
+Pushes to `main` trigger [`.github/workflows/release-build.yml`](.github/workflows/release-build.yml)
+(EAS cloud build + submit). Manual Android local builds:
+
+```bash
+gh workflow run android-build.yml --ref <branch> -f profile=production
+```
+
+OTA (JS/asset-only):
 
 ```bash
 npx eas-cli update --branch preview --environment preview \
   --message "your change description"
 ```
 
-Reaches installed devices on the next two cold-starts. No app store
-involved — works because the runtime version (`appVersion` policy) is
-identical across builds.
-
-### Android APK (native deps changed, e.g. adding a Firebase module)
-
-Pushes to `main` automatically trigger a GitHub Actions build
-([`.github/workflows/android-build.yml`](.github/workflows/android-build.yml)).
-Pulls credentials from EAS via the repo's `EXPO_TOKEN` secret, runs
-`eas build --local` inside the workflow runner. Final APK appears
-under the run's **Artifacts** section, ~16 min after push.
-
-For a manual build run from any branch:
-
-```bash
-gh workflow run android-build.yml --ref <branch> -f profile=preview
-```
-
-iOS builds aren't yet wired into CI — see the deferred work in
-`docs/`.
-
 ## Tests
 
 ```bash
-npm test           # full suite, 360+ tests
+npm test           # full suite (unit / component / performance / regression)
 npm test -- --watch
 ```
-
-Jest config in [`jest.config.js`](jest.config.js); tests cover the
-parser, AI prompt handlers (mocked HTTP), reports, categorizer, auth
-errors, secure storage, and the items-sum sanity check.
 
 ## Repo layout
 
 ```
-app/              expo-router screens — includes app/invite.tsx +
-                  app/invite-finish.tsx for the in-app accept flow
-components/       shared UI primitives (Card, TagChip, AnimatedBar, …)
-lib/              business logic — parser, AI clients, database, auth,
-                  cloudSync (Firestore shadow-write + listener), inviteLink
-constants/        theme, category list + icons
-types/            shared TS types (Receipt, LineItem, etc.)
-scripts/          deploy guides, the Cloudflare worker source, docs
-firebase-hosting/ static files: /.well-known/assetlinks.json for
-                  Android app-link verification + /invite/ fallback page
-                  for browser-only opens
-plugins/          Expo prebuild config plugins
+app/              expo-router screens
+components/       shared UI (receipt + ui primitives)
+lib/              business logic (database, cloudSync, parser, …)
+constants/        theme, categories
+types/            Receipt, LineItem, Settlement, …
+scripts/          Cloudflare workers, deploy guides
+firebase-hosting/ legal/invite/support static pages (Cloudflare Pages)
+plugins/          Expo config plugins
 __tests__/        Jest tests
-docs/             Play Store launch docs, privacy policy source
-.github/workflows/android-build.yml   CI: APK builds on push to main
+docs/             store listing, income roadmap, privacy sources
 ```
 
 ## License

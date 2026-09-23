@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, waitFor, screen, fireEvent, act } from '@testing-library/react-native';
-import { Platform, Switch, TouchableOpacity } from 'react-native';
+import { Alert, Platform, Switch, TouchableOpacity } from 'react-native';
 
 // This screen (app/(tabs)/scan.tsx, 2277 lines) is camera/OCR/AI-parsing
 // heavy — expo-camera, expo-image-picker, an on-device ML Kit text
@@ -126,8 +126,15 @@ jest.mock('uuid', () => ({
 import ScanScreen from '../../app/(tabs)/scan';
 
 describe('ScanScreen (smoke test)', () => {
+  let alertSpy: jest.SpyInstance;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    alertSpy = jest.spyOn(Alert, 'alert');
+  });
+
+  afterEach(() => {
+    alertSpy.mockRestore();
   });
 
   it('renders the camera-idle screen without throwing, given a mocked signed-in user', async () => {
@@ -157,17 +164,22 @@ describe('ScanScreen (smoke test)', () => {
         expect(screen.getByText('Align receipt within frame')).toBeTruthy();
       });
 
-      // The manual-entry entry point is the icon-only side action in the
-      // idle camera screen's shutter row (onPress={startManualEntry}); it
-      // has no visible label since its Ionicons glyph is mocked to null,
-      // so it's located by the onPress handler's function identity
-      // rather than by a brittle position/count assumption.
-      const manualEntryButton = screen
+      // Idle shutter "create" opens Add expense / Add income; pick expense.
+      const createButton = screen
         .UNSAFE_getAllByType(TouchableOpacity)
-        .find((el) => el.props.onPress?.name === 'startManualEntry');
-      expect(manualEntryButton).toBeTruthy();
+        .find((el) => el.props.onPress?.name === 'showCreateOptions');
+      expect(createButton).toBeTruthy();
       await act(async () => {
-        fireEvent.press(manualEntryButton!);
+        fireEvent.press(createButton!);
+      });
+
+      expect(alertSpy).toHaveBeenCalled();
+      const buttons = alertSpy.mock.calls[0][2] as {
+        text: string;
+        onPress?: () => void;
+      }[];
+      await act(async () => {
+        buttons.find((b) => b.text === 'Add expense')?.onPress?.();
       });
 
       await waitFor(() => {

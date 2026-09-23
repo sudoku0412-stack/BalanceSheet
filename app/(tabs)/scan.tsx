@@ -1114,6 +1114,18 @@ export default function ScanScreen() {
     setScanState('review');
   };
 
+  /** Idle shutter "create" button — pick expense (manual entry) or income. */
+  const showCreateOptions = () => {
+    Alert.alert('Add', undefined, [
+      { text: 'Add expense', onPress: startManualEntry },
+      {
+        text: 'Add income',
+        onPress: () => router.push('/add-income' as never),
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   // Lets other screens (Home's "+ Add manually", Expenses' "+") deep-link
   // straight into manual entry via router.push('/(tabs)/scan?mode=manual').
   //
@@ -1830,7 +1842,7 @@ export default function ScanScreen() {
 
           <TouchableOpacity
             style={styles.sideAction}
-            onPress={startManualEntry}
+            onPress={showCreateOptions}
             activeOpacity={0.7}
           >
             <Ionicons name="create-outline" size={22} color="#fff" />

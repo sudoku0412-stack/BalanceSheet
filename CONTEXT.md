@@ -8,10 +8,9 @@ instead — this file is the stable, slow-changing picture.
 
 ## What this app is
 
-**NestExpenseTracker** (public/store name) — repo, package identifiers,
-and internal code still say **BalanceSheet** / **ReceiptScanner** in
-places, on purpose (see "Naming" below). It's a personal + household
-expense tracker built around receipt scanning:
+**NestExpenseTracker** — personal + household expense tracker built
+around receipt scanning. Docs and user-facing strings use this name;
+some package identifiers still say ReceiptScanner (see "Naming" below):
 
 1. Point your phone camera at a receipt (or pick a photo from your library).
 2. On-device ML Kit OCR pulls raw text off the image.
@@ -120,35 +119,34 @@ __tests__/      Jest, 4 projects (unit/component/performance/regression)
 docs/           store-listing copy, older planning docs (see PLAN.md for current status)
 ```
 
-## Naming (don't "fix" this)
+## Naming
 
-The app is marketed as **NestExpenseTracker**. The repo, Android
-package (`com.kaushikmajumder.receiptscanner`), iOS product name
-folders, and various internal strings still say **BalanceSheet** /
-**ReceiptScanner**. This is intentional — renaming these would mean
-losing App Store/Play Store listing continuity, EAS project linkage,
-and Firebase project identity. Only user-visible strings and the
-`name`/display fields in `app.config.js` were rebranded.
+| Layer | Name | Change? |
+|---|---|---|
+| Store / in-app display | **NestExpenseTracker** | Canonical — keep this everywhere user-visible |
+| GitHub repo | historically `BalanceSheet` | Safe to rename in GitHub Settings; update README clone URLs |
+| npm `package.json` `name` | `nest-expense-tracker` | Cosmetic |
+| EAS `slug` / deep-link `scheme` | `receipt-scanner` | **Leave** — tied to EAS project + existing app links |
+| Android/iOS bundle id | `com.*.receiptscanner` | **Leave** — store listing continuity |
+| Native iOS folder names | `ReceiptScanner` / variants | **Leave** unless doing a careful Xcode rename |
+
+Do not "fix" bundle ids or the EAS slug as part of a branding pass.
+Do fix READMEs, store listing copy, and static hosting pages when they
+still say BalanceSheet / Receipt Scanner.
 
 ## Build & release pipeline
 
 Three GitHub Actions workflows:
 
 - **`test.yml`** — reusable, runs the Jest suite. Gates the other two.
-- **`android-build.yml`** — `workflow_dispatch` (manual trigger, pick a
-  profile) — runs `eas build --local` on the runner itself. Use this to
-  get a downloadable `.aab`/`.apk` without touching EAS cloud build
-  minutes.
-- **`release-build.yml`** — runs **automatically on every push to
-  `main`**. Builds both platforms via **EAS cloud** and **auto-submits**:
-  Android → Play Console **internal track**, iOS → TestFlight/App Store
-  Connect. This is easy to forget about — if you manually build+upload a
-  `.aab` with the same `versionCode` shortly after pushing, you'll hit
-  "version code already used" because this pipeline already claimed it.
-  **If you're about to manually upload a build, bump `versionCode` again
-  first**, or just let this pipeline's automatic submission be the one
-  that lands (then promote from Play Console's Internal track to
-  Production — no re-upload needed).
+- **`android-build.yml`** — `workflow_dispatch` (pick profile) + push to
+  `main` / `feature/**` / `fix/**`. Runs `eas build --local` on the
+  runner. Default push profile is **preview** → sideload `.apk`.
+- **`release-build.yml`** — runs on every push to `main` (and
+  `workflow_dispatch`). Local **production** Android `.aab` on the
+  runner (no EAS cloud credits, **no auto-submit**). Download from the
+  run's Artifacts and upload to Play Console yourself. iOS is not built
+  here — archive via Xcode / TestFlight (see HANDOVER.md).
 
 Both `app.config.js` and `app.json` carry the same `version`/
 `buildNumber`/`versionCode` literals — `app.config.js`'s copy is what's

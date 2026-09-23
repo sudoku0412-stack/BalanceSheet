@@ -77,6 +77,11 @@ export const CATEGORY_KEYWORDS: Record<Category, string[]> = {
   // app/(tabs)/scan.tsx), so it overlaps by design with the existing
   // isRecurringExpense tracking axis rather than fighting it.
   Recurring: [],
+  // Contributions TO investments (RRSP/401k, brokerage buys, etc.) —
+  // money going out. Returns FROM investments are Income
+  // (InvestmentReturn), not this expense category. See
+  // docs/INCOME_FEATURE.md.
+  Investments: [],
   Other: [],
 };
 
@@ -591,6 +596,7 @@ export const CATEGORY_ICONS: Record<Category, string> = {
   Travel: '✈️',
   Healthcare: '🏥',
   Electricity: '⚡',
+  Investments: '📊',
   Recurring: '🔁',
   Other: '📦',
 };
@@ -606,6 +612,7 @@ export const ALL_CATEGORIES: Category[] = [
   'Travel',
   'Healthcare',
   'Electricity',
+  'Investments',
   'Recurring',
   'Other',
 ];
