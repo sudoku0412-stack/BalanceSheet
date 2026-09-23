@@ -240,6 +240,24 @@ function RootStack() {
         }}
       />
       <Stack.Screen
+        name="import-income"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="scan-paystub"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="savings-goals"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="edit-income/[id]"
         options={{
           headerShown: false,

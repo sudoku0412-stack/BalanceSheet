@@ -40,5 +40,8 @@ describe('deleteAllReceipts', () => {
     const incomeDelete = runs.find((r) => /DELETE FROM incomes/i.test(r.sql));
     expect(incomeDelete).toBeDefined();
     expect(incomeDelete!.params).toEqual(['u-delete']);
+    const goalsDelete = runs.find((r) => /DELETE FROM savings_goals/i.test(r.sql));
+    expect(goalsDelete).toBeDefined();
+    expect(goalsDelete!.params).toEqual(['u-delete']);
   });
 });

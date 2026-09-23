@@ -67,6 +67,7 @@ jest.mock('../../lib/database', () => ({
   getCurrentHouseholdId: jest.fn(() => 'hh1'),
   getReceiptsByMonth: jest.fn(),
   getIncomesByMonth: jest.fn(async () => []),
+  getAllSavingsGoals: jest.fn(async () => []),
 }));
 
 jest.mock('../../lib/secureStorage', () => ({
