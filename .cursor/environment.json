@@ -1,0 +1,4 @@
+{
+  "name": "BalanceSheet (Expo receipt scanner)",
+  "install": "npm ci --legacy-peer-deps"
+}
