@@ -712,15 +712,15 @@ export default function SettingsScreen() {
         text: 'Sign out',
         style: 'destructive',
         onPress: () => {
-          // signOut() is async and this onPress return value is
-          // ignored by Alert — an uncaught rejection here (e.g. a
-          // GoogleSignin/Firebase native call throwing) previously
-          // vanished silently: no error shown, no redirect, the user
-          // just stayed on Settings with no indication anything
-          // happened.
-          signOut().catch((e) => {
-            toast.show({ kind: 'error', message: humanizeAuthError(e) });
-          });
+          // iOS: the confirm UIAlertController is still dismissing when
+          // this onPress runs. Kick off native sign-out on the next
+          // tick so it (and the subsequent /auth replace) isn't
+          // swallowed with the alert.
+          setTimeout(() => {
+            signOut().catch((e) => {
+              toast.show({ kind: 'error', message: humanizeAuthError(e) });
+            });
+          }, 0);
         },
       },
     ]);

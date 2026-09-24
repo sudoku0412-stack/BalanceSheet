@@ -27,15 +27,11 @@ describe('Regression: Households route whitelisted in the nav guard (app/_layout
       path.join(__dirname, '../../app/_layout.tsx'),
       'utf8',
     );
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, global-require
+    const { STICKY_VOLUNTARY } = require('../../lib/routeGuard');
 
-    const whitelistMatch = source.match(/STICKY_VOLUNTARY\s*=\s*new Set\(\[([^\]]*)\]\)/);
-    expect(whitelistMatch).not.toBeNull();
-    const whitelistItems = whitelistMatch![1]
-      .split(',')
-      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
-      .filter(Boolean);
-
-    expect(whitelistItems).toContain('households');
+    expect(STICKY_VOLUNTARY.has('households')).toBe(true);
+    expect(source).toMatch(/hrefForAuthGuard/);
     expect(source).toMatch(/name="households"/);
   });
 });

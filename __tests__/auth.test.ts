@@ -37,6 +37,7 @@ jest.mock('expo-crypto', () => ({
 const mockGoogleSignIn = jest.fn();
 const mockGoogleSignOut = jest.fn();
 const mockGetCurrentGoogleUser = jest.fn();
+const mockHasPreviousSignIn = jest.fn();
 const mockHasPlayServices = jest.fn();
 let isErrorWithCodeImpl = (e: unknown): e is { code: string } =>
   typeof e === 'object' && e !== null && 'code' in e;
@@ -48,6 +49,7 @@ jest.mock('@react-native-google-signin/google-signin', () => ({
     signIn: (...args: unknown[]) => mockGoogleSignIn(...args),
     signOut: (...args: unknown[]) => mockGoogleSignOut(...args),
     getCurrentUser: (...args: unknown[]) => mockGetCurrentGoogleUser(...args),
+    hasPreviousSignIn: (...args: unknown[]) => mockHasPreviousSignIn(...args),
     configure: jest.fn(),
   },
   isErrorWithCode: (e: unknown) => isErrorWithCodeImpl(e),
@@ -67,6 +69,10 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockCurrentUser = null;
   mockHasPlayServices.mockResolvedValue(true);
+  mockHasPreviousSignIn.mockReturnValue(false);
+  mockGetCurrentGoogleUser.mockResolvedValue(null);
+  mockSignOut.mockResolvedValue(undefined);
+  mockGoogleSignOut.mockResolvedValue(undefined);
   isErrorWithCodeImpl = (e: unknown): e is { code: string } =>
     typeof e === 'object' && e !== null && 'code' in e;
   isSuccessResponseImpl = (r: unknown): boolean => (r as { type?: string })?.type === 'success';
@@ -198,6 +204,29 @@ describe('signOutEverywhere', () => {
   it('signs out of firebase even when Google sign-out throws (best-effort)', async () => {
     mockGetCurrentGoogleUser.mockRejectedValue(new Error('google unavailable'));
     await expect(signOutEverywhere()).resolves.toBeUndefined();
+    expect(mockSignOut).toHaveBeenCalled();
+  });
+
+  it('signs out of firebase even when Google sign-out never settles (iOS hang)', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetCurrentGoogleUser.mockResolvedValue({ id: 'g1' });
+      mockHasPreviousSignIn.mockReturnValue(true);
+      mockGoogleSignOut.mockImplementation(() => new Promise(() => {}));
+      const pending = signOutEverywhere();
+      await jest.advanceTimersByTimeAsync(2500);
+      await expect(pending).resolves.toBeUndefined();
+      expect(mockSignOut).toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('signs out of Google when hasPreviousSignIn is true even if getCurrentUser is null', async () => {
+    mockGetCurrentGoogleUser.mockResolvedValue(null);
+    mockHasPreviousSignIn.mockReturnValue(true);
+    await signOutEverywhere();
+    expect(mockGoogleSignOut).toHaveBeenCalled();
     expect(mockSignOut).toHaveBeenCalled();
   });
 });

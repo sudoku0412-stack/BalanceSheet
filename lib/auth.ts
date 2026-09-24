@@ -7,6 +7,13 @@ import {
 } from '@react-native-google-signin/google-signin';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
+import { withTimeout } from './withTimeout';
+
+/** Google's iOS GIDSignIn.signOut can hang (never resolve/reject) when
+ *  the SDK has a stale session or was never configured for this
+ *  install. Bound it so Firebase sign-out — and the /auth redirect —
+ *  still run. */
+const GOOGLE_SIGNOUT_TIMEOUT_MS = 2500;
 
 let googleConfigured = false;
 
@@ -181,14 +188,25 @@ export async function deleteCurrentAccount(): Promise<void> {
   await u.delete();
 }
 
-export async function signOutEverywhere(): Promise<void> {
+async function signOutGoogleBestEffort(): Promise<void> {
   try {
-    if (await GoogleSignin.getCurrentUser()) {
-      await GoogleSignin.signOut();
-    }
+    const googleUser = await Promise.resolve(GoogleSignin.getCurrentUser());
+    const hadPrevious = GoogleSignin.hasPreviousSignIn();
+    if (!googleUser && !hadPrevious) return;
+    await GoogleSignin.signOut();
   } catch {
     // ignore — Google sign-out is best-effort
   }
+}
+
+export async function signOutEverywhere(): Promise<void> {
+  await withTimeout(
+    signOutGoogleBestEffort(),
+    GOOGLE_SIGNOUT_TIMEOUT_MS,
+    'Google sign-out timed out',
+  ).catch(() => {
+    // Hang/timeout/throw: still sign out of Firebase below.
+  });
   await auth().signOut();
 }
 
