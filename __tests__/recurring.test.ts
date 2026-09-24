@@ -14,6 +14,7 @@ jest.mock('../lib/database', () => ({
 
 import {
   isRecurringExpense,
+  isRecurringIncome,
   advance,
   computeRecurringEndDate,
   processRecurringReceipts,
@@ -66,6 +67,38 @@ describe('advance', () => {
 
   it('advances yearly by one year', () => {
     expect(advance('2026-01-15', 'yearly')).toBe('2027-01-15');
+  });
+
+  it('advances biweekly by 14 days (paycheck cadence)', () => {
+    expect(advance('2026-01-01', 'biweekly')).toBe('2026-01-15');
+    expect(advance('2026-01-31', 'biweekly')).toBe('2026-02-14');
+  });
+});
+
+describe('isRecurringIncome', () => {
+  const base: Income = {
+    id: 'i1',
+    sourceName: 'Payroll',
+    date: '2026-01-01',
+    amountUsd: 1000,
+    category: 'Salary',
+    earnedBy: 'uid-a',
+    createdAt: '',
+    updatedAt: '',
+  };
+
+  it('true for a template with a schedule or a generated occurrence', () => {
+    expect(
+      isRecurringIncome({
+        ...base,
+        recurring: { frequency: 'biweekly', nextDueDate: '2026-01-15', endDate: '2026-12-31' },
+      }),
+    ).toBe(true);
+    expect(isRecurringIncome({ ...base, isRecurringOccurrence: true })).toBe(true);
+  });
+
+  it('false for a one-off income', () => {
+    expect(isRecurringIncome(base)).toBe(false);
   });
 });
 
@@ -245,6 +278,55 @@ describe('resolveRecurringFromForm', () => {
         frequency: 'monthly',
         nextDueDate: '2026-04-01',
         endDate: '2026-09-01',
+      },
+    });
+  });
+
+  it('rejects an invalid next auto-add date', () => {
+    const res = resolveRecurringFromForm({
+      enabled: true,
+      frequency: 'weekly',
+      nextDueDate: 'not-a-date',
+      duration: '6',
+      startDate: '2026-03-01',
+    });
+    expect(res).toEqual({ ok: false, message: 'Pick a valid next auto-add date.' });
+  });
+
+  it('rejects a non-integer duration (leading zeros / decimals)', () => {
+    const leading = resolveRecurringFromForm({
+      enabled: true,
+      frequency: 'monthly',
+      nextDueDate: '2026-04-01',
+      duration: '06',
+      startDate: '2026-03-01',
+    });
+    expect(leading.ok).toBe(false);
+    const decimal = resolveRecurringFromForm({
+      enabled: true,
+      frequency: 'monthly',
+      nextDueDate: '2026-04-01',
+      duration: '6.5',
+      startDate: '2026-03-01',
+    });
+    expect(decimal.ok).toBe(false);
+  });
+
+  it('reuses existingEndDate when duration is blank (edit path)', () => {
+    const res = resolveRecurringFromForm({
+      enabled: true,
+      frequency: 'biweekly',
+      nextDueDate: '2026-03-29',
+      duration: '',
+      startDate: '2026-03-15',
+      existingEndDate: '2026-12-31',
+    });
+    expect(res).toEqual({
+      ok: true,
+      schedule: {
+        frequency: 'biweekly',
+        nextDueDate: '2026-03-29',
+        endDate: '2026-12-31',
       },
     });
   });

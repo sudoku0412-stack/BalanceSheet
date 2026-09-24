@@ -32,4 +32,45 @@ describe('parsePaystubText', () => {
     expect(parsed.amount).toBeNull();
     expect(parsed.confidence).toBe('low');
   });
+
+  it('treats take-home pay as net even when the amount is on the next line', () => {
+    const parsed = parsePaystubText(
+      ['Northwind Ltd', 'Take-home pay', '$2,150.00', 'Pay date', '15/03/2026'].join('\n'),
+    );
+    expect(parsed.amount).toBeCloseTo(2150);
+    expect(parsed.date).toBe('2026-03-15');
+    expect(parsed.sourceName).toBe('Northwind Ltd');
+    expect(parsed.confidence).toBe('high');
+  });
+
+  it('uses D/M when the first slash-date part is > 12', () => {
+    const parsed = parsePaystubText('Net pay $900.00\nPay date 23/03/26');
+    expect(parsed.date).toBe('2026-03-23');
+  });
+
+  it('parses a named-month payday', () => {
+    const parsed = parsePaystubText('Net deposit $1,000.00\nPayday March 2, 2026');
+    expect(parsed.date).toBe('2026-03-02');
+    expect(parsed.amount).toBeCloseTo(1000);
+  });
+
+  it('skips street-address / EIN junk when picking the employer', () => {
+    const parsed = parsePaystubText(
+      [
+        '400 Market Street',
+        'Suite 12',
+        'EIN 12-3456789',
+        'Employer: Contoso Health',
+        'Net pay $500.00',
+        'Pay date 2026-04-01',
+      ].join('\n'),
+    );
+    expect(parsed.sourceName).toBe('Contoso Health');
+  });
+
+  it('ignores a $0.00 money token so a later net line can win', () => {
+    const parsed = parsePaystubText('Net pay $0.00\nNet pay $1,250.50\nPay date 2026-02-01');
+    expect(parsed.amount).toBeCloseTo(1250.5);
+  });
 });
+
