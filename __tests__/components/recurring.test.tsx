@@ -24,6 +24,7 @@ jest.mock('@expo/vector-icons', () => ({
 
 jest.mock('../../lib/database', () => ({
   getAllReceipts: jest.fn(),
+  getAllIncomes: jest.fn(async () => []),
 }));
 
 jest.mock('../../lib/secureStorage', () => ({
@@ -31,10 +32,11 @@ jest.mock('../../lib/secureStorage', () => ({
 }));
 
 import RecurringScreen from '../../app/recurring';
-import { getAllReceipts } from '../../lib/database';
+import { getAllReceipts, getAllIncomes } from '../../lib/database';
 import { getCurrency } from '../../lib/secureStorage';
 
 const mockGetAllReceipts = getAllReceipts as jest.Mock;
+const mockGetAllIncomes = getAllIncomes as jest.Mock;
 const mockGetCurrency = getCurrency as jest.Mock;
 
 function makeReceipt(overrides: Partial<Receipt>): Receipt {
@@ -52,6 +54,7 @@ describe('RecurringScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockGetCurrency.mockResolvedValue('USD');
+    mockGetAllIncomes.mockResolvedValue([]);
   });
 
   it('shows the empty state when no receipt has recurring set', async () => {
@@ -61,7 +64,7 @@ describe('RecurringScreen', () => {
     render(<RecurringScreen />);
 
     await waitFor(() => {
-      expect(screen.getByText('No recurring expenses')).toBeTruthy();
+      expect(screen.getByText('No recurring items')).toBeTruthy();
     });
   });
 
