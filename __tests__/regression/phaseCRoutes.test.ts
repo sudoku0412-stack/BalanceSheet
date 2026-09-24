@@ -8,19 +8,15 @@ describe('Phase C routes are registered', () => {
     expect(source).toMatch(/name="incomes"/);
     expect(source).toMatch(/name="scan-paystub"/);
     expect(source).toMatch(/name="savings-goals"/);
+    expect(source).toMatch(/hrefForAuthGuard/);
+    expect(source).toMatch(/scheduleRouteReplace/);
   });
 
   it('whitelists those routes so the auth guard does not bounce them to Home', () => {
-    const source = fs.readFileSync(path.join(__dirname, '../../app/_layout.tsx'), 'utf8');
-    const whitelistMatch = source.match(/STICKY_VOLUNTARY\s*=\s*new Set\(\[([^\]]*)\]\)/);
-    expect(whitelistMatch).not.toBeNull();
-    const whitelistItems = whitelistMatch![1]
-      .split(',')
-      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
-      .filter(Boolean);
-    expect(whitelistItems).toEqual(
+    const { STICKY_VOLUNTARY } = require('../../lib/routeGuard');
+    expect([...STICKY_VOLUNTARY]).toEqual(
       expect.arrayContaining(['incomes', 'scan-paystub', 'savings-goals']),
     );
-    expect(whitelistItems).not.toContain('import-income');
+    expect([...STICKY_VOLUNTARY]).not.toContain('import-income');
   });
 });

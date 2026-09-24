@@ -1,4 +1,4 @@
-import { pickTarget, targetToHref, RouteState } from '../lib/routeGuard';
+import { pickTarget, targetToHref, hrefForAuthGuard, STICKY_VOLUNTARY, RouteState } from '../lib/routeGuard';
 
 const baseState: RouteState = {
   user: null,
@@ -54,5 +54,49 @@ describe('targetToHref', () => {
     expect(targetToHref('onboarding')).toBe('/onboarding');
     expect(targetToHref('auth')).toBe('/auth');
     expect(targetToHref('(tabs)')).toBe('/(tabs)');
+  });
+});
+
+describe('hrefForAuthGuard — sign-out from Settings', () => {
+  it('replaces to /auth when a signed-out user is still on Settings', () => {
+    expect(
+      hrefForAuthGuard({ user: null, onboardingSeen: true, current: 'settings' }),
+    ).toBe('/auth');
+  });
+
+  it('replaces to /auth from the Settings tab (current is (tabs))', () => {
+    expect(
+      hrefForAuthGuard({ user: null, onboardingSeen: true, current: '(tabs)' }),
+    ).toBe('/auth');
+  });
+
+  it('does not bounce a signed-in user off Settings back to Home', () => {
+    expect(
+      hrefForAuthGuard({
+        user: { uid: 'u1' },
+        onboardingSeen: true,
+        current: 'settings',
+      }),
+    ).toBeNull();
+  });
+
+  it('still allows signed-out users to stay on onboarding and reset-password', () => {
+    expect(
+      hrefForAuthGuard({ user: null, onboardingSeen: true, current: 'onboarding' }),
+    ).toBeNull();
+    expect(
+      hrefForAuthGuard({ user: null, onboardingSeen: true, current: 'reset-password' }),
+    ).toBeNull();
+  });
+
+  it('whitelists households so signed-in users are not bounced to Home', () => {
+    expect(STICKY_VOLUNTARY.has('households')).toBe(true);
+    expect(
+      hrefForAuthGuard({
+        user: { uid: 'u1' },
+        onboardingSeen: true,
+        current: 'households',
+      }),
+    ).toBeNull();
   });
 });

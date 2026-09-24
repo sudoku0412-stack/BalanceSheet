@@ -25,7 +25,8 @@ import { ThemeProvider, useTheme, getBootstrapTheme } from '../constants/theme';
 import { AuthProvider, useAuth } from '../lib/AuthContext';
 import { EntitlementsProvider } from '../lib/EntitlementsContext';
 import { ToastProvider } from '../components/ui/Toast';
-import { pickTarget, targetToHref } from '../lib/routeGuard';
+import { hrefForAuthGuard } from '../lib/routeGuard';
+import { scheduleRouteReplace } from '../lib/scheduleRouteReplace';
 
 export default function RootLayout() {
   // Previously fire-and-forget — the rest of the app (Home's receipt
@@ -100,28 +101,6 @@ function ThemedStatusBar() {
   return <StatusBar style={theme.isDark ? 'light' : 'dark'} />;
 }
 
-// Routes the user reaches voluntarily (modals, edit screens). When
-// `target` resolves to `(tabs)` and the user is on one of these, leave
-// them alone — the guard's job is to force users to the auth gate, not
-// to drag them back to /(tabs) every time they open a modal.
-const STICKY_VOLUNTARY = new Set([
-  'settings',
-  'edit',
-  'edit-profile',
-  'edit-income',
-  'add-income',
-  'reports',
-  'balances',
-  'shared-expenses',
-  'recurring',
-  'households',
-  'contacts-sync',
-  'paywall',
-  'scan-paystub',
-  'savings-goals',
-  'incomes',
-]);
-
 function RootStack() {
   const theme = useTheme();
   const { initializing, user, onboardingSeen } = useAuth();
@@ -131,41 +110,14 @@ function RootStack() {
   useEffect(() => {
     if (initializing) return;
     const current = (segments[0] ?? '') as string;
-    const target = pickTarget({ user, onboardingSeen });
-    if (target === current) return;
-    // User is on a voluntary screen (modal / edit) and the gate state
-    // says they're cleared for the app — leave them on it. We also
-    // bail when `current` is empty: useSegments() can return [] for
-    // top-level modal routes in some expo-router versions, and we
-    // don't want the guard to force a redirect off an unknown route
-    // just because we couldn't identify it.
-    if (
-      target === '(tabs)' &&
-      (current === '' || STICKY_VOLUNTARY.has(current))
-    ) {
-      return;
-    }
-    // auth.tsx's "‹ Back to intro" link sends a signed-out user to
-    // /onboarding voluntarily. Without this, pickTarget still resolves
-    // to 'auth' (onboardingSeen is already true, so it doesn't route
-    // to onboarding on its own) and this effect would immediately
-    // replace back to /auth — the link would flash and bounce right
-    // back, i.e. "not working". Signed-out + browsing onboarding again
-    // is harmless; let them be until they act (Skip/Get Started, both
-    // of which navigate onward themselves).
-    if (target === 'auth' && current === 'onboarding') {
-      return;
-    }
-    // A password-reset email deep-links a SIGNED-OUT user straight into
-    // /reset-password (see lib/auth.ts's sendPasswordReset). pickTarget
-    // resolves to 'auth' for anyone signed out, so without this the
-    // guard would bounce them to /auth before they ever see the "set
-    // new password" form — same flash-and-bounce as the onboarding case
-    // above.
-    if (target === 'auth' && current === 'reset-password') {
-      return;
-    }
-    router.replace(targetToHref(target) as never);
+    const href = hrefForAuthGuard({ user, onboardingSeen, current });
+    if (!href) return;
+    // Immediate replace is swallowed on iOS when Sign out's confirm
+    // UIAlertController is still dismissing — schedule + retry so the
+    // user actually lands on the sign-in screen.
+    return scheduleRouteReplace(() => {
+      router.replace(href as never);
+    });
   }, [initializing, user, onboardingSeen, segments]);
 
   // Shared-expense/settle-up pushes carry data.screen: 'home' (see

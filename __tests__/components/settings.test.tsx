@@ -196,7 +196,9 @@ describe('SettingsScreen', () => {
 
     const buttons = alertSpy.mock.calls[0][2] as { text: string; onPress?: () => void }[];
     buttons.find((b) => b.text === 'Sign out')?.onPress?.();
-    expect(mockSignOut).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(mockSignOut).toHaveBeenCalled();
+    });
   });
 
   it('shows a leave-household confirm alert with more than one member, and confirming leaves', async () => {

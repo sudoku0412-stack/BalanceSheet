@@ -566,6 +566,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshUser: () => setUser(getCurrentUser()),
       signOut: async () => {
         await signOutEverywhere();
+        // Don't wait solely for onAuthStateChanged — it can lag or miss
+        // a beat on iOS after native signOut, which would leave Settings
+        // mounted with a non-null user and skip the auth-gate redirect.
+        setUser(null);
+        setProfileState(null);
+        setMemberships([]);
+        setCurrentHouseholdId(null);
+        tearDownReceiptsListener();
       },
       deleteAccount: async () => {
         const uid = user?.uid;
@@ -607,6 +615,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setActiveHousehold,
       refreshMemberships,
       editInProgress,
+      tearDownReceiptsListener,
     ],
   );
 
