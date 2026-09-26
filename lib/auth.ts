@@ -9,11 +9,22 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { withTimeout } from './withTimeout';
 
-/** Google's iOS GIDSignIn.signOut can hang (never resolve/reject) when
- *  the SDK has a stale session or was never configured for this
- *  install. Bound it so Firebase sign-out — and the /auth redirect —
- *  still run. */
-const GOOGLE_SIGNOUT_TIMEOUT_MS = 2500;
+/** Firebase Auth's iOS signOut can hang. Bound so the Settings UI can
+ *  still clear after the confirm alert. Google Sign-In is never awaited
+ *  on this path — see signOutEverywhere. */
+const FIREBASE_SIGNOUT_TIMEOUT_MS = 4000;
+
+export const GOOGLE_PROVIDER_ID = 'google.com';
+
+/** True when this Firebase user signed in with Google. Used so sign-out
+ *  never calls GIDSignIn's synchronous bridge APIs (`hasPreviousSignIn` /
+ *  `getCurrentUser`) — those deadlock the iOS main thread while a
+ *  UIAlertController is dismissing and freeze the whole app. */
+export function hasGoogleProvider(
+  user: { providerData?: Array<{ providerId?: string | null } | null> | null } | null | undefined,
+): boolean {
+  return !!user?.providerData?.some((p) => p?.providerId === GOOGLE_PROVIDER_ID);
+}
 
 let googleConfigured = false;
 
@@ -176,38 +187,31 @@ export async function reloadCurrentUser(): Promise<AuthUser | null> {
 export async function deleteCurrentAccount(): Promise<void> {
   const u = auth().currentUser;
   if (!u) throw new Error('Not signed in.');
-  // Best-effort sign out from Google before deleting Firebase account so
-  // the next sign-in starts truly fresh.
-  try {
-    if (await GoogleSignin.getCurrentUser()) {
-      await GoogleSignin.signOut();
-    }
-  } catch {
-    // ignore
+  // Only the async GoogleSignin.signOut — never getCurrentUser /
+  // hasPreviousSignIn (synchronous iOS bridge methods that can deadlock).
+  if (hasGoogleProvider(u)) {
+    void GoogleSignin.signOut().catch(() => {});
   }
   await u.delete();
 }
 
-async function signOutGoogleBestEffort(): Promise<void> {
-  try {
-    const googleUser = await Promise.resolve(GoogleSignin.getCurrentUser());
-    const hadPrevious = GoogleSignin.hasPreviousSignIn();
-    if (!googleUser && !hadPrevious) return;
-    await GoogleSignin.signOut();
-  } catch {
-    // ignore — Google sign-out is best-effort
+export async function signOutEverywhere(opts?: { google?: boolean }): Promise<void> {
+  // Fire-and-forget, and only when Firebase says this session is Google.
+  // Calling hasPreviousSignIn/getCurrentUser on iOS is a synchronous
+  // native bridge hit (RCT_EXPORT_SYNCHRONOUS_TYPED_METHOD) and freezes
+  // the app when it runs in the same turn as the Sign out alert.
+  if (opts?.google) {
+    void GoogleSignin.signOut().catch(() => {});
   }
-}
-
-export async function signOutEverywhere(): Promise<void> {
   await withTimeout(
-    signOutGoogleBestEffort(),
-    GOOGLE_SIGNOUT_TIMEOUT_MS,
-    'Google sign-out timed out',
+    (async () => {
+      await auth().signOut();
+    })(),
+    FIREBASE_SIGNOUT_TIMEOUT_MS,
+    'Sign out timed out',
   ).catch(() => {
-    // Hang/timeout/throw: still sign out of Firebase below.
+    // Native hang: caller has already cleared local user + navigated.
   });
-  await auth().signOut();
 }
 
 export { statusCodes as GoogleStatusCodes };

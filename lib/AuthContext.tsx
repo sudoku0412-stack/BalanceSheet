@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { router } from 'expo-router';
 import Constants from 'expo-constants';
 // Deliberately the plain lib/entitlements.ts functions, NOT
@@ -13,6 +13,7 @@ import {
   configureGoogleSignIn,
   deleteCurrentAccount,
   getCurrentUser,
+  hasGoogleProvider,
   onAuthStateChanged,
   signOutEverywhere,
   updateAuthDisplayName,
@@ -100,6 +101,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [onboardingSeen, setOnboardingSeenState] = useState(false);
   const [memberships, setMemberships] = useState<HouseholdMembership[]>([]);
   const [editInProgress, setEditInProgress] = useState(false);
+  const signingOutRef = useRef(false);
+  const authEpochRef = useRef(0);
 
   useEffect(() => {
     const webClientId =
@@ -451,6 +454,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(async (u) => {
+      if (signingOutRef.current && u) {
+        return;
+      }
+      if (!u) {
+        signingOutRef.current = false;
+      }
+      const epoch = authEpochRef.current;
       setUser(u);
       setInitializing(false);
       setCurrentUserId(u?.uid ?? null).catch(() => {
@@ -481,7 +491,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           displayName: u.displayName,
         });
         if (hid) {
+          if (epoch !== authEpochRef.current) return;
           await runHouseholdSwitch(u.uid, hid);
+          if (epoch !== authEpochRef.current) return;
           void migrateLocalReceiptsToCloud({
             uid: u.uid,
             householdId: hid,
@@ -565,15 +577,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshProfile,
       refreshUser: () => setUser(getCurrentUser()),
       signOut: async () => {
-        await signOutEverywhere();
-        // Don't wait solely for onAuthStateChanged — it can lag or miss
-        // a beat on iOS after native signOut, which would leave Settings
-        // mounted with a non-null user and skip the auth-gate redirect.
+        const google = hasGoogleProvider(user);
+        // Let iOS finish dismissing the confirm UIAlertController before
+        // any native Auth/Google work or stack mutation — doing that in
+        // the same turn is what froze the app.
+        if (Platform.OS === 'ios') {
+          await new Promise<void>((resolve) => setTimeout(resolve, 500));
+        }
+        signingOutRef.current = true;
+        authEpochRef.current += 1;
         setUser(null);
         setProfileState(null);
         setMemberships([]);
         setCurrentHouseholdId(null);
         tearDownReceiptsListener();
+        try {
+          await signOutEverywhere({ google });
+        } finally {
+          if (!getCurrentUser()) signingOutRef.current = false;
+        }
       },
       deleteAccount: async () => {
         const uid = user?.uid;
