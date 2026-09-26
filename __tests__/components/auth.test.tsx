@@ -32,12 +32,14 @@ jest.mock('../../lib/auth', () => ({
 
 import AuthScreen from '../../app/auth';
 import {
+  sendPasswordReset,
   signInWithEmail,
   signUpWithEmail,
 } from '../../lib/auth';
 
 const mockSignInWithEmail = signInWithEmail as jest.Mock;
 const mockSignUpWithEmail = signUpWithEmail as jest.Mock;
+const mockSendPasswordReset = sendPasswordReset as jest.Mock;
 
 describe('AuthScreen', () => {
   beforeEach(() => {
@@ -103,5 +105,20 @@ describe('AuthScreen', () => {
       expect(screen.getByText('Full name is required.')).toBeTruthy();
     });
     expect(mockSignUpWithEmail).not.toHaveBeenCalled();
+  });
+
+  it('Forgot password requires an email first, then sends a reset for the typed address', async () => {
+    mockSendPasswordReset.mockResolvedValue(undefined);
+    render(<AuthScreen />);
+
+    fireEvent.press(screen.getByText('Forgot password?'));
+    expect(screen.getByText('Enter your email above first, then tap "Forgot password?".')).toBeTruthy();
+    expect(mockSendPasswordReset).not.toHaveBeenCalled();
+
+    fireEvent.changeText(screen.getByPlaceholderText('you@email.com'), 'jane@example.com');
+    fireEvent.press(screen.getByText('Forgot password?'));
+    await waitFor(() => {
+      expect(mockSendPasswordReset).toHaveBeenCalledWith('jane@example.com');
+    });
   });
 });

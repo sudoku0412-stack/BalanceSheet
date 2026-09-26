@@ -2,6 +2,7 @@ const mockUpdateProfile = jest.fn();
 const mockSignInAnonymously = jest.fn();
 const mockSignInWithCredential = jest.fn();
 const mockSignOut = jest.fn();
+const mockSendPasswordResetEmail = jest.fn();
 const mockCredentialFn = jest.fn();
 const mockAppleCredentialFn = jest.fn();
 
@@ -19,6 +20,7 @@ jest.mock('@react-native-firebase/auth', () => {
     signInAnonymously: (...args: unknown[]) => mockSignInAnonymously(...args),
     signInWithCredential: (...args: unknown[]) => mockSignInWithCredential(...args),
     signOut: (...args: unknown[]) => mockSignOut(...args),
+    sendPasswordResetEmail: (...args: unknown[]) => mockSendPasswordResetEmail(...args),
   });
   authFn.GoogleAuthProvider = { credential: (...args: unknown[]) => mockCredentialFn(...args) };
   authFn.AppleAuthProvider = { credential: (...args: unknown[]) => mockAppleCredentialFn(...args) };
@@ -67,6 +69,7 @@ import {
   signInWithApple,
   deleteCurrentAccount,
   hasGoogleProvider,
+  sendPasswordReset,
   signOutEverywhere,
 } from '../lib/auth';
 
@@ -77,6 +80,7 @@ beforeEach(() => {
   mockHasPreviousSignIn.mockReturnValue(false);
   mockGetCurrentGoogleUser.mockResolvedValue(null);
   mockSignOut.mockResolvedValue(undefined);
+  mockSendPasswordResetEmail.mockResolvedValue(undefined);
   mockGoogleSignOut.mockResolvedValue(undefined);
   isErrorWithCodeImpl = (e: unknown): e is { code: string } =>
     typeof e === 'object' && e !== null && 'code' in e;
@@ -251,5 +255,24 @@ describe('signOutEverywhere', () => {
     } finally {
       jest.useRealTimers();
     }
+  });
+});
+
+describe('sendPasswordReset', () => {
+  it('sends a handleCodeInApp deep link back into this app, not the hosted web page', async () => {
+    await sendPasswordReset('  jane@example.com  ');
+    expect(mockSendPasswordResetEmail).toHaveBeenCalledWith(
+      'jane@example.com',
+      expect.objectContaining({
+        url: 'https://balancesheet-android.web.app/reset-password',
+        handleCodeInApp: true,
+        android: expect.objectContaining({
+          packageName: 'com.kaushikmajumder.receiptscanner',
+        }),
+        iOS: expect.objectContaining({
+          bundleId: 'com.kaushikmajumder.receiptscanner',
+        }),
+      }),
+    );
   });
 });
