@@ -40,6 +40,7 @@ jest.mock('../../lib/promoCode', () => ({
 import { EntitlementsProvider, useEntitlements } from '../../lib/EntitlementsContext';
 import { loginPurchases, logoutPurchases } from '../../lib/entitlements';
 import { getActivePromoRedemption } from '../../lib/promoCode';
+import { NATIVE_SIGNOUT_DEFER_MS } from '../../lib/signOutTiming';
 
 const mockLoginPurchases = loginPurchases as jest.Mock;
 const mockLogoutPurchases = logoutPurchases as jest.Mock;
@@ -144,7 +145,13 @@ describe('EntitlementsProvider premium/promo composition', () => {
       </EntitlementsProvider>,
     );
 
-    await waitFor(() => expect(mockLogoutPurchases).toHaveBeenCalled(), { timeout: 4000 });
     expect(screen.getByTestId('promoCode').props.children).toBe('none');
+    if (NATIVE_SIGNOUT_DEFER_MS > 0) {
+      expect(mockLogoutPurchases).not.toHaveBeenCalled();
+    }
+
+    await waitFor(() => expect(mockLogoutPurchases).toHaveBeenCalled(), {
+      timeout: NATIVE_SIGNOUT_DEFER_MS + 3000,
+    });
   });
 });
