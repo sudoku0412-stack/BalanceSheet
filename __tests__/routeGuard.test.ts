@@ -99,4 +99,25 @@ describe('hrefForAuthGuard — sign-out from Settings', () => {
       }),
     ).toBeNull();
   });
+
+  it('does not treat sticky voluntary routes as sticky when signed out', () => {
+    // Settings / incomes / edit are sticky only for the (tabs) target.
+    // After sign-out, pickTarget is auth — the user must still leave.
+    expect(
+      hrefForAuthGuard({ user: null, onboardingSeen: true, current: 'incomes' }),
+    ).toBe('/auth');
+    expect(
+      hrefForAuthGuard({ user: null, onboardingSeen: true, current: 'edit' }),
+    ).toBe('/auth');
+  });
+
+  it('leaves a signed-in user alone when useSegments() reports an empty current', () => {
+    expect(
+      hrefForAuthGuard({
+        user: { uid: 'u1' },
+        onboardingSeen: true,
+        current: '',
+      }),
+    ).toBeNull();
+  });
 });

@@ -507,6 +507,56 @@ describe('AuthProvider profile + account actions', () => {
     expect(order.indexOf('secure')).toBeGreaterThan(order.indexOf('profile'));
   });
 
+  it('signOut clears local session and tears down listeners without waiting for onAuthStateChanged', async () => {
+    // iOS: Google/Firebase sign-out can resolve while onAuthStateChanged
+    // lags or misses a beat. The context must drop user/profile/memberships
+    // itself so Settings is not left mounted with a non-null user (which
+    // skips the auth-gate redirect).
+    const unsubReceipts = jest.fn();
+    const unsubSettlements = jest.fn();
+    const unsubIncomes = jest.fn();
+    const unsubGoals = jest.fn();
+    const unsubBudgets = jest.fn();
+    mockSubscribeToHouseholdReceipts.mockReturnValue(unsubReceipts);
+    mockSubscribeToHouseholdSettlements.mockReturnValue(unsubSettlements);
+    mockSubscribeToHouseholdIncomes.mockReturnValue(unsubIncomes);
+    mockSubscribeToHouseholdSavingsGoals.mockReturnValue(unsubGoals);
+    mockSubscribeToHouseholdBudgets.mockReturnValue(unsubBudgets);
+    mockGetUserMemberships.mockResolvedValue([
+      { householdId: 'hh1', name: 'Home', role: 'owner', memberCount: 1, isDefault: true },
+    ]);
+    mockGetProfile.mockResolvedValue({
+      uid: 'u1',
+      firstName: 'Jane',
+      lastName: 'Doe',
+      phone: null,
+      phoneVerified: false,
+      createdAt: 't',
+      updatedAt: 't',
+    });
+
+    renderProvider();
+    await emitAuth(makeUser());
+    await waitForReady();
+    await waitFor(() => expect(screen.getByTestId('memberships').props.children).toBe('1'));
+    expect(screen.getByTestId('uid').props.children).toBe('u1');
+    expect(screen.getByTestId('profile').props.children).toBe('Jane|Doe');
+
+    fireEvent.press(screen.getByTestId('btn-signOut'));
+    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalled());
+
+    // Do not emitAuth(null) — that is the lagging path this regression covers.
+    expect(screen.getByTestId('uid').props.children).toBe('none');
+    expect(screen.getByTestId('profile').props.children).toBe('none');
+    expect(screen.getByTestId('memberships').props.children).toBe('0');
+    expect(mockSetCurrentHouseholdId).toHaveBeenCalledWith(null);
+    expect(unsubReceipts).toHaveBeenCalled();
+    expect(unsubSettlements).toHaveBeenCalled();
+    expect(unsubIncomes).toHaveBeenCalled();
+    expect(unsubGoals).toHaveBeenCalled();
+    expect(unsubBudgets).toHaveBeenCalled();
+  });
+
   it('signOut delegates to signOutEverywhere and markOnboardingSeen persists + flips state', async () => {
     renderProvider();
     await emitAuth(makeUser());
