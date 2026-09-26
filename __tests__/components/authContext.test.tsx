@@ -102,10 +102,12 @@ import {
   configureGoogleSignIn,
   deleteCurrentAccount,
   getCurrentUser,
+  hasGoogleProvider,
   onAuthStateChanged,
   signOutEverywhere,
   updateAuthDisplayName,
 } from '../../lib/auth';
+import { IOS_ALERT_SETTLE_MS, NATIVE_SIGNOUT_DEFER_MS } from '../../lib/signOutTiming';
 import { getProfile, deleteProfile, saveProfile } from '../../lib/profile';
 import {
   bootstrapHouseholdId,
@@ -140,6 +142,7 @@ const mockGetCurrentUser = getCurrentUser as jest.Mock;
 const mockConfigureGoogleSignIn = configureGoogleSignIn as jest.Mock;
 const mockDeleteCurrentAccount = deleteCurrentAccount as jest.Mock;
 const mockSignOutEverywhere = signOutEverywhere as jest.Mock;
+const mockHasGoogleProvider = hasGoogleProvider as jest.Mock;
 const mockUpdateAuthDisplayName = updateAuthDisplayName as jest.Mock;
 const mockGetProfile = getProfile as jest.Mock;
 const mockDeleteProfile = deleteProfile as jest.Mock;
@@ -239,6 +242,7 @@ describe('AuthProvider session + household bootstrap', () => {
     mockAcceptInvite.mockResolvedValue({ ok: true, newHouseholdId: 'hh-invite' });
     mockGetCurrentHouseholdId.mockReturnValue('hh1');
     mockSubscribeToPendingInvite.mockImplementation(() => jest.fn());
+    mockHasGoogleProvider.mockReturnValue(false);
   });
 
   it('throws when useAuth is used outside AuthProvider', () => {
@@ -565,6 +569,7 @@ describe('AuthProvider profile + account actions', () => {
 
     fireEvent.press(screen.getByTestId('btn-signOut'));
     await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalled(), { timeout: 4000 });
+    expect(mockSignOutEverywhere).toHaveBeenCalledWith({ google: false });
 
     fireEvent.press(screen.getByTestId('btn-onboard'));
     await waitFor(() => expect(mockSetOnboardingSeen).toHaveBeenCalled());
@@ -619,6 +624,46 @@ describe('AuthProvider profile + account actions', () => {
     expect(unsubGoals).toHaveBeenCalled();
     expect(unsubBudgets).toHaveBeenCalled();
   });
+
+  it('clears local session after the iOS alert settle, then defers native sign-out', async () => {
+    renderProvider();
+    await emitAuth(makeUser());
+    await waitForReady();
+    expect(screen.getByTestId('uid').props.children).toBe('u1');
+
+    fireEvent.press(screen.getByTestId('btn-signOut'));
+
+    // Same turn as the confirm alert: do not mutate session or native auth.
+    expect(screen.getByTestId('uid').props.children).toBe('u1');
+    expect(mockSignOutEverywhere).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(screen.getByTestId('uid').props.children).toBe('none'), {
+      timeout: IOS_ALERT_SETTLE_MS + 1500,
+    });
+    expect(screen.getByTestId('profile').props.children).toBe('none');
+    expect(screen.getByTestId('memberships').props.children).toBe('0');
+    expect(mockSetCurrentHouseholdId).toHaveBeenCalledWith(null);
+
+    if (NATIVE_SIGNOUT_DEFER_MS > 0) {
+      expect(mockSignOutEverywhere).not.toHaveBeenCalled();
+    }
+
+    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalledWith({ google: false }), {
+      timeout: NATIVE_SIGNOUT_DEFER_MS + 2000,
+    });
+  });
+
+  it('tells signOutEverywhere to fire Google native sign-out only for google.com sessions', async () => {
+    mockHasGoogleProvider.mockReturnValue(true);
+    renderProvider();
+    await emitAuth(makeUser({ providerData: [{ providerId: 'google.com' }] }));
+    await waitForReady();
+
+    fireEvent.press(screen.getByTestId('btn-signOut'));
+    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalledWith({ google: true }), {
+      timeout: IOS_ALERT_SETTLE_MS + NATIVE_SIGNOUT_DEFER_MS + 2000,
+    });
+  });
 });
 
 describe('AuthProvider invite + phone-invite permissions', () => {
@@ -636,6 +681,7 @@ describe('AuthProvider invite + phone-invite permissions', () => {
     mockAcceptInvite.mockResolvedValue({ ok: true, newHouseholdId: 'hh-invite' });
     mockAcceptPhoneInviteIfAny.mockResolvedValue({ joined: false });
     mockSubscribeToPendingInvite.mockImplementation(() => jest.fn());
+    mockHasGoogleProvider.mockReturnValue(false);
   });
 
   it('auto-joins a verified-phone invite and switches to that household', async () => {
