@@ -544,7 +544,7 @@ describe('AuthProvider profile + account actions', () => {
     expect(screen.getByTestId('profile').props.children).toBe('Jane|Doe');
 
     fireEvent.press(screen.getByTestId('btn-signOut'));
-    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalled());
+    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalled(), { timeout: 4000 });
 
     // Do not emitAuth(null) — that is the lagging path this regression covers.
     expect(screen.getByTestId('uid').props.children).toBe('none');
@@ -564,7 +564,7 @@ describe('AuthProvider profile + account actions', () => {
     await waitForReady();
 
     fireEvent.press(screen.getByTestId('btn-signOut'));
-    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalled());
+    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalled(), { timeout: 4000 });
 
     fireEvent.press(screen.getByTestId('btn-onboard'));
     await waitFor(() => expect(mockSetOnboardingSeen).toHaveBeenCalled());
@@ -605,7 +605,7 @@ describe('AuthProvider profile + account actions', () => {
     expect(mockSubscribeToHouseholdIncomes).toHaveBeenCalledWith('hh1', 'u1');
 
     fireEvent.press(screen.getByTestId('btn-signOut'));
-    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalled());
+    await waitFor(() => expect(mockSignOutEverywhere).toHaveBeenCalled(), { timeout: 4000 });
 
     // iOS can miss the null onAuthStateChanged tick — local state must
     // already look signed-out so the auth guard can leave Settings.

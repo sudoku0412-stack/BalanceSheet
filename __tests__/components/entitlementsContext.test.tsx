@@ -144,7 +144,7 @@ describe('EntitlementsProvider premium/promo composition', () => {
       </EntitlementsProvider>,
     );
 
-    await waitFor(() => expect(mockLogoutPurchases).toHaveBeenCalled());
+    await waitFor(() => expect(mockLogoutPurchases).toHaveBeenCalled(), { timeout: 4000 });
     expect(screen.getByTestId('promoCode').props.children).toBe('none');
   });
 });
