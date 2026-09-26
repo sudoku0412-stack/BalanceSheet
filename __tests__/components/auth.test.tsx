@@ -48,8 +48,11 @@ describe('AuthScreen', () => {
     render(<AuthScreen />);
     expect(screen.getByText('Welcome back')).toBeTruthy();
     expect(screen.getByPlaceholderText('you@email.com')).toBeTruthy();
+    expect(screen.getByText('Password')).toBeTruthy();
     expect(screen.getByPlaceholderText('••••••••')).toBeTruthy();
+    expect(screen.getByText('Forgot password?')).toBeTruthy();
     expect(screen.getAllByText('Log In').length).toBeGreaterThan(0);
+    expect(screen.getByText('Continue with Google')).toBeTruthy();
   });
 
   it('typing credentials and submitting calls signInWithEmail', async () => {

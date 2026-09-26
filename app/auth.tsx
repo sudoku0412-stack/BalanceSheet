@@ -31,24 +31,36 @@ import { LegalLinksRow } from '../components/ui/LegalLinksRow';
 type Tab = 'login' | 'signup';
 
 /**
- * Staggered fade+translateY entrance, per the design spec's timing
- * table (headline 40ms, subhead 80ms, tab 100ms, fields ~120-180ms,
- * submit 200ms, socials ~240-260ms).
+ * Staggered translateY entrance, per the design spec's timing table
+ * (headline 40ms, subhead 80ms, tab 100ms, fields ~120-180ms, submit
+ * 200ms, socials ~240-260ms).
+ *
+ * Opacity is intentionally NOT animated. After Sign out, the root
+ * layout `replace`s onto /auth while a native transition is still
+ * settling; native-driver opacity animations started at 0 get dropped
+ * and leave password / Log In / Google in the layout at opacity 0.
  */
 function FadeInUp({ delay, children }: { delay: number; children: React.ReactNode }) {
   const anim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    Animated.timing(anim, {
+    const animation = Animated.timing(anim, {
       toValue: 1,
       duration: 300,
       delay,
       useNativeDriver: true,
-    }).start();
+    });
+    animation.start(({ finished }) => {
+      if (!finished) anim.setValue(1);
+    });
+    return () => {
+      animation.stop();
+      anim.setValue(1);
+    };
   }, [anim, delay]);
   return (
     <Animated.View
+      collapsable={false}
       style={{
-        opacity: anim,
         transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
       }}
     >
