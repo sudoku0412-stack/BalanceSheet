@@ -10,6 +10,7 @@ describe('Phase C routes are registered', () => {
     expect(source).toMatch(/name="savings-goals"/);
     expect(source).toMatch(/hrefForAuthGuard/);
     expect(source).toMatch(/scheduleRouteReplace/);
+    expect(source).toMatch(/Stack\.Protected/);
   });
 
   it('whitelists those routes so the auth guard does not bounce them to Home', () => {

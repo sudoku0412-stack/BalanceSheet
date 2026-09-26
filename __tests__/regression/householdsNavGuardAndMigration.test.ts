@@ -32,6 +32,7 @@ describe('Regression: Households route whitelisted in the nav guard (app/_layout
 
     expect(STICKY_VOLUNTARY.has('households')).toBe(true);
     expect(source).toMatch(/hrefForAuthGuard/);
+    expect(source).toMatch(/Stack\.Protected/);
     expect(source).toMatch(/name="households"/);
   });
 });

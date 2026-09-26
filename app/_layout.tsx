@@ -26,7 +26,7 @@ import { AuthProvider, useAuth } from '../lib/AuthContext';
 import { EntitlementsProvider } from '../lib/EntitlementsContext';
 import { ToastProvider } from '../components/ui/Toast';
 import { hrefForAuthGuard } from '../lib/routeGuard';
-import { scheduleRouteReplace } from '../lib/scheduleRouteReplace';
+import { replaceSignedOutRoute, scheduleRouteReplace } from '../lib/scheduleRouteReplace';
 
 export default function RootLayout() {
   // Previously fire-and-forget — the rest of the app (Home's receipt
@@ -116,7 +116,7 @@ function RootStack() {
     // UIAlertController is still dismissing — schedule + retry so the
     // user actually lands on the sign-in screen.
     return scheduleRouteReplace(() => {
-      router.replace(href as never);
+      replaceSignedOutRoute(router, href);
     });
   }, [initializing, user, onboardingSeen, segments]);
 
@@ -158,6 +158,8 @@ function RootStack() {
     );
   }
 
+  const signedIn = !!user;
+
   return (
     <Stack
       screenOptions={{
@@ -167,106 +169,113 @@ function RootStack() {
         contentStyle: { backgroundColor: theme.colors.background },
       }}
     >
-      <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="auth" options={{ headerShown: false }} />
-      <Stack.Screen name="reset-password" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen
-        name="settings"
-        options={{
-          title: 'Settings',
-          // Regular stack screen, not a modal sheet — navigates like
-          // every other page (slide transition + back chevron) instead
-          // of popping up as a separate overlay.
-          headerStyle: { backgroundColor: theme.colors.surface },
-        }}
-      />
-      <Stack.Screen
-        name="edit/[id]"
-        options={{
-          title: 'Edit Receipt',
-          headerStyle: { backgroundColor: theme.colors.surface },
-        }}
-      />
-      <Stack.Screen
-        name="add-income"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="incomes"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="scan-paystub"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="savings-goals"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="edit-income/[id]"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="reports"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="edit-profile"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="balances"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="recurring"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="households"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="shared-expenses/[uid]"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="contacts-sync"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
-        name="paywall"
-        options={{
-          headerShown: false,
-          presentation: 'modal',
-        }}
-      />
+      {/* Unmount signed-in screens (including Settings) as soon as user
+          is null — iOS native-stack often ignores router.replace while
+          a confirm alert is dismissing, which left Settings on screen. */}
+      <Stack.Protected guard={!signedIn}>
+        <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+        <Stack.Screen name="auth" options={{ headerShown: false }} />
+        <Stack.Screen name="reset-password" options={{ headerShown: false }} />
+      </Stack.Protected>
+      <Stack.Protected guard={signedIn}>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="settings"
+          options={{
+            title: 'Settings',
+            // Regular stack screen, not a modal sheet — navigates like
+            // every other page (slide transition + back chevron) instead
+            // of popping up as a separate overlay.
+            headerStyle: { backgroundColor: theme.colors.surface },
+          }}
+        />
+        <Stack.Screen
+          name="edit/[id]"
+          options={{
+            title: 'Edit Receipt',
+            headerStyle: { backgroundColor: theme.colors.surface },
+          }}
+        />
+        <Stack.Screen
+          name="add-income"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="incomes"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="scan-paystub"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="savings-goals"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="edit-income/[id]"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="reports"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="edit-profile"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="balances"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="recurring"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="households"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="shared-expenses/[uid]"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="contacts-sync"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="paywall"
+          options={{
+            headerShown: false,
+            presentation: 'modal',
+          }}
+        />
+      </Stack.Protected>
     </Stack>
   );
 }

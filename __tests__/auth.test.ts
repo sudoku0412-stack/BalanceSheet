@@ -207,16 +207,21 @@ describe('signOutEverywhere', () => {
     expect(mockSignOut).toHaveBeenCalled();
   });
 
-  it('signs out of firebase even when Google sign-out never settles (iOS hang)', async () => {
+  it('signs out of firebase immediately even when Google sign-out never settles (iOS hang)', async () => {
+    mockGetCurrentGoogleUser.mockResolvedValue({ id: 'g1' });
+    mockHasPreviousSignIn.mockReturnValue(true);
+    mockGoogleSignOut.mockImplementation(() => new Promise(() => {}));
+    await expect(signOutEverywhere()).resolves.toBeUndefined();
+    expect(mockSignOut).toHaveBeenCalled();
+  });
+
+  it('resolves even when Firebase sign-out never settles', async () => {
     jest.useFakeTimers();
     try {
-      mockGetCurrentGoogleUser.mockResolvedValue({ id: 'g1' });
-      mockHasPreviousSignIn.mockReturnValue(true);
-      mockGoogleSignOut.mockImplementation(() => new Promise(() => {}));
+      mockSignOut.mockImplementation(() => new Promise(() => {}));
       const pending = signOutEverywhere();
-      await jest.advanceTimersByTimeAsync(2500);
+      await jest.advanceTimersByTimeAsync(4000);
       await expect(pending).resolves.toBeUndefined();
-      expect(mockSignOut).toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }

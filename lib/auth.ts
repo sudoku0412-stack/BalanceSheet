@@ -9,11 +9,10 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import { withTimeout } from './withTimeout';
 
-/** Google's iOS GIDSignIn.signOut can hang (never resolve/reject) when
- *  the SDK has a stale session or was never configured for this
- *  install. Bound it so Firebase sign-out — and the /auth redirect —
- *  still run. */
-const GOOGLE_SIGNOUT_TIMEOUT_MS = 2500;
+/** Same class of hang exists on Firebase Auth's iOS signOut. Bound so
+ *  AuthContext can finish clearing local state even if the native call
+ *  never comes back. */
+const FIREBASE_SIGNOUT_TIMEOUT_MS = 4000;
 
 let googleConfigured = false;
 
@@ -200,14 +199,19 @@ async function signOutGoogleBestEffort(): Promise<void> {
 }
 
 export async function signOutEverywhere(): Promise<void> {
+  // Google is fire-and-forget: awaiting it is what left iOS users on
+  // Settings when GIDSignIn.signOut never settled (hasPreviousSignIn is
+  // often true on iOS even for Apple/email sessions).
+  void signOutGoogleBestEffort();
   await withTimeout(
-    signOutGoogleBestEffort(),
-    GOOGLE_SIGNOUT_TIMEOUT_MS,
-    'Google sign-out timed out',
+    (async () => {
+      await auth().signOut();
+    })(),
+    FIREBASE_SIGNOUT_TIMEOUT_MS,
+    'Sign out timed out',
   ).catch(() => {
-    // Hang/timeout/throw: still sign out of Firebase below.
+    // Native hang: caller has already cleared local user + navigated.
   });
-  await auth().signOut();
 }
 
 export { statusCodes as GoogleStatusCodes };
