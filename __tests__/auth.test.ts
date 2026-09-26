@@ -5,7 +5,11 @@ const mockSignOut = jest.fn();
 const mockCredentialFn = jest.fn();
 const mockAppleCredentialFn = jest.fn();
 
-let mockCurrentUser: { updateProfile?: jest.Mock; delete?: jest.Mock } | null = null;
+let mockCurrentUser: {
+  updateProfile?: jest.Mock;
+  delete?: jest.Mock;
+  providerData?: Array<{ providerId: string }>;
+} | null = null;
 
 jest.mock('@react-native-firebase/auth', () => {
   const authFn = () => ({
@@ -62,6 +66,7 @@ import {
   signInWithGoogle,
   signInWithApple,
   deleteCurrentAccount,
+  hasGoogleProvider,
   signOutEverywhere,
 } from '../lib/auth';
 
@@ -183,50 +188,68 @@ describe('deleteCurrentAccount', () => {
 
   it('deletes the account even when Google sign-out throws (best-effort)', async () => {
     const deleteFn = jest.fn().mockResolvedValue(undefined);
-    mockCurrentUser = { delete: deleteFn };
-    mockGetCurrentGoogleUser.mockRejectedValue(new Error('google unavailable'));
+    mockCurrentUser = { delete: deleteFn, providerData: [{ providerId: 'google.com' }] };
+    mockGoogleSignOut.mockRejectedValue(new Error('google unavailable'));
     await expect(deleteCurrentAccount()).resolves.toBeUndefined();
     expect(deleteFn).toHaveBeenCalled();
   });
 
   it('signs out of Google first when a Google user is present', async () => {
     const deleteFn = jest.fn().mockResolvedValue(undefined);
-    mockCurrentUser = { delete: deleteFn };
-    mockGetCurrentGoogleUser.mockResolvedValue({ id: 'g1' });
+    mockCurrentUser = { delete: deleteFn, providerData: [{ providerId: 'google.com' }] };
     mockGoogleSignOut.mockResolvedValue(undefined);
     await deleteCurrentAccount();
     expect(mockGoogleSignOut).toHaveBeenCalled();
     expect(deleteFn).toHaveBeenCalled();
   });
+
+  it('does not call Google native APIs when deleting a non-Google account', async () => {
+    const deleteFn = jest.fn().mockResolvedValue(undefined);
+    mockCurrentUser = { delete: deleteFn, providerData: [{ providerId: 'apple.com' }] };
+    await deleteCurrentAccount();
+    expect(mockGoogleSignOut).not.toHaveBeenCalled();
+    expect(mockGetCurrentGoogleUser).not.toHaveBeenCalled();
+    expect(mockHasPreviousSignIn).not.toHaveBeenCalled();
+    expect(deleteFn).toHaveBeenCalled();
+  });
+});
+
+describe('hasGoogleProvider', () => {
+  it('is true only for google.com providerData', () => {
+    expect(hasGoogleProvider({ providerData: [{ providerId: 'google.com' }] })).toBe(true);
+    expect(hasGoogleProvider({ providerData: [{ providerId: 'apple.com' }] })).toBe(false);
+    expect(hasGoogleProvider({ providerData: [] })).toBe(false);
+    expect(hasGoogleProvider(null)).toBe(false);
+  });
 });
 
 describe('signOutEverywhere', () => {
-  it('signs out of firebase even when Google sign-out throws (best-effort)', async () => {
-    mockGetCurrentGoogleUser.mockRejectedValue(new Error('google unavailable'));
+  it('signs out of firebase without touching Google native APIs by default', async () => {
     await expect(signOutEverywhere()).resolves.toBeUndefined();
     expect(mockSignOut).toHaveBeenCalled();
+    expect(mockGoogleSignOut).not.toHaveBeenCalled();
+    expect(mockGetCurrentGoogleUser).not.toHaveBeenCalled();
+    expect(mockHasPreviousSignIn).not.toHaveBeenCalled();
   });
 
-  it('signs out of firebase even when Google sign-out never settles (iOS hang)', async () => {
+  it('fires Google signOut only when google:true, and does not wait if it hangs', async () => {
+    mockGoogleSignOut.mockImplementation(() => new Promise(() => {}));
+    await expect(signOutEverywhere({ google: true })).resolves.toBeUndefined();
+    expect(mockGoogleSignOut).toHaveBeenCalled();
+    expect(mockSignOut).toHaveBeenCalled();
+    expect(mockHasPreviousSignIn).not.toHaveBeenCalled();
+    expect(mockGetCurrentGoogleUser).not.toHaveBeenCalled();
+  });
+
+  it('resolves even when Firebase sign-out never settles', async () => {
     jest.useFakeTimers();
     try {
-      mockGetCurrentGoogleUser.mockResolvedValue({ id: 'g1' });
-      mockHasPreviousSignIn.mockReturnValue(true);
-      mockGoogleSignOut.mockImplementation(() => new Promise(() => {}));
+      mockSignOut.mockImplementation(() => new Promise(() => {}));
       const pending = signOutEverywhere();
-      await jest.advanceTimersByTimeAsync(2500);
+      await jest.advanceTimersByTimeAsync(4000);
       await expect(pending).resolves.toBeUndefined();
-      expect(mockSignOut).toHaveBeenCalled();
     } finally {
       jest.useRealTimers();
     }
-  });
-
-  it('signs out of Google when hasPreviousSignIn is true even if getCurrentUser is null', async () => {
-    mockGetCurrentGoogleUser.mockResolvedValue(null);
-    mockHasPreviousSignIn.mockReturnValue(true);
-    await signOutEverywhere();
-    expect(mockGoogleSignOut).toHaveBeenCalled();
-    expect(mockSignOut).toHaveBeenCalled();
   });
 });

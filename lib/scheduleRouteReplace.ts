@@ -1,13 +1,12 @@
-import { InteractionManager } from 'react-native';
-
 /**
- * iOS UIAlertController (the Sign out confirm sheet) is still dismissing
- * when auth state flips to signed-out. A `router.replace('/auth')` in
- * that same turn is often swallowed by the native stack and never
- * retried, so the user stays on Settings with a dead session.
+ * Imperative navigation after sign-out.
  *
- * Run the replace after interactions, then once more after the alert
- * animation window, so a swallowed first attempt still lands on /auth.
+ * Do NOT call `dismissAll` — popping the native stack while iOS is still
+ * dismissing the Sign out UIAlertController deadlocks UINavigationController
+ * and freezes the app. `replace` alone is enough once `user` is null.
+ *
+ * Do NOT wait on InteractionManager: Reanimated can keep "interactions"
+ * pending forever, so the redirect never ran.
  */
 export const AUTH_REDIRECT_RETRY_MS = 400;
 
@@ -16,11 +15,10 @@ export function scheduleRouteReplace(replace: () => void): () => void {
   const run = () => {
     if (!cancelled) replace();
   };
-  const task = InteractionManager.runAfterInteractions(run);
+  run();
   const retry = setTimeout(run, AUTH_REDIRECT_RETRY_MS);
   return () => {
     cancelled = true;
-    task.cancel?.();
     clearTimeout(retry);
   };
 }

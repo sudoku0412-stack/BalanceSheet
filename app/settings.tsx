@@ -712,10 +712,9 @@ export default function SettingsScreen() {
         text: 'Sign out',
         style: 'destructive',
         onPress: () => {
-          // iOS: the confirm UIAlertController is still dismissing when
-          // this onPress runs. Kick off native sign-out on the next
-          // tick so it (and the subsequent /auth replace) isn't
-          // swallowed with the alert.
+          // iOS: wait for UIAlertController to finish dismissing before
+          // native sign-out / stack changes — AuthContext also waits
+          // 500ms on iOS for the same reason.
           setTimeout(() => {
             signOut().catch((e) => {
               toast.show({ kind: 'error', message: humanizeAuthError(e) });

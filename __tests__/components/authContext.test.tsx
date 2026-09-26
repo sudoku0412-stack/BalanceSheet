@@ -29,6 +29,7 @@ jest.mock('../../lib/auth', () => ({
   configureGoogleSignIn: jest.fn(),
   deleteCurrentAccount: jest.fn(async () => {}),
   getCurrentUser: jest.fn(() => null),
+  hasGoogleProvider: jest.fn(() => false),
   onAuthStateChanged: jest.fn(),
   signOutEverywhere: jest.fn(async () => {}),
   updateAuthDisplayName: jest.fn(async () => {}),
