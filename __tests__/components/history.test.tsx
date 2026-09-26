@@ -125,6 +125,41 @@ describe('HistoryScreen', () => {
     expect(mockPush).toHaveBeenCalledWith('/edit/r-42');
   });
 
+  it('kind chips hide expenses or incomes without refetching', async () => {
+    mockGetAllReceipts.mockResolvedValue([makeReceipt({ id: 'r1', storeName: 'Coffee Shop' })]);
+    mockGetAllIncomes.mockResolvedValue([
+      {
+        id: 'i1',
+        sourceName: 'Payroll',
+        date: new Date().toISOString().slice(0, 10),
+        amountUsd: 100,
+        category: 'Salary',
+        earnedBy: 'uid-self',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    ]);
+    render(<HistoryScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('Coffee Shop')).toBeTruthy();
+    });
+    expect(screen.getByText(/Payroll/)).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Income'));
+    await waitFor(() => {
+      expect(screen.queryByText('Coffee Shop')).toBeNull();
+    });
+    expect(screen.getByText(/Payroll/)).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Expenses'));
+    await waitFor(() => {
+      expect(screen.getByText('Coffee Shop')).toBeTruthy();
+    });
+    expect(screen.queryByText(/Payroll/)).toBeNull();
+    expect(mockGetAllReceipts).toHaveBeenCalledTimes(1);
+    expect(mockGetAllIncomes).toHaveBeenCalledTimes(1);
+  });
+
   it('groups incomes by earner when opened with kind=income&group=member', async () => {
     mockParams.kind = 'income';
     mockParams.group = 'member';
