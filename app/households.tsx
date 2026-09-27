@@ -115,7 +115,7 @@ export default function HouseholdsScreen() {
     }
     setSwitchingTo(householdId);
     try {
-      await setActiveHousehold(householdId);
+      await withTimeout(setActiveHousehold(householdId), REQUEST_TIMEOUT_MS);
       toast.show({ kind: 'success', message: 'Switched household' });
     } catch (e) {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't switch household" });
