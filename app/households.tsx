@@ -102,7 +102,21 @@ export default function HouseholdsScreen() {
     }, [refreshMemberships]),
   );
 
-  const activeHouseholdId = getCurrentHouseholdId();
+  // Explicit state rather than reading lib/database's module-level
+  // getCurrentHouseholdId() directly at render time — that read only
+  // reflects reality on WHATEVER render happens to fire next, which
+  // depended on setSwitchingTo's unrelated re-render actually landing
+  // after bootstrapHouseholdId's synchronous write. Setting this
+  // explicitly the moment a switch succeeds (or on focus) removes that
+  // ambiguity: the badge updates from a state transition tied directly
+  // to the switch outcome, not an incidental side effect of a re-render.
+  const [activeHouseholdId, setActiveHouseholdIdState] = useState(getCurrentHouseholdId());
+
+  useFocusEffect(
+    useCallback(() => {
+      setActiveHouseholdIdState(getCurrentHouseholdId());
+    }, []),
+  );
 
   const switchTo = async (householdId: string) => {
     if (householdId === activeHouseholdId) return;
@@ -116,6 +130,7 @@ export default function HouseholdsScreen() {
     setSwitchingTo(householdId);
     try {
       await withTimeout(setActiveHousehold(householdId), REQUEST_TIMEOUT_MS);
+      setActiveHouseholdIdState(householdId);
       toast.show({ kind: 'success', message: 'Switched household' });
     } catch (e) {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't switch household" });
