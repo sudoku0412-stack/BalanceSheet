@@ -59,6 +59,7 @@ import {
 } from './secureStorage';
 import { processRecurringIncomes, processRecurringReceipts } from './recurring';
 import { registerForPushNotificationsAsync } from './notifications';
+import { IOS_ALERT_SETTLE_MS, NATIVE_SIGNOUT_DEFER_MS } from './signOutTiming';
 
 type AuthState = {
   initializing: boolean;
@@ -582,7 +583,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // any native Auth/Google work or stack mutation — doing that in
         // the same turn is what froze the app.
         if (Platform.OS === 'ios') {
-          await new Promise<void>((resolve) => setTimeout(resolve, 500));
+          await new Promise<void>((resolve) => setTimeout(resolve, IOS_ALERT_SETTLE_MS));
         }
         signingOutRef.current = true;
         authEpochRef.current += 1;
@@ -591,11 +592,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setMemberships([]);
         setCurrentHouseholdId(null);
         tearDownReceiptsListener();
-        try {
-          await signOutEverywhere({ google });
-        } finally {
-          if (!getCurrentUser()) signingOutRef.current = false;
+        const finishNative = async () => {
+          try {
+            await signOutEverywhere({ google });
+          } finally {
+            if (!getCurrentUser()) signingOutRef.current = false;
+          }
+        };
+        // Native GIDSignIn / FIRAuth sign-out on the main thread during
+        // the /auth replace leaves the login screen untouchable. Clear
+        // local session first; run native teardown after the stack settles.
+        if (NATIVE_SIGNOUT_DEFER_MS > 0) {
+          await new Promise<void>((resolve) => setTimeout(resolve, NATIVE_SIGNOUT_DEFER_MS));
         }
+        await finishNative();
       },
       deleteAccount: async () => {
         const uid = user?.uid;

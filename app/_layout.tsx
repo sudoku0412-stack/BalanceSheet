@@ -2,7 +2,7 @@ import 'react-native-get-random-values';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as Notifications from 'expo-notifications';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, useColorScheme, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -106,6 +106,12 @@ function RootStack() {
   const { initializing, user, onboardingSeen } = useAuth();
   const router = useRouter();
   const segments = useSegments();
+  const userRef = useRef(user);
+  const onboardingSeenRef = useRef(onboardingSeen);
+  const segmentsRef = useRef(segments);
+  userRef.current = user;
+  onboardingSeenRef.current = onboardingSeen;
+  segmentsRef.current = segments;
 
   useEffect(() => {
     if (initializing) return;
@@ -114,10 +120,19 @@ function RootStack() {
     if (!href) return;
     // Immediate replace is swallowed on iOS when Sign out's confirm
     // UIAlertController is still dismissing — schedule + retry so the
-    // user actually lands on the sign-in screen.
-    return scheduleRouteReplace(() => {
-      router.replace(href as never);
-    });
+    // user actually lands on the sign-in screen. Skip the retry once
+    // the guard is already satisfied (a second replace freezes taps).
+    return scheduleRouteReplace(
+      () => {
+        router.replace(href as never);
+      },
+      () =>
+        hrefForAuthGuard({
+          user: userRef.current,
+          onboardingSeen: onboardingSeenRef.current,
+          current: (segmentsRef.current[0] ?? '') as string,
+        }) === null,
+    );
   }, [initializing, user, onboardingSeen, segments]);
 
   // Shared-expense/settle-up pushes carry data.screen: 'home' (see
@@ -158,17 +173,24 @@ function RootStack() {
     );
   }
 
+  const signedIn = !!user;
+
   return (
     <Stack
+      // Remount the native stack on session flip so a sign-out replace
+      // cannot leave react-native-screens in a half-transition where the
+      // login UI paints but every control is dead.
+      key={signedIn ? 'in' : 'out'}
       screenOptions={{
         headerStyle: { backgroundColor: theme.colors.surface },
         headerTintColor: theme.colors.textPrimary,
         headerTitleStyle: { fontWeight: '700', color: theme.colors.textPrimary },
         contentStyle: { backgroundColor: theme.colors.background },
+        freezeOnBlur: false,
       }}
     >
       <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-      <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="auth" options={{ headerShown: false, animation: 'none' }} />
       <Stack.Screen name="reset-password" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen

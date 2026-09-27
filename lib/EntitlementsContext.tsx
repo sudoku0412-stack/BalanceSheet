@@ -16,6 +16,7 @@ import {
 } from './entitlements';
 import { getActivePromoRedemption, redeemPromoCode, type PromoRedemption, type RedeemPromoCodeResult } from './promoCode';
 import { useAuth } from './AuthContext';
+import { NATIVE_SIGNOUT_DEFER_MS } from './signOutTiming';
 
 type EntitlementsState = {
   /** False until the first CustomerInfo/promo read resolves (or the
@@ -98,8 +99,19 @@ export function EntitlementsProvider({ children }: { children: React.ReactNode }
   // fires on the null transition specifically, not on every uid change.
   useEffect(() => {
     if (user?.uid) return;
-    void logoutPurchases();
     setPromoRedemption(null);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const run = () => {
+      void logoutPurchases();
+    };
+    if (NATIVE_SIGNOUT_DEFER_MS > 0) {
+      timer = setTimeout(run, NATIVE_SIGNOUT_DEFER_MS);
+    } else {
+      run();
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [user?.uid]);
 
   useEffect(() => {
