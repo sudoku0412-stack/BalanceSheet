@@ -97,6 +97,10 @@ jest.mock('../../lib/notifications', () => ({
   registerForPushNotificationsAsync: jest.fn(async () => null),
 }));
 
+jest.mock('../../lib/dataSync', () => ({
+  notifyLocalDataChanged: jest.fn(),
+}));
+
 import { AuthProvider, useAuth } from '../../lib/AuthContext';
 import {
   configureGoogleSignIn,
@@ -136,6 +140,7 @@ import {
 import { getIsPremium } from '../../lib/entitlements';
 import { processRecurringIncomes, processRecurringReceipts } from '../../lib/recurring';
 import { resetAllSecureStorage, setOnboardingSeen } from '../../lib/secureStorage';
+import { notifyLocalDataChanged } from '../../lib/dataSync';
 
 const mockOnAuthStateChanged = onAuthStateChanged as jest.Mock;
 const mockGetCurrentUser = getCurrentUser as jest.Mock;
@@ -172,6 +177,7 @@ const mockProcessRecurringIncomes = processRecurringIncomes as jest.Mock;
 const mockProcessRecurringReceipts = processRecurringReceipts as jest.Mock;
 const mockResetAllSecureStorage = resetAllSecureStorage as jest.Mock;
 const mockSetOnboardingSeen = setOnboardingSeen as jest.Mock;
+const mockNotifyLocalDataChanged = notifyLocalDataChanged as jest.Mock;
 
 type AuthCb = (user: any) => void | Promise<void>;
 let authCb: AuthCb = () => {};
@@ -202,6 +208,7 @@ function Consumer() {
       <Pressable testID="btn-signOut" onPress={() => { void a.signOut(); }} />
       <Pressable testID="btn-delete" onPress={() => { void a.deleteAccount(); }} />
       <Pressable testID="btn-switch" onPress={() => { void a.setActiveHousehold('hh2'); }} />
+      <Pressable testID="btn-switch-hh3" onPress={() => { void a.setActiveHousehold('hh3'); }} />
       <Pressable testID="btn-onboard" onPress={() => { void a.markOnboardingSeen(); }} />
       <Pressable testID="btn-edit-on" onPress={() => a.setEditInProgress(true)} />
     </>
@@ -390,6 +397,52 @@ describe('AuthProvider session + household bootstrap', () => {
     });
     expect(firstUnsub).toHaveBeenCalled();
     expect(mockSubscribeToHouseholdReceipts).toHaveBeenLastCalledWith('hh2', 'u1');
+    expect(mockNotifyLocalDataChanged).toHaveBeenCalled();
+  });
+
+  it('does not re-bootstrap the household on a Firebase token refresh for the same uid', async () => {
+    renderProvider();
+    await emitAuth(makeUser());
+    await waitForReady();
+    const bootstrapCalls = mockBootstrapHouseholdId.mock.calls.length;
+    const persistCalls = mockPersistActiveHouseholdId.mock.calls.length;
+
+    await emitAuth(makeUser({ displayName: 'Jane Doe Updated' }));
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(mockBootstrapHouseholdId.mock.calls.length).toBe(bootstrapCalls);
+    expect(mockPersistActiveHouseholdId.mock.calls.length).toBe(persistCalls);
+  });
+
+  it('serializes back-to-back setActiveHousehold calls so both complete in order', async () => {
+    const order: string[] = [];
+    mockPersistActiveHouseholdId.mockImplementation(async (_uid: string, hid: string) => {
+      order.push(`persist:${hid}`);
+    });
+    mockBootstrapHouseholdId.mockImplementation(async (_uid: string, hid: string) => {
+      order.push(`bootstrap:${hid}`);
+    });
+
+    renderProvider();
+    await emitAuth(makeUser());
+    await waitForReady();
+    order.length = 0;
+
+    await act(async () => {
+      fireEvent.press(screen.getByTestId('btn-switch'));
+      fireEvent.press(screen.getByTestId('btn-switch-hh3'));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(order.filter((s) => s.startsWith('bootstrap:')).length).toBe(2);
+    });
+    const bootstrapOrder = order
+      .filter((s) => s.startsWith('bootstrap:'))
+      .map((s) => s.split(':')[1]);
+    expect(bootstrapOrder).toEqual(['hh2', 'hh3']);
   });
 });
 
