@@ -111,9 +111,15 @@ async function backfillHouseholdIdForRows(uid: string, hid: string): Promise<voi
       `UPDATE savings_goals SET household_id = ? WHERE household_id IS NULL AND user_id = ?`,
       [hid, uid],
     );
-  } catch {
+  } catch (e) {
     // Columns may not exist yet on a fresh install where init hasn't
-    // run — fine, there are no rows to backfill either.
+    // run — fine, there are no rows to backfill either. Logged (rather
+    // than fully silent) because a REAL failure here means NULL rows
+    // never get claimed by a household, and householdFilterSql's
+    // `OR household_id IS NULL` fallback then lets them leak into
+    // EVERY household's queries indefinitely, not just the original one.
+    // eslint-disable-next-line no-console
+    console.warn('[database] backfillHouseholdIdForRows failed:', (e as Error)?.message);
   }
 }
 
