@@ -207,8 +207,8 @@ function Consumer() {
       <Pressable testID="btn-update" onPress={() => { void a.updateProfileName('Ada', 'Lovelace'); }} />
       <Pressable testID="btn-signOut" onPress={() => { void a.signOut(); }} />
       <Pressable testID="btn-delete" onPress={() => { void a.deleteAccount(); }} />
-      <Pressable testID="btn-switch" onPress={() => { void a.setActiveHousehold('hh2'); }} />
-      <Pressable testID="btn-switch-hh3" onPress={() => { void a.setActiveHousehold('hh3'); }} />
+      <Pressable testID="btn-switch" onPress={() => { void a.setActiveHousehold('hh2').catch(() => {}); }} />
+      <Pressable testID="btn-switch-hh3" onPress={() => { void a.setActiveHousehold('hh3').catch(() => {}); }} />
       <Pressable testID="btn-onboard" onPress={() => { void a.markOnboardingSeen(); }} />
       <Pressable testID="btn-edit-on" onPress={() => a.setEditInProgress(true)} />
     </>
@@ -233,9 +233,17 @@ async function waitForReady() {
   await waitFor(() => expect(screen.getByTestId('initializing').props.children).toBe('false'));
 }
 
+function resetHouseholdSwitchMocks() {
+  mockPersistActiveHouseholdId.mockReset();
+  mockPersistActiveHouseholdId.mockImplementation(async () => {});
+  mockBootstrapHouseholdId.mockReset();
+  mockBootstrapHouseholdId.mockImplementation(async () => {});
+}
+
 describe('AuthProvider session + household bootstrap', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetHouseholdSwitchMocks();
     mockOnAuthStateChanged.mockImplementation((cb: AuthCb) => {
       authCb = cb;
       return jest.fn();
@@ -444,11 +452,71 @@ describe('AuthProvider session + household bootstrap', () => {
       .map((s) => s.split(':')[1]);
     expect(bootstrapOrder).toEqual(['hh2', 'hh3']);
   });
+
+  it('persists the chosen household before bootstrapping local currentHouseholdId', async () => {
+    const order: string[] = [];
+    let releasePersist: () => void = () => {};
+    mockPersistActiveHouseholdId.mockImplementation(async (_uid: string, hid: string) => {
+      if (hid !== 'hh2') return;
+      order.push('persist-start');
+      await new Promise<void>((resolve) => {
+        releasePersist = resolve;
+      });
+      order.push('persist-end');
+    });
+    mockBootstrapHouseholdId.mockImplementation(async (_uid: string, hid: string) => {
+      if (hid === 'hh2') order.push('bootstrap');
+    });
+
+    renderProvider();
+    await emitAuth(makeUser());
+    await waitForReady();
+    order.length = 0;
+
+    fireEvent.press(screen.getByTestId('btn-switch'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(order).toEqual(['persist-start']);
+    expect(mockBootstrapHouseholdId).not.toHaveBeenCalledWith('u1', 'hh2');
+
+    await act(async () => {
+      releasePersist();
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(order).toEqual(['persist-start', 'persist-end', 'bootstrap']);
+    });
+  });
+
+  it('lets a later setActiveHousehold run after an earlier switch fails', async () => {
+    mockPersistActiveHouseholdId.mockImplementation(async (_uid: string, hid: string) => {
+      if (hid === 'hh2') throw new Error('persist failed');
+    });
+
+    renderProvider();
+    await emitAuth(makeUser());
+    await waitForReady();
+
+    fireEvent.press(screen.getByTestId('btn-switch'));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(mockBootstrapHouseholdId).not.toHaveBeenCalledWith('u1', 'hh2');
+
+    fireEvent.press(screen.getByTestId('btn-switch-hh3'));
+    await waitFor(() => {
+      expect(mockPersistActiveHouseholdId).toHaveBeenCalledWith('u1', 'hh3');
+      expect(mockBootstrapHouseholdId).toHaveBeenCalledWith('u1', 'hh3');
+    });
+  });
 });
 
 describe('AuthProvider profile + account actions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetHouseholdSwitchMocks();
     mockOnAuthStateChanged.mockImplementation((cb: AuthCb) => {
       authCb = cb;
       return jest.fn();
@@ -722,6 +790,7 @@ describe('AuthProvider profile + account actions', () => {
 describe('AuthProvider invite + phone-invite permissions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    resetHouseholdSwitchMocks();
     mockOnAuthStateChanged.mockImplementation((cb: AuthCb) => {
       authCb = cb;
       return jest.fn();

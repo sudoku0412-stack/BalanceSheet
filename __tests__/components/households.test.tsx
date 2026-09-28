@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, fireEvent, waitFor, screen, act } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, screen, act, within } from '@testing-library/react-native';
 import { Alert } from 'react-native';
 
 // NOTE: mocks below that return plain object literals (expo-router,
@@ -105,18 +105,44 @@ jest.mock('uuid', () => ({
 
 import HouseholdsScreen from '../../app/households';
 import { createHousehold, deleteHousehold, getHouseholdMembers, renameHousehold } from '../../lib/cloudSync';
-import { getAllReceiptsForHousehold, getAllSettlementsForHousehold } from '../../lib/database';
+import {
+  getAllReceiptsForHousehold,
+  getAllSettlementsForHousehold,
+  getCurrentHouseholdId,
+} from '../../lib/database';
 
 const mockCreateHousehold = createHousehold as jest.Mock;
 const mockDeleteHousehold = deleteHousehold as jest.Mock;
 const mockGetHouseholdMembers = getHouseholdMembers as jest.Mock;
 const mockGetAllReceiptsForHousehold = getAllReceiptsForHousehold as jest.Mock;
 const mockGetAllSettlementsForHousehold = getAllSettlementsForHousehold as jest.Mock;
+const mockGetCurrentHouseholdId = getCurrentHouseholdId as jest.Mock;
 const mockRenameHousehold = renameHousehold as jest.Mock;
+
+/** Closest ancestor of the household name that does not also contain another household. */
+function householdCard(name: string) {
+  const others = (mockAuthValue.memberships as { name?: string }[])
+    .map((m) => m.name || 'Unnamed household')
+    .filter((n) => n !== name);
+  let node: { parent?: unknown } | undefined = screen.getByText(name);
+  let last = node;
+  while (node?.parent) {
+    const parent = node.parent as { parent?: unknown };
+    if (others.some((n) => within(parent as never).queryByText(n))) {
+      return last;
+    }
+    last = parent;
+    node = parent;
+  }
+  return last;
+}
 
 describe('HouseholdsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSetActiveHousehold.mockReset();
+    mockSetActiveHousehold.mockImplementation(async () => {});
+    mockGetCurrentHouseholdId.mockReturnValue('hh1');
     capturedSwipeableProps.length = 0;
     mockAuthValue = {
       user: { uid: 'u1' },
@@ -366,5 +392,78 @@ describe('HouseholdsScreen', () => {
       expect(props.hitSlop).toEqual(expect.objectContaining({ left: expect.any(Number) }));
       expect(props.hitSlop.left).toBeLessThan(0);
     }
+  });
+
+  /**
+   * Regression for the Active badge being a render-time read of
+   * getCurrentHouseholdId(): that only updated if some other setState
+   * happened to fire after bootstrapHouseholdId's sync write. The
+   * screen now keeps explicit state set on a successful switch, so the
+   * badge must move even when the database getter stays stale.
+   */
+  it('moves the Active badge after a successful switch even if getCurrentHouseholdId stays stale', async () => {
+    mockGetCurrentHouseholdId.mockReturnValue('hh1');
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getByText('Our Home'));
+
+    expect(within(householdCard('Our Home')).getByText('Active')).toBeTruthy();
+    expect(within(householdCard('Cabin')).queryByText('Active')).toBeNull();
+
+    fireEvent.press(screen.getByText('Cabin'));
+    await waitFor(() => {
+      expect(mockSetActiveHousehold).toHaveBeenCalledWith('hh2');
+    });
+    await waitFor(() => {
+      expect(within(householdCard('Cabin')).getByText('Active')).toBeTruthy();
+    });
+    expect(within(householdCard('Our Home')).queryByText('Active')).toBeNull();
+    expect(mockToastShow).toHaveBeenCalledWith({ kind: 'success', message: 'Switched household' });
+  });
+
+  it('keeps the previous Active badge when setActiveHousehold fails', async () => {
+    mockSetActiveHousehold.mockRejectedValue(new Error('offline'));
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getByText('Our Home'));
+
+    fireEvent.press(screen.getByText('Cabin'));
+    await waitFor(() => {
+      expect(mockToastShow).toHaveBeenCalledWith({
+        kind: 'error',
+        message: 'offline',
+      });
+    });
+    expect(within(householdCard('Our Home')).getByText('Active')).toBeTruthy();
+    expect(within(householdCard('Cabin')).queryByText('Active')).toBeNull();
+  });
+
+  it('times out a hung switch, keeps the previous Active badge, and re-enables tapping', async () => {
+    mockSetActiveHousehold.mockImplementation(() => new Promise(() => {}));
+    render(<HouseholdsScreen />);
+    await waitFor(() => screen.getByText('Our Home'));
+
+    jest.useFakeTimers();
+    try {
+      fireEvent.press(screen.getByText('Cabin'));
+      await act(async () => {
+        jest.advanceTimersByTime(15000);
+      });
+      await waitFor(() => {
+        expect(mockToastShow).toHaveBeenCalledWith({
+          kind: 'error',
+          message: 'Request timed out — check your connection and try again.',
+        });
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+
+    expect(within(householdCard('Our Home')).getByText('Active')).toBeTruthy();
+    expect(within(householdCard('Cabin')).queryByText('Active')).toBeNull();
+
+    mockSetActiveHousehold.mockImplementation(async () => {});
+    fireEvent.press(screen.getByText('Cabin'));
+    await waitFor(() => {
+      expect(mockSetActiveHousehold).toHaveBeenCalledTimes(2);
+    });
   });
 });
