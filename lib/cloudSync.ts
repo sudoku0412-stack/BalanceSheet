@@ -1086,10 +1086,24 @@ export type HouseholdMembership = {
 
 /** Idempotent: creates `users/{uid}/memberships/{hid}` if it doesn't
  *  already exist, looking up the household doc to determine owner vs.
- *  member. Called on every sign-in for the user's currently
- *  bootstrapped household — safe to call repeatedly. This is what
- *  transparently promotes every pre-existing single-household user to
- *  "member of 1 household" the first time they open an updated build. */
+ *  member. Called on every sign-in AND every manual switch (AuthContext's
+ *  runHouseholdSwitch) for whichever household is now active — safe to
+ *  call repeatedly. This is also what transparently promotes every
+ *  pre-existing single-household user to "member of 1 household" the
+ *  first time they open an updated build.
+ *
+ *  Also enforces `isDefault` exclusivity: exactly one of the user's
+ *  memberships is flagged isDefault at a time, since leaveHousehold and
+ *  households.tsx's performDelete both read it to decide which
+ *  household becomes active if the current one goes away. Without
+ *  clearing siblings here, a membership doc that already existed before
+ *  a switch (created by createHousehold/acceptInvite with isDefault:
+ *  false, or by an earlier switch) never got flagged true — this
+ *  function used to return early via `if (snap.exists) return`, so
+ *  switching back to a previously-visited household silently left BOTH
+ *  it and whichever household was default before still flagged,
+ *  letting that stale flag win the fallback instead of the household
+ *  the user was actually last active in. */
 export async function ensureMembershipForCurrentHousehold(
   uid: string,
   householdId: string,
@@ -1098,17 +1112,29 @@ export async function ensureMembershipForCurrentHousehold(
   if (!firestore || !householdId) return;
   try {
     const db = firestore();
-    const ref = db.collection('users').doc(uid).collection('memberships').doc(householdId);
+    const membershipsRef = db.collection('users').doc(uid).collection('memberships');
+    const ref = membershipsRef.doc(householdId);
     const snap = await ref.get();
-    if (snap.exists) return;
-    const householdSnap = await db.collection('households').doc(householdId).get();
-    const isOwner = (householdSnap.data()?.ownerUid as string | undefined) === uid;
-    await ref.set({
-      householdId,
-      role: isOwner ? 'owner' : 'member',
-      joinedAt: firestore.FieldValue.serverTimestamp(),
-      isDefault: true,
-    });
+    const batch = db.batch();
+    if (!snap.exists) {
+      const householdSnap = await db.collection('households').doc(householdId).get();
+      const isOwner = (householdSnap.data()?.ownerUid as string | undefined) === uid;
+      batch.set(ref, {
+        householdId,
+        role: isOwner ? 'owner' : 'member',
+        joinedAt: firestore.FieldValue.serverTimestamp(),
+        isDefault: true,
+      });
+    } else if (snap.data()?.isDefault !== true) {
+      batch.set(ref, { isDefault: true }, { merge: true });
+    }
+    const allSnap = await membershipsRef.get();
+    for (const doc of allSnap.docs) {
+      if (doc.id !== householdId && doc.data()?.isDefault === true) {
+        batch.set(doc.ref, { isDefault: false }, { merge: true });
+      }
+    }
+    await batch.commit();
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[cloudSync] ensureMembershipForCurrentHousehold failed:', (e as Error)?.message);
