@@ -60,6 +60,7 @@ import {
 import { processRecurringIncomes, processRecurringReceipts } from './recurring';
 import { registerForPushNotificationsAsync } from './notifications';
 import { IOS_ALERT_SETTLE_MS, NATIVE_SIGNOUT_DEFER_MS } from './signOutTiming';
+import { notifyLocalDataChanged } from './dataSync';
 
 type AuthState = {
   initializing: boolean;
@@ -104,6 +105,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [editInProgress, setEditInProgress] = useState(false);
   const signingOutRef = useRef(false);
   const authEpochRef = useRef(0);
+  /** Firebase onAuthStateChanged re-fires on token refresh with the same
+   *  uid. Re-running household bootstrap on every echo races manual
+   *  switches (ensureHouseholdForUser can still see the PRE-persist
+   *  householdId) and leaves duplicate/missing Firestore listeners. */
+  const authenticatedUidRef = useRef<string | null>(null);
+  /** Serializes every runHouseholdSwitch so a second tap (or an auth
+   *  callback that slipped through) cannot tear down listeners mid-flight. */
+  const householdSwitchChainRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     const webClientId =
@@ -221,24 +230,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    *  bootstrap. */
   const runHouseholdSwitch = useCallback(
     async (uid: string, householdId: string) => {
-      tearDownReceiptsListener();
-      await bootstrapHouseholdId(uid, householdId);
-      await Promise.all([
-        persistActiveHouseholdId(uid, householdId),
-        migrateLegacyBudgetsToHousehold(householdId),
-        ensureMembershipForCurrentHousehold(uid, householdId),
-      ]);
-      const unsubReceipts = subscribeToHouseholdReceipts(householdId, uid);
-      if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
-      const unsubSettlements = subscribeToHouseholdSettlements(householdId, uid);
-      if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
-      const unsubIncomes = subscribeToHouseholdIncomes(householdId, uid);
-      if (unsubIncomes) incomesUnsubRef.current = unsubIncomes;
-      const unsubGoals = subscribeToHouseholdSavingsGoals(householdId, uid);
-      if (unsubGoals) savingsGoalsUnsubRef.current = unsubGoals;
-      const unsubBudgets = subscribeToHouseholdBudgets(householdId);
-      if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
-      await refreshMemberships(uid);
+      const perform = async () => {
+        tearDownReceiptsListener();
+        // Persist before touching local currentHouseholdId so a token-
+        // refresh auth echo that runs ensureHouseholdForUser mid-switch
+        // resolves to the household the user actually picked.
+        await persistActiveHouseholdId(uid, householdId);
+        await bootstrapHouseholdId(uid, householdId);
+        await Promise.all([
+          migrateLegacyBudgetsToHousehold(householdId),
+          ensureMembershipForCurrentHousehold(uid, householdId),
+        ]);
+        const unsubReceipts = subscribeToHouseholdReceipts(householdId, uid);
+        if (unsubReceipts) receiptsUnsubRef.current = unsubReceipts;
+        const unsubSettlements = subscribeToHouseholdSettlements(householdId, uid);
+        if (unsubSettlements) settlementsUnsubRef.current = unsubSettlements;
+        const unsubIncomes = subscribeToHouseholdIncomes(householdId, uid);
+        if (unsubIncomes) incomesUnsubRef.current = unsubIncomes;
+        const unsubGoals = subscribeToHouseholdSavingsGoals(householdId, uid);
+        if (unsubGoals) savingsGoalsUnsubRef.current = unsubGoals;
+        const unsubBudgets = subscribeToHouseholdBudgets(householdId);
+        if (unsubBudgets) budgetsUnsubRef.current = unsubBudgets;
+        await refreshMemberships(uid);
+        notifyLocalDataChanged();
+      };
+      const queued = householdSwitchChainRef.current.then(perform, perform);
+      householdSwitchChainRef.current = queued.catch(() => {
+        // Swallowed so a failed switch does not block later ones.
+      });
+      return queued;
     },
     [tearDownReceiptsListener, refreshMemberships],
   );
@@ -469,7 +489,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // schemas; any error here is non-fatal.
       });
 
-      tearDownReceiptsListener();
+      const isTokenRefresh = !!u?.uid && u.uid === authenticatedUidRef.current;
+      if (!isTokenRefresh) {
+        tearDownReceiptsListener();
+      }
 
       if (u?.uid && recurringProcessedForUidRef.current !== u.uid) {
         recurringProcessedForUidRef.current = u.uid;
@@ -483,6 +506,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (u?.uid) {
+        if (isTokenRefresh) {
+          return;
+        }
+        authenticatedUidRef.current = u.uid;
         // Silent household bootstrap so split/reports have a real (if
         // solo) household to read from, and receipt photos sync across
         // this user's own devices.
@@ -521,6 +548,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setMemberships([]);
         }
       } else {
+        authenticatedUidRef.current = null;
         setCurrentHouseholdId(null);
         setMemberships([]);
         invitePromptedForUidRef.current = null;
@@ -587,6 +615,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         signingOutRef.current = true;
         authEpochRef.current += 1;
+        authenticatedUidRef.current = null;
         setUser(null);
         setProfileState(null);
         setMemberships([]);
