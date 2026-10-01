@@ -74,6 +74,7 @@ import {
   convertToUsd,
   currencyDecimals,
   formatCurrency,
+  hasLiveRates,
   isPremiumCurrency,
   type CurrencyCode,
 } from '../lib/currency';
@@ -1056,7 +1057,7 @@ export default function SettingsScreen() {
               })}
             </View>
             <Text style={styles.currencyCaption}>
-              {t('amountsShownIn', { currency })}
+              {isPremium && hasLiveRates() ? t('amountsShownInLive', { currency }) : t('amountsShownIn', { currency })}
             </Text>
           </View>
         </Section>

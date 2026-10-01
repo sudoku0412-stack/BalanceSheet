@@ -135,4 +135,21 @@ describe('EditReceiptScreen (smoke test)', () => {
     expect(mockEditPush).toHaveBeenCalledWith('/paywall');
     expect(screen.queryByText('AUD')).toBeNull();
   });
+
+  it('reopens a frozen-rate foreign receipt showing exactly what was typed', async () => {
+    // Saved as EUR 100 at a frozen live rate of 0.95 EUR per canonical USD.
+    mockGetReceiptById.mockResolvedValue(
+      makeReceipt({ totalAmount: 100 / 0.95, originalCurrency: 'EUR', fxRate: 0.95 }),
+    );
+    render(<EditReceiptScreen />);
+    await waitFor(() => expect(screen.getByDisplayValue('100.00')).toBeTruthy());
+  });
+
+  it('without a frozen rate, the fixed table is used', async () => {
+    mockGetReceiptById.mockResolvedValue(
+      makeReceipt({ totalAmount: 100, originalCurrency: 'EUR' }),
+    );
+    render(<EditReceiptScreen />);
+    await waitFor(() => expect(screen.getByDisplayValue('92.00')).toBeTruthy());
+  });
 });

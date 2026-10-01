@@ -24,7 +24,9 @@ import { initDatabase } from '../lib/database';
 import { ThemeProvider, useTheme, getBootstrapTheme } from '../constants/theme';
 import { I18nProvider } from '../lib/I18nContext';
 import { AuthProvider, useAuth } from '../lib/AuthContext';
-import { EntitlementsProvider } from '../lib/EntitlementsContext';
+import { EntitlementsProvider, useEntitlements } from '../lib/EntitlementsContext';
+import { clearLiveRates, refreshLiveRates } from '../lib/exchangeRates';
+import { notifyLocalDataChanged } from '../lib/dataSync';
 import { ToastProvider } from '../components/ui/Toast';
 import { hrefForAuthGuard } from '../lib/routeGuard';
 import { scheduleRouteReplace } from '../lib/scheduleRouteReplace';
@@ -87,6 +89,7 @@ export default function RootLayout() {
             <ToastProvider>
               <AuthProvider>
                 <EntitlementsProvider>
+                  <LiveRatesSync />
                   <ThemedStatusBar />
                   <RootStack />
                 </EntitlementsProvider>
@@ -97,6 +100,29 @@ export default function RootLayout() {
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** Premium: keep currency conversion on daily live rates; everyone else
+ *  (or a lapsed subscription) uses the fixed approximate table. */
+function LiveRatesSync() {
+  const { isPremium, loading } = useEntitlements();
+  useEffect(() => {
+    if (loading) return;
+    if (!isPremium) {
+      clearLiveRates();
+      return;
+    }
+    let cancelled = false;
+    refreshLiveRates()
+      .then((live) => {
+        if (live && !cancelled) notifyLocalDataChanged();
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isPremium, loading]);
+  return null;
 }
 
 function ThemedStatusBar() {
