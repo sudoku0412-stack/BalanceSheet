@@ -581,8 +581,9 @@ export default function SettingsScreen() {
         // One-time push of categories created before cloud sync existed.
         try {
           if (customs.length > 0 && !(await getCustomCategoriesSynced(householdId))) {
-            await syncCustomCategoriesToCloud(householdId, { add: customs });
-            await setCustomCategoriesSynced(householdId);
+            if (await syncCustomCategoriesToCloud(householdId, { add: customs })) {
+              await setCustomCategoriesSynced(householdId);
+            }
           }
         } catch {
           // best-effort; retried on the next focus

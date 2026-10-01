@@ -101,7 +101,7 @@ jest.mock('../../lib/cloudSync', () => ({
   isCloudSyncAvailable: jest.fn(() => true),
   leaveHousehold: jest.fn(async () => ({ ok: true, nextActiveHouseholdId: 'hh-solo' })),
   syncBudgetsToCloud: jest.fn(async () => {}),
-  syncCustomCategoriesToCloud: jest.fn(async () => {}),
+  syncCustomCategoriesToCloud: jest.fn(async () => true),
   syncPushTokenToCloud: jest.fn(async () => {}),
 }));
 
@@ -223,6 +223,15 @@ describe('SettingsScreen', () => {
         remove: [{ name: 'Pets', color: '#D6336C' }],
       }),
     );
+  });
+
+  it('does not mark categories as synced when the cloud push fails', async () => {
+    mockIsPremium = true;
+    (syncCustomCategoriesToCloud as jest.Mock).mockResolvedValueOnce(false);
+    render(<SettingsScreen />);
+    await waitFor(() => expect(syncCustomCategoriesToCloud).toHaveBeenCalled());
+    await waitFor(() => screen.getByTestId('custom-budget-row-Pets'));
+    expect(setCustomCategoriesSynced).not.toHaveBeenCalled();
   });
 
   it('premium user: removing a custom category also zeroes its budget', async () => {

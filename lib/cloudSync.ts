@@ -896,13 +896,16 @@ export function subscribeToHouseholdSavingsGoals(
  *  member sees the same names and colors. Uses arrayUnion / arrayRemove
  *  (not a whole-list overwrite) so two members editing at once don't
  *  clobber each other. Budgets for these categories already sync through
- *  syncBudgetsToCloud. */
+ *  syncBudgetsToCloud. Removal matches by NAME (not exact object), so a
+ *  category two members created separately with different colors is
+ *  fully removed instead of resurfacing from the other copy. Resolves
+ *  true only when the write(s) succeeded. */
 export async function syncCustomCategoriesToCloud(
   householdId: string,
   change: { add?: CustomCategory[]; remove?: CustomCategory[] },
-): Promise<void> {
+): Promise<boolean> {
   const firestore = loadFirestore();
-  if (!firestore || !householdId) return;
+  if (!firestore || !householdId) return false;
   try {
     const ref = firestore().collection('households').doc(householdId);
     if (change.add && change.add.length > 0) {
@@ -912,14 +915,24 @@ export async function syncCustomCategoriesToCloud(
       );
     }
     if (change.remove && change.remove.length > 0) {
-      await ref.set(
-        { customCategories: firestore.FieldValue.arrayRemove(...change.remove) },
-        { merge: true },
-      );
+      const names = new Set(change.remove.map((c) => c.name));
+      const current = (await ref.get()).data()?.customCategories as unknown;
+      if (Array.isArray(current)) {
+        await ref.set(
+          {
+            customCategories: current.filter(
+              (c) => !(c && typeof c === 'object' && names.has((c as CustomCategory).name)),
+            ),
+          },
+          { merge: true },
+        );
+      }
     }
+    return true;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[cloudSync] syncCustomCategoriesToCloud failed:', (e as Error)?.message);
+    return false;
   }
 }
 

@@ -728,6 +728,21 @@ describe('custom category sync', () => {
     expect(mockStore.get('households/hh1')?.memberUids).toEqual(['u1']);
   });
 
+  it('removal matches by name, clearing copies that differ only in color', async () => {
+    seed('households/hh1', {
+      memberUids: ['u1'],
+      customCategories: [pets, { name: 'Pets', color: '#000000' }, hobbies],
+    });
+    await expect(syncCustomCategoriesToCloud('hh1', { remove: [pets] })).resolves.toBe(true);
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([hobbies]);
+  });
+
+  it('resolves false without a household id and true on success', async () => {
+    seed('households/hh1', { memberUids: ['u1'] });
+    await expect(syncCustomCategoriesToCloud('', { add: [pets] })).resolves.toBe(false);
+    await expect(syncCustomCategoriesToCloud('hh1', { add: [pets] })).resolves.toBe(true);
+  });
+
   it('is a no-op for an empty change or missing household id', async () => {
     seed('households/hh1', { memberUids: ['u1'] });
     await syncCustomCategoriesToCloud('hh1', {});
