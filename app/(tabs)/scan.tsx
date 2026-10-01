@@ -77,6 +77,7 @@ import { DateField } from '../../components/ui/DateField';
 import { checkItemsAgainstSubtotal } from '../../lib/itemsTotalCheck';
 import { sanitizeAmountInput, parseAmountInput } from '../../lib/amountValidation';
 
+import { useT } from '../../lib/I18nContext';
 // Household-member display helpers for the per-item "Split with" picker
 // (Add Expense / manual entry only) — mirrors the label/initial logic
 // already used for the receipt-level split picker in app/edit/[id].tsx.
@@ -137,6 +138,7 @@ function uniqueItemCategories(items: LineItem[]): string[] {
 }
 
 export default function ScanScreen() {
+  const t = useT();
   const router = useRouter();
   const params = useLocalSearchParams<{ mode?: string }>();
 
@@ -960,12 +962,12 @@ export default function ScanScreen() {
   const saveItemModal = () => {
     const trimmedName = itemName.trim();
     if (!trimmedName) {
-      toast.show({ message: 'Please enter an item name.', kind: 'error' });
+      toast.show({ message: t('pleaseEnterAnItemName'), kind: 'error' });
       return;
     }
     const amt = parseAmountInput(itemAmount);
     if (amt === null || amt < 0) {
-      toast.show({ message: 'Please enter a valid item amount.', kind: 'error' });
+      toast.show({ message: t('pleaseEnterAValidItem'), kind: 'error' });
       return;
     }
     // Solo household (no other members) — nothing to split, so this
@@ -1064,8 +1066,8 @@ export default function ScanScreen() {
       runAiParse(rawText);
     } catch (err) {
       Alert.alert(
-        'OCR Failed',
-        'Could not read the receipt. Please enter the details manually.',
+        t('ocrFailed'),
+        t('couldNotReadTheReceipt'),
         [{ text: 'OK' }],
       );
       setParsed({ storeName: '', date: new Date().toISOString(), totalAmount: 0, category: 'Other', lineItems: [], rawText: '' });
@@ -1094,7 +1096,7 @@ export default function ScanScreen() {
     if (!cameraPermission?.granted) {
       const res = await requestCameraPermission();
       if (!res.granted) {
-        Alert.alert('Permission required', 'Camera access is needed to scan receipts.');
+        Alert.alert(t('permissionRequired'), t('cameraAccessIsNeededTo'));
         return;
       }
     }
@@ -1106,7 +1108,7 @@ export default function ScanScreen() {
         await runOCR(photo.uri);
       }
     } catch (e) {
-      Alert.alert('Camera error', (e as Error)?.message ?? 'Could not capture the photo.');
+      Alert.alert(t('cameraError'), (e as Error)?.message ?? t('couldNotCaptureThePhoto'));
     }
   };
 
@@ -1141,17 +1143,17 @@ export default function ScanScreen() {
 
   /** Idle shutter "create" button — pick expense (manual entry) or income. */
   const showCreateOptions = () => {
-    Alert.alert('Add', undefined, [
-      { text: 'Add expense', onPress: startManualEntry },
+    Alert.alert(t('add'), undefined, [
+      { text: t('addExpense'), onPress: startManualEntry },
       {
-        text: 'Add income',
+        text: t('addIncome'),
         onPress: () => router.push('/add-income' as never),
       },
       {
-        text: 'Scan pay stub',
+        text: t('scanPayStub'),
         onPress: () => router.push('/scan-paystub' as never),
       },
-      { text: 'Cancel', style: 'cancel' },
+      { text: t('cancel'), style: 'cancel' },
     ]);
   };
 
@@ -1222,12 +1224,12 @@ export default function ScanScreen() {
 
   const handleSave = async () => {
     if (!storeName.trim()) {
-      toast.show({ message: 'Please enter a merchant name.', kind: 'error' });
+      toast.show({ message: t('pleaseEnterAMerchantName'), kind: 'error' });
       return;
     }
     const amountVal = parseAmountInput(amount);
     if (amountVal === null || amountVal < 0) {
-      toast.show({ message: 'Please enter a valid amount.', kind: 'error' });
+      toast.show({ message: t('pleaseEnterAValidAmount'), kind: 'error' });
       return;
     }
 
@@ -1244,14 +1246,14 @@ export default function ScanScreen() {
         String(recurringDurationVal) !== trimmed
       ) {
         toast.show({
-          message: 'Please enter how many months this expense should repeat for.',
+          message: t('pleaseEnterHowManyMonths'),
           kind: 'error',
         });
         return;
       }
       if (!parseYmdLocal(recurringNextDate.trim())) {
         toast.show({
-          message: 'Please enter a valid next auto-add date (YYYY-MM-DD).',
+          message: t('pleaseEnterAValidNext'),
           kind: 'error',
         });
         return;
@@ -1268,13 +1270,13 @@ export default function ScanScreen() {
     if (!mismatch.ok) {
       const confirmed = await new Promise<boolean>((resolve) => {
         Alert.alert(
-          "Line items don't match the subtotal",
+          t('lineItemsDonTMatch'),
           `${mismatch.hint}\n\nItems total: $${mismatch.sum.toFixed(
             2,
           )}\nReceipt subtotal: $${mismatch.subtotal.toFixed(2)}`,
           [
-            { text: 'Review items', style: 'cancel', onPress: () => resolve(false) },
-            { text: 'Save anyway', onPress: () => resolve(true) },
+            { text: t('reviewItems'), style: 'cancel', onPress: () => resolve(false) },
+            { text: t('saveAnyway'), onPress: () => resolve(true) },
           ],
           { cancelable: true, onDismiss: () => resolve(false) },
         );
@@ -1538,18 +1540,18 @@ export default function ScanScreen() {
   // leave a filled-in expense form, unlike the camera-idle X above
   // which has nothing to lose yet.
   const confirmDiscardExpense = () => {
-    Alert.alert('Discard this expense?', 'Your entered details will be lost.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Discard', style: 'destructive', onPress: exitScan },
+    Alert.alert(t('discardThisExpense'), t('yourEnteredDetailsWillBe'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('discard'), style: 'destructive', onPress: exitScan },
     ]);
   };
 
   // Same data-loss risk as confirmDiscardExpense above, but for the
   // "Retake" chevron — it stays on this screen (closeScan), not exits.
   const confirmRetake = () => {
-    Alert.alert('Retake photo?', 'Your entered details will be lost.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Retake', style: 'destructive', onPress: closeScan },
+    Alert.alert(t('retakePhoto'), t('yourEnteredDetailsWillBe'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('retake'), style: 'destructive', onPress: closeScan },
     ]);
   };
 
@@ -1570,7 +1572,7 @@ export default function ScanScreen() {
     const check = checkItemsAgainstSubtotal(nextItems, nextSubtotal);
     if (check.ok) return;
     Alert.alert(
-      "Line items don't match the subtotal",
+      t('lineItemsDonTMatch'),
       `${check.hint}\n\nItems total: $${check.sum.toFixed(
         2,
       )}\nReceipt subtotal: $${check.subtotal.toFixed(
@@ -1834,7 +1836,7 @@ export default function ScanScreen() {
             {cameraPermission && !cameraPermission.granted && !cameraPermission.canAskAgain && (
               <View style={styles.permissionDeniedWrap}>
                 <Text style={styles.permissionDeniedText}>
-                  Camera access was denied. Enable it in your phone's Settings to scan receipts.
+                  {t('cameraAccessWasDeniedEnable')}
                 </Text>
               </View>
             )}
@@ -1851,7 +1853,7 @@ export default function ScanScreen() {
 
         <View style={styles.frameWrap}>
           <View style={styles.frameGuide} />
-          <Text style={styles.frameCaption}>Align receipt within frame</Text>
+          <Text style={styles.frameCaption}>{t('alignReceiptWithinFrame')}</Text>
         </View>
 
         <View style={styles.shutterRow}>
@@ -1889,7 +1891,7 @@ export default function ScanScreen() {
           <Animated.View
             style={[styles.spinnerRing, { transform: [{ rotate: spinDeg }] }]}
           />
-          <Text style={styles.processingText}>Reading receipt…</Text>
+          <Text style={styles.processingText}>{t('readingReceipt')}</Text>
         </View>
       </View>
     );
@@ -1927,7 +1929,7 @@ export default function ScanScreen() {
                 size={22}
                 color={theme.colors.textPrimary}
               />
-              <Text style={styles.retakeText}>Retake</Text>
+              <Text style={styles.retakeText}>{t('retake')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -1937,23 +1939,23 @@ export default function ScanScreen() {
             !isManualEntry && styles.reviewTitleUppercase,
           ]}
         >
-          {isManualEntry ? 'Add Expense' : 'Review Receipt'}
+          {isManualEntry ? t('addExpense2') : t('reviewReceipt')}
         </Text>
         {!isManualEntry && (
           <Text style={styles.reviewEyebrow}>
-            Extracted — check before saving
+            {t('extractedCheckBeforeSaving')}
           </Text>
         )}
         {aiPending && (
           <View style={styles.aiChipPending}>
             <ActivityIndicator size="small" color={theme.colors.accent} />
-            <Text style={styles.aiChipText}>Improving with AI…</Text>
+            <Text style={styles.aiChipText}>{t('improvingWithAi')}</Text>
           </View>
         )}
         {!aiPending && aiApplied && (
           <View style={styles.aiChipApplied}>
             <Ionicons name="sparkles" size={14} color={theme.colors.accent} />
-            <Text style={styles.aiChipText}>AI improved this receipt</Text>
+            <Text style={styles.aiChipText}>{t('aiImprovedThisReceipt')}</Text>
           </View>
         )}
         {!aiPending && aiError != null && (
@@ -1977,7 +1979,7 @@ export default function ScanScreen() {
             style={styles.aiRetryBtn}
           >
             <Ionicons name="sparkles-outline" size={14} color={theme.colors.accent} />
-            <Text style={styles.aiChipText}>Re-parse with AI</Text>
+            <Text style={styles.aiChipText}>{t('reParseWithAi')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -1988,12 +1990,12 @@ export default function ScanScreen() {
           subtotal-mismatch guardrail and saved on the receipt) but are
           no longer user-editable fields on this screen. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Merchant</Text>
+        <Text style={styles.fieldLabel}>{t('merchant')}</Text>
         <TextInput
           style={styles.input}
           value={storeName}
           onChangeText={setStoreName}
-          placeholder="e.g. Whole Foods Market"
+          placeholder={t('eGWholeFoodsMarket')}
           placeholderTextColor={theme.colors.textMuted}
           autoCorrect={false}
         />
@@ -2003,7 +2005,7 @@ export default function ScanScreen() {
           Entered in the user's selected display currency (symbol shown
           in the label); converted to USD-canonical once at save time. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Amount</Text>
+        <Text style={styles.fieldLabel}>{t('amount')}</Text>
         <TextInput
           style={[styles.input, styles.amountInput]}
           value={amount}
@@ -2049,7 +2051,7 @@ export default function ScanScreen() {
           categoryTags (used by Reports' category breakdown) while
           preserving any other AI-suggested tags already present. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Category</Text>
+        <Text style={styles.fieldLabel}>{t('category')}</Text>
         <View style={styles.categoryChipsRow}>
           {ALL_CATEGORIES.map((cat) => {
             const active = category === cat;
@@ -2096,12 +2098,12 @@ export default function ScanScreen() {
 
       {/* Notes */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.fieldLabel}>Notes (optional)</Text>
+        <Text style={styles.fieldLabel}>{t('notesOptional')}</Text>
         <TextInput
           style={[styles.input, styles.inputMultiline]}
           value={notes}
           onChangeText={setNotes}
-          placeholder="Add any notes..."
+          placeholder={t('addAnyNotes')}
           placeholderTextColor={theme.colors.textMuted}
           multiline
           numberOfLines={3}
@@ -2116,7 +2118,7 @@ export default function ScanScreen() {
       {isManualEntry && (
         <Card style={styles.fieldCard}>
           <View style={styles.recurringToggleRow}>
-            <Text style={styles.fieldLabel}>Repeat this expense</Text>
+            <Text style={styles.fieldLabel}>{t('repeatThisExpense')}</Text>
             <Switch
               value={recurringEnabled}
               onValueChange={setRecurringEnabled}
@@ -2160,17 +2162,17 @@ export default function ScanScreen() {
                 })}
               </View>
 
-              <Text style={styles.fieldLabel}>Next auto-add date</Text>
+              <Text style={styles.fieldLabel}>{t('nextAutoAddDate')}</Text>
               <DateField
                 value={recurringNextDate}
                 onChange={(v) => {
                   setRecurringNextDateTouched(true);
                   setRecurringNextDate(v);
                 }}
-                placeholder="Select date"
+                placeholder={t('selectDate')}
               />
 
-              <Text style={styles.fieldLabel}>For how many months</Text>
+              <Text style={styles.fieldLabel}>{t('forHowManyMonths')}</Text>
               <TextInput
                 style={[styles.input, styles.amountInput]}
                 value={recurringDuration}
@@ -2236,7 +2238,7 @@ export default function ScanScreen() {
           ))}
           <TouchableOpacity style={styles.addItemRow} onPress={openAddItem} activeOpacity={0.7}>
             <Ionicons name="add-circle-outline" size={18} color={theme.colors.accent} />
-            <Text style={styles.addItemText}>Add item</Text>
+            <Text style={styles.addItemText}>{t('addItem')}</Text>
           </TouchableOpacity>
         </Card>
 
@@ -2285,20 +2287,20 @@ export default function ScanScreen() {
           <Pressable style={styles.itemModalCard} onPress={() => {}}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.itemModalTitle}>
-                {editingItemId ? 'Edit Item' : 'Add Item'}
+                {editingItemId ? t('editItem') : t('addItem2')}
               </Text>
 
-              <Text style={styles.fieldLabel}>Name</Text>
+              <Text style={styles.fieldLabel}>{t('name')}</Text>
               <TextInput
                 style={styles.input}
                 value={itemName}
                 onChangeText={setItemName}
-                placeholder="e.g. Milk"
+                placeholder={t('eGMilk')}
                 placeholderTextColor={theme.colors.textMuted}
                 autoCorrect={false}
               />
 
-              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>Amount</Text>
+              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>{t('amount')}</Text>
               <TextInput
                 style={[styles.input, styles.amountInput]}
                 value={itemAmount}
@@ -2308,7 +2310,7 @@ export default function ScanScreen() {
                 keyboardType="decimal-pad"
               />
 
-              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>Category</Text>
+              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>{t('category')}</Text>
               <View style={styles.categoryChipsRow}>
                 {ALL_CATEGORIES.map((cat) => {
                   const active = itemCategory === cat;
@@ -2357,7 +2359,7 @@ export default function ScanScreen() {
                 >
                   <Ionicons name="person-add-outline" size={14} color={theme.colors.accent} />
                   <Text style={styles.inviteHintText}>
-                    Nobody to split with yet — invite someone in Settings → Household
+                    {t('nobodyToSplitWithYet')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -2365,7 +2367,7 @@ export default function ScanScreen() {
               {otherMembers.length > 0 && (
                 <>
                   <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>
-                    Split with
+                    {t('splitWith')}
                   </Text>
                   <View style={[styles.avatarRow, { marginTop: 8 }]}>
                     <TouchableOpacity
@@ -2387,7 +2389,7 @@ export default function ScanScreen() {
                         <Text style={styles.avatarInitial}>Y</Text>
                       </View>
                       <Text style={styles.avatarLabel} numberOfLines={1}>
-                        You
+                        {t('you')}
                       </Text>
                     </TouchableOpacity>
                     {otherMembers.map((m) => {
@@ -2423,11 +2425,11 @@ export default function ScanScreen() {
 
               <View style={styles.itemModalFooter}>
                 <TouchableOpacity onPress={closeItemModal} style={styles.cancelBtn}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                  <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={saveItemModal} style={styles.doneBtn}>
                   <Text style={styles.doneBtnText}>
-                    {editingItemId ? 'Save' : 'Add'}
+                    {editingItemId ? t('save') : t('add')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -2442,7 +2444,7 @@ export default function ScanScreen() {
             but is existing, required functionality, so it stays as a
             lower-emphasis text link underneath rather than disappearing. */}
         <Button
-          label="Save Expense"
+          label={t('saveExpense')}
           onPress={handleSave}
           loading={saving}
           style={styles.saveButton}
@@ -2453,7 +2455,7 @@ export default function ScanScreen() {
           onPress={confirmDiscardExpense}
           activeOpacity={0.7}
         >
-          <Text style={styles.discardLinkText}>Discard</Text>
+          <Text style={styles.discardLinkText}>{t('discard')}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

@@ -5,6 +5,7 @@ import { Card } from './Card';
 import { HouseholdMember } from '../../lib/cloudSync';
 import { tapLight } from '../../lib/haptics';
 
+import { useT } from '../../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
   return m.displayName?.trim() || m.email?.trim() || 'Member';
 }
@@ -29,6 +30,7 @@ export function PaidBySection(props: {
   paidBy: string;
   onPaidByChange: (uid: string) => void;
 }) {
+  const t = useT();
   const theme = useTheme();
   const styles = usePaidBySectionStyles();
   const { otherMembers, paidBy, onPaidByChange } = props;
@@ -42,7 +44,7 @@ export function PaidBySection(props: {
 
   return (
     <Card style={styles.fieldCard}>
-      <Text style={styles.sectionLabel}>PAID BY</Text>
+      <Text style={styles.sectionLabel}>{t('paidBy')}</Text>
       <View style={styles.avatarRow}>
         <TouchableOpacity style={styles.avatarWrap} onPress={() => select('self')} activeOpacity={0.7}>
           <View
@@ -53,7 +55,7 @@ export function PaidBySection(props: {
           >
             <Text style={styles.avatarInitial}>Y</Text>
           </View>
-          <Text style={styles.avatarLabel} numberOfLines={1}>You</Text>
+          <Text style={styles.avatarLabel} numberOfLines={1}>{t('you')}</Text>
         </TouchableOpacity>
         {otherMembers.map((m) => {
           const label = memberLabel(m);

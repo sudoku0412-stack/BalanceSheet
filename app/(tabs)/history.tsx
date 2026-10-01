@@ -39,6 +39,7 @@ import { onLocalDataChanged } from '../../lib/dataSync';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { useAuth } from '../../lib/AuthContext';
 
+import { useT } from '../../lib/I18nContext';
 const FILTER_ALL = 'All' as const;
 type CategoryFilter = typeof FILTER_ALL | Category;
 type KindFilter = 'all' | 'income' | 'expenses';
@@ -112,6 +113,7 @@ function memberDisplayName(
 }
 
 export default function HistoryScreen() {
+  const t = useT();
   const theme = useTheme();
   const router = useRouter();
   const toast = useToast();
@@ -408,16 +410,16 @@ export default function HistoryScreen() {
   }, [query, load]);
 
   const showAddSheet = () => {
-    Alert.alert('Add', undefined, [
+    Alert.alert(t('add'), undefined, [
       {
-        text: 'Add expense',
+        text: t('addExpense'),
         onPress: () => router.push('/(tabs)/scan?mode=manual'),
       },
       {
-        text: 'Add income',
+        text: t('addIncome'),
         onPress: () => router.push('/add-income' as never),
       },
-      { text: 'Cancel', style: 'cancel' },
+      { text: t('cancel'), style: 'cancel' },
     ]);
   };
 
@@ -426,10 +428,10 @@ export default function HistoryScreen() {
   // confirm via Alert, then delete and refresh the list.
   const confirmDeleteReceipt = (receipt: Receipt) => {
     swipeableRefs.current[`expense:${receipt.id}`]?.close();
-    Alert.alert('Delete Receipt', 'This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('deleteReceipt'), t('thisActionCannotBeUndone'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('delete'),
         style: 'destructive',
         onPress: () => performDeleteReceipt(receipt.id),
       },
@@ -443,7 +445,7 @@ export default function HistoryScreen() {
       await deleteReceipt(id);
       await refreshAfterDelete();
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't delete that receipt." });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTDeleteThatReceipt') });
     } finally {
       setDeletingId(null);
     }
@@ -451,10 +453,10 @@ export default function HistoryScreen() {
 
   const confirmDeleteIncome = (income: Income) => {
     swipeableRefs.current[`income:${income.id}`]?.close();
-    Alert.alert('Delete income', 'This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('deleteIncome'), t('thisActionCannotBeUndone'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('delete'),
         style: 'destructive',
         onPress: () => performDeleteIncome(income.id),
       },
@@ -468,7 +470,7 @@ export default function HistoryScreen() {
       await deleteIncome(id);
       await refreshAfterDelete();
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't delete that income." });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTDeleteThatIncome') });
     } finally {
       setDeletingId(null);
     }
@@ -549,13 +551,13 @@ export default function HistoryScreen() {
           expense vs income. */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>
-          {kindFilter === 'income' ? (groupByMember ? 'Income by person' : 'Income') : 'Activity'}
+          {kindFilter === 'income' ? (groupByMember ? t('incomeByPerson') : t('income')) : t('activity')}
         </Text>
         <TouchableOpacity
           style={styles.addButton}
           onPress={showAddSheet}
           accessibilityRole="button"
-          accessibilityLabel="Add expense or income"
+          accessibilityLabel={t('addExpenseOrIncome')}
         >
           <Ionicons name="add" size={22} color="#FFFFFF" />
         </TouchableOpacity>
@@ -568,7 +570,7 @@ export default function HistoryScreen() {
           style={styles.searchInput}
           value={query}
           onChangeText={handleSearch}
-          placeholder="Search merchant or source"
+          placeholder={t('searchMerchantOrSource')}
           placeholderTextColor={theme.colors.textMuted}
           returnKeyType="search"
           clearButtonMode="while-editing"
@@ -638,12 +640,12 @@ export default function HistoryScreen() {
       ) : sections.length === 0 ? (
         <View style={styles.listContent}>
           {isFiltering ? (
-            <EmptyState icon="search-outline" title="No activity matches." />
+            <EmptyState icon="search-outline" title={t('noActivityMatches')} />
           ) : (
             <EmptyState
               icon="receipt-outline"
-              title="No activity yet"
-              description="Add an expense or income and it'll show up here, grouped by date."
+              title={t('noActivityYet')}
+              description={t('addAnExpenseOrIncome')}
             />
           )}
         </View>
@@ -689,7 +691,7 @@ export default function HistoryScreen() {
                             ) : (
                               <>
                                 <Ionicons name="trash" size={20} color="#fff" />
-                                <Text style={styles.deleteActionText}>Delete</Text>
+                                <Text style={styles.deleteActionText}>{t('delete')}</Text>
                               </>
                             )}
                           </TouchableOpacity>
@@ -763,7 +765,7 @@ export default function HistoryScreen() {
                           ) : (
                             <>
                               <Ionicons name="trash" size={20} color="#fff" />
-                              <Text style={styles.deleteActionText}>Delete</Text>
+                              <Text style={styles.deleteActionText}>{t('delete')}</Text>
                             </>
                           )}
                         </TouchableOpacity>
@@ -799,7 +801,7 @@ export default function HistoryScreen() {
                           </Text>
                           <Text style={styles.rowMeta}>
                             {r.category}
-                            {isRecurring ? ' · Recurring' : ''}
+                            {isRecurring ? t('recurring') : ''}
                           </Text>
                         </View>
                         <Text style={styles.rowAmount}>

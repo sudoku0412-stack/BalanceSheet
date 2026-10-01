@@ -18,6 +18,7 @@ import { notifySettleUp } from '../lib/notifications';
 import { Receipt, Settlement } from '../types';
 import { onLocalDataChanged } from '../lib/dataSync';
 
+import { useT } from '../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
   return m.displayName?.trim() || m.email || 'Household member';
 }
@@ -30,6 +31,7 @@ function initialFor(label: string): string {
 }
 
 export default function BalancesScreen() {
+  const t = useT();
   const theme = useTheme();
   const router = useRouter();
   const toast = useToast();
@@ -117,9 +119,9 @@ export default function BalancesScreen() {
     const message = theyOweYou
       ? `Mark ${formatCurrency(amountUsd, currency)} from ${label} as received? This only clears the balance between you two — it doesn't change any expense totals.`
       : `Mark ${formatCurrency(amountUsd, currency)} as paid to ${label}? This only clears the balance between you two — it doesn't change any expense totals.`;
-    Alert.alert('Settle up?', message, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Settle up', onPress: () => settleUp(memberUid, fromUid, toUid, amountUsd) },
+    Alert.alert(t('settleUp'), message, [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('settleUp2'), onPress: () => settleUp(memberUid, fromUid, toUid, amountUsd) },
     ]);
   };
 
@@ -136,7 +138,7 @@ export default function BalancesScreen() {
         createdAt: new Date().toISOString(),
       });
       await load();
-      toast.show({ kind: 'success', message: 'Settled up' });
+      toast.show({ kind: 'success', message: t('settledUp') });
       const actorLabel = profile ? `${profile.firstName} ${profile.lastName}`.trim() : 'Someone';
       void notifySettleUp({
         toUid: memberUid,
@@ -145,7 +147,7 @@ export default function BalancesScreen() {
         actorIsPayer: fromUid === selfUid,
       });
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't settle up" });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTSettleUp') });
     } finally {
       setSettlingUid(null);
     }
@@ -154,7 +156,7 @@ export default function BalancesScreen() {
   const confirmPartialPayment = (memberUid: string, theyOweYou: boolean, maxOwedUsd: number) => {
     const entered = parseFloat(partialAmount.replace(',', '.'));
     if (!entered || entered <= 0) {
-      toast.show({ kind: 'error', message: 'Enter an amount greater than 0.' });
+      toast.show({ kind: 'error', message: t('enterAnAmountGreaterThan') });
       return;
     }
     const amountUsd = convertToUsd(entered, currency);
@@ -180,12 +182,12 @@ export default function BalancesScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ModalHeader title="Balances" onBack={() => router.back()} />
+      <ModalHeader title={t('balances')} onBack={() => router.back()} />
       {!loading && withHistory.length === 0 ? (
         <EmptyState
           icon="swap-horizontal-outline"
-          title="All settled up"
-          description="Split an expense with a household member and their balance will show up here."
+          title={t('allSettledUp')}
+          description={t('splitAnExpenseWithA')}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
@@ -212,7 +214,7 @@ export default function BalancesScreen() {
                   <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
                     <Text style={styles.name} numberOfLines={1}>{label}</Text>
                     <Text style={[styles.direction, { color: statusColor }]}>
-                      {isSettled ? 'Settled up' : theyOweYou ? 'Owes you' : 'You owe'}
+                      {isSettled ? t('settledUp') : theyOweYou ? t('owesYou') : t('youOwe')}
                     </Text>
                   </View>
                   <Text style={[styles.amount, { color: statusColor }]}>
@@ -229,10 +231,10 @@ export default function BalancesScreen() {
                     >
                       <Text style={styles.settleBtnText}>
                         {settlingUid === b.memberUid
-                          ? 'Settling…'
+                          ? t('settling')
                           : theyOweYou
-                            ? 'Mark as received'
-                            : 'Settle up'}
+                            ? t('markAsReceived')
+                            : t('settleUp2')}
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -243,7 +245,7 @@ export default function BalancesScreen() {
                         setPartialUid(b.memberUid);
                       }}
                     >
-                      <Text style={styles.partialBtnText}>Partial payment</Text>
+                      <Text style={styles.partialBtnText}>{t('partialPayment')}</Text>
                     </TouchableOpacity>
                   </View>
                 )}
@@ -264,7 +266,7 @@ export default function BalancesScreen() {
                       style={styles.partialConfirmBtn}
                       onPress={() => confirmPartialPayment(b.memberUid, theyOweYou, Math.abs(b.netUsd))}
                     >
-                      <Text style={styles.partialConfirmBtnText}>Confirm</Text>
+                      <Text style={styles.partialConfirmBtnText}>{t('confirm')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       activeOpacity={0.7}
@@ -274,7 +276,7 @@ export default function BalancesScreen() {
                       }}
                       hitSlop={8}
                     >
-                      <Text style={styles.partialCancelText}>Cancel</Text>
+                      <Text style={styles.partialCancelText}>{t('cancel')}</Text>
                     </TouchableOpacity>
                   </View>
                 )}

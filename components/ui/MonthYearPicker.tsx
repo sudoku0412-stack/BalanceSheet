@@ -9,6 +9,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../../constants/theme';
 
+import { useT } from '../../lib/I18nContext';
 const MONTH_LABELS = [
   'Jan', 'Feb', 'Mar', 'Apr',
   'May', 'Jun', 'Jul', 'Aug',
@@ -31,6 +32,7 @@ export function MonthYearPicker({
   onClose: () => void;
   onSelect: (d: Date) => void;
 }) {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     backdrop: {
@@ -182,14 +184,14 @@ export function MonthYearPicker({
     >
       <Pressable style={styles.backdrop} onPress={onClose}>
         <Pressable style={styles.card} onPress={(e) => e.stopPropagation()}>
-          <Text style={styles.title}>Select Month</Text>
+          <Text style={styles.title}>{t('selectMonth')}</Text>
 
           <View style={styles.yearRow}>
             <TouchableOpacity
               style={styles.yearBtn}
               onPress={() => setBrowseYear((y) => y - 1)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Previous year"
+              accessibilityLabel={t('previousYear')}
             >
               <Ionicons name="chevron-back" size={22} color={theme.colors.textPrimary} />
             </TouchableOpacity>
@@ -198,7 +200,7 @@ export function MonthYearPicker({
               style={styles.yearBtn}
               onPress={() => setBrowseYear((y) => y + 1)}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              accessibilityLabel="Next year"
+              accessibilityLabel={t('nextYear')}
             >
               <Ionicons name="chevron-forward" size={22} color={theme.colors.textPrimary} />
             </TouchableOpacity>
@@ -241,11 +243,11 @@ export function MonthYearPicker({
             ) : (
               <TouchableOpacity style={styles.todayBtn} onPress={jumpToToday}>
                 <Ionicons name="today-outline" size={16} color={theme.colors.accent} />
-                <Text style={styles.todayBtnText}>This Month</Text>
+                <Text style={styles.todayBtnText}>{t('thisMonth2')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.cancelBtn} onPress={onClose}>
-              <Text style={styles.cancelBtnText}>Cancel</Text>
+              <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
             </TouchableOpacity>
           </View>
         </Pressable>

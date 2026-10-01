@@ -7,6 +7,7 @@ import { Receipt } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { CATEGORY_ICONS } from '../../constants/categories';
 
+import { useT } from '../../lib/I18nContext';
 interface Props {
   receipt: Receipt;
   onDelete?: (id: string) => void;
@@ -25,6 +26,7 @@ function dateLabel(date: Date): string {
  * "Recent"/"Expenses" list row spec.
  */
 export function ReceiptCard({ receipt, onDelete }: Props) {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     card: {
@@ -115,7 +117,7 @@ export function ReceiptCard({ receipt, onDelete }: Props) {
             onPress={() => onDelete(receipt.id)}
             hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
             accessibilityRole="button"
-            accessibilityLabel="Delete receipt"
+            accessibilityLabel={t('deleteReceipt2')}
           >
             <Ionicons name="trash-outline" size={16} color={theme.colors.textMuted} />
           </TouchableOpacity>

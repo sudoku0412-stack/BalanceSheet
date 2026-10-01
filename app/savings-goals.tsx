@@ -28,7 +28,9 @@ import { notifySuccess, tapLight } from '../lib/haptics';
 import { getCurrency } from '../lib/secureStorage';
 import { SavingsGoal } from '../types';
 
+import { useT } from '../lib/I18nContext';
 export default function SavingsGoalsScreen() {
+  const t = useT();
   const theme = useTheme();
   const { isPremium, loading } = useEntitlements();
   const styles = useStyles((t) => ({
@@ -112,11 +114,11 @@ export default function SavingsGoalsScreen() {
     const trimmed = name.trim();
     const parsed = parseAmountInput(target);
     if (!trimmed) {
-      Alert.alert('Name required', 'Name this envelope (e.g. Emergency fund).');
+      Alert.alert(t('nameRequired'), t('nameThisEnvelopeEG'));
       return;
     }
     if (parsed == null || parsed <= 0) {
-      Alert.alert('Target required', 'Enter a target amount greater than zero.');
+      Alert.alert(t('targetRequired'), t('enterATargetAmountGreater'));
       return;
     }
     setSaving(true);
@@ -135,7 +137,7 @@ export default function SavingsGoalsScreen() {
       notifySuccess();
       await load();
     } catch (e) {
-      Alert.alert('Could not save', (e as Error)?.message ?? 'Try again.');
+      Alert.alert(t('couldNotSave'), (e as Error)?.message ?? t('tryAgain'));
     } finally {
       setSaving(false);
     }
@@ -144,7 +146,7 @@ export default function SavingsGoalsScreen() {
   const addToEnvelope = async (goal: SavingsGoal) => {
     const parsed = parseAmountInput(allocateDraft[goal.id] ?? '');
     if (parsed == null || parsed === 0) {
-      Alert.alert('Amount required', 'Enter how much to add (or subtract) from this envelope.');
+      Alert.alert(t('amountRequired'), t('enterHowMuchToAdd'));
       return;
     }
     tapLight();
@@ -158,10 +160,10 @@ export default function SavingsGoalsScreen() {
   };
 
   const confirmDelete = (goal: SavingsGoal) => {
-    Alert.alert('Delete envelope?', goal.name, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('deleteEnvelope'), goal.name, [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('delete'),
         style: 'destructive',
         onPress: async () => {
           await deleteSavingsGoal(goal.id);
@@ -173,24 +175,22 @@ export default function SavingsGoalsScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <ModalHeader title="Savings goals" iconLeading="🎯" />
+      <ModalHeader title={t('savingsGoals')} iconLeading="🎯" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <Card style={{ gap: theme.spacing.sm }}>
-            <Text style={styles.fieldLabel}>New envelope</Text>
+            <Text style={styles.fieldLabel}>{t('newEnvelope')}</Text>
             <Text style={styles.hint}>
-              Track a named goal. Allocated is an envelope balance you set — it does
-              not move money or change Spent. Investment expenses still count as
-              spent on Home.
+              {t('trackANamedGoalAllocated')}
             </Text>
             <TextInput
               style={styles.input}
               value={name}
               onChangeText={setName}
-              placeholder="Emergency fund"
+              placeholder={t('emergencyFund')}
               placeholderTextColor={theme.colors.textMuted}
               testID="goal-name"
             />
@@ -203,7 +203,7 @@ export default function SavingsGoalsScreen() {
               keyboardType="decimal-pad"
               testID="goal-target"
             />
-            <Button label="Add goal" onPress={handleCreate} loading={saving} />
+            <Button label={t('addGoal')} onPress={handleCreate} loading={saving} />
           </Card>
 
           {goals.map((goal) => {
@@ -233,10 +233,10 @@ export default function SavingsGoalsScreen() {
                     keyboardType="decimal-pad"
                   />
                   <TouchableOpacity onPress={() => addToEnvelope(goal)}>
-                    <Text style={styles.link}>Add</Text>
+                    <Text style={styles.link}>{t('add')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => confirmDelete(goal)}>
-                    <Text style={styles.danger}>Delete</Text>
+                    <Text style={styles.danger}>{t('delete')}</Text>
                   </TouchableOpacity>
                 </View>
               </Card>

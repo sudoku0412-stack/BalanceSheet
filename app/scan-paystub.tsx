@@ -10,7 +10,9 @@ import { Card } from '../components/ui/Card';
 import { useStyles, useTheme } from '../constants/theme';
 import { parsePaystubText } from '../lib/paystubParse';
 
+import { useT } from '../lib/I18nContext';
 export default function ScanPaystubScreen() {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     root: { flex: 1, backgroundColor: t.colors.background },
@@ -35,11 +37,11 @@ export default function ScanPaystubScreen() {
     const parsed = parsePaystubText(rawText);
     if (parsed.amount == null && !parsed.sourceName) {
       Alert.alert(
-        'Could not read pay stub',
-        'No net pay or employer found. Enter the income manually.',
+        t('couldNotReadPayStub'),
+        t('noNetPayOrEmployer'),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Add manually', onPress: () => router.replace('/add-income' as never) },
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('addManually'), onPress: () => router.replace('/add-income' as never) },
         ],
       );
       return;
@@ -66,12 +68,12 @@ export default function ScanPaystubScreen() {
       const rawText = lines.join('\n');
       setRawPreview(rawText.slice(0, 400));
       if (!rawText.trim()) {
-        Alert.alert('OCR Failed', 'Could not read any text. Try a sharper photo or enter manually.');
+        Alert.alert(t('ocrFailed'), t('couldNotReadAnyText'));
         return;
       }
       goToAddIncome(rawText);
     } catch (e) {
-      Alert.alert('OCR Failed', (e as Error)?.message ?? 'Could not read the pay stub.');
+      Alert.alert(t('ocrFailed'), (e as Error)?.message ?? t('couldNotReadThePay'));
     } finally {
       setBusy(false);
     }
@@ -90,7 +92,7 @@ export default function ScanPaystubScreen() {
   const takePhoto = async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('Camera needed', 'Allow camera access to photograph a pay stub.');
+      Alert.alert(t('cameraNeeded'), t('allowCameraAccessToPhotograph'));
       return;
     }
     const result = await ImagePicker.launchCameraAsync({ quality: 0.9 });
@@ -101,24 +103,22 @@ export default function ScanPaystubScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <ModalHeader title="Scan pay stub" iconLeading="📄" />
+      <ModalHeader title={t('scanPayStub')} iconLeading="📄" />
       <View style={styles.body}>
         <Card style={{ gap: theme.spacing.sm }}>
           <Text style={styles.hint}>
-            Photograph or pick a pay stub. We read net pay, pay date, and employer
-            with on-device OCR, then open Add Income so you can confirm before
-            saving. Amounts stay in your profile currency.
+            {t('photographOrPickAPay')}
           </Text>
-          <Button label="Take photo" onPress={takePhoto} loading={busy} size="lg" />
+          <Button label={t('takePhoto')} onPress={takePhoto} loading={busy} size="lg" />
           <Button
-            label="Choose from photos"
+            label={t('chooseFromPhotos')}
             onPress={pickFromLibrary}
             loading={busy}
             variant="secondary"
             size="lg"
           />
           <Button
-            label="Enter manually"
+            label={t('enterManually')}
             onPress={() => router.replace('/add-income' as never)}
             variant="ghost"
           />

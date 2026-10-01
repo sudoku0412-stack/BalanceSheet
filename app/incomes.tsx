@@ -33,6 +33,7 @@ import { getCurrency } from '../lib/secureStorage';
 import { useToast } from '../components/ui/Toast';
 import { Income } from '../types';
 
+import { useT } from '../lib/I18nContext';
 function dateGroupLabel(dateStr: string): string {
   const d = new Date(dateStr);
   if (isToday(d)) return 'Today';
@@ -52,6 +53,7 @@ function memberName(
 }
 
 export default function IncomesScreen() {
+  const t = useT();
   const theme = useTheme();
   const toast = useToast();
   const { user } = useAuth();
@@ -199,10 +201,10 @@ export default function IncomesScreen() {
 
   const confirmDelete = (income: Income) => {
     swipeableRefs.current[income.id]?.close();
-    Alert.alert('Delete income', 'This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('deleteIncome'), t('thisActionCannotBeUndone'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('delete'),
         style: 'destructive',
         onPress: async () => {
           if (deletingId) return;
@@ -211,7 +213,7 @@ export default function IncomesScreen() {
             await deleteIncome(income.id);
             await load();
           } catch (e) {
-            toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't delete that income." });
+            toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTDeleteThatIncome') });
           } finally {
             setDeletingId(null);
           }
@@ -223,7 +225,7 @@ export default function IncomesScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <ModalHeader
-        title="Incomes"
+        title={t('incomes')}
         iconLeading="💰"
         rightActions={[
           {
@@ -234,7 +236,7 @@ export default function IncomesScreen() {
         ]}
       />
       <Text style={styles.totalLine}>
-        {visible.length} {visible.length === 1 ? 'entry' : 'entries'} · {formatCurrency(totalUsd, currency)}
+        {visible.length} {visible.length === 1 ? t('entry') : t('entries')} · {formatCurrency(totalUsd, currency)}
       </Text>
       <View style={styles.search}>
         <Ionicons name="search-outline" size={18} color={theme.colors.accent} />
@@ -242,7 +244,7 @@ export default function IncomesScreen() {
           style={styles.searchInput}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search source or notes"
+          placeholder={t('searchSourceOrNotes')}
           placeholderTextColor={theme.colors.textMuted}
           returnKeyType="search"
           testID="incomes-search"
@@ -252,9 +254,9 @@ export default function IncomesScreen() {
         <View style={styles.list}>
           <EmptyState
             icon="cash-outline"
-            title="No incomes yet"
-            description="Add a paycheck or other income and it will show up here."
-            actionLabel="Add income"
+            title={t('noIncomesYet')}
+            description={t('addAPaycheckOrOther')}
+            actionLabel={t('addIncome')}
             onAction={() => router.push('/add-income' as never)}
           />
         </View>
@@ -293,7 +295,7 @@ export default function IncomesScreen() {
                         ) : (
                           <>
                             <Ionicons name="trash" size={20} color="#fff" />
-                            <Text style={styles.deleteText}>Delete</Text>
+                            <Text style={styles.deleteText}>{t('delete')}</Text>
                           </>
                         )}
                       </TouchableOpacity>

@@ -38,6 +38,7 @@ import { getCurrency } from '../lib/secureStorage';
 import { RecurringScheduleFields, RecurringFrequency } from '../components/RecurringScheduleFields';
 import { Income, IncomeCategory } from '../types';
 
+import { useT } from '../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
   return m.displayName?.trim() || m.email?.trim() || 'Member';
 }
@@ -53,6 +54,7 @@ function firstParam(value: string | string[] | undefined): string {
 }
 
 export default function AddIncomeScreen() {
+  const t = useT();
   const theme = useTheme();
   const { user } = useAuth();
   const params = useLocalSearchParams<{
@@ -235,16 +237,16 @@ export default function AddIncomeScreen() {
   const handleSave = async () => {
     const parsed = parseAmountInput(amount);
     if (parsed == null || parsed <= 0) {
-      Alert.alert('Amount required', 'Enter a valid amount greater than zero.');
+      Alert.alert(t('amountRequired'), t('enterAValidAmountGreater'));
       return;
     }
     const trimmedSource = sourceName.trim();
     if (!trimmedSource) {
-      Alert.alert('Source required', 'Name where this income came from.');
+      Alert.alert(t('sourceRequired'), t('nameWhereThisIncomeCame'));
       return;
     }
     if (!earnedBy || !user?.uid) {
-      Alert.alert('Whose income?', 'Pick who earned this income.');
+      Alert.alert(t('whoseIncome'), t('pickWhoEarnedThisIncome'));
       return;
     }
     const recurringRes = resolveRecurringFromForm({
@@ -255,7 +257,7 @@ export default function AddIncomeScreen() {
       startDate: date,
     });
     if (!recurringRes.ok) {
-      Alert.alert('Repeat schedule', recurringRes.message);
+      Alert.alert(t('repeatSchedule'), recurringRes.message);
       return;
     }
 
@@ -281,7 +283,7 @@ export default function AddIncomeScreen() {
       notifySuccess();
       router.back();
     } catch (e) {
-      Alert.alert('Save failed', (e as Error)?.message ?? 'Try again.');
+      Alert.alert(t('saveFailed'), (e as Error)?.message ?? t('tryAgain'));
     } finally {
       setSaving(false);
     }
@@ -289,7 +291,7 @@ export default function AddIncomeScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <ModalHeader title="Add Income" iconLeading="💰" />
+      <ModalHeader title={t('addIncome2')} iconLeading="💰" />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -314,12 +316,12 @@ export default function AddIncomeScreen() {
           </Card>
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Date</Text>
+            <Text style={styles.fieldLabel}>{t('date')}</Text>
             <DateField value={date} onChange={setDate} placeholder="YYYY-MM-DD" />
           </Card>
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Whose income</Text>
+            <Text style={styles.fieldLabel}>{t('whoseIncome2')}</Text>
             <View style={styles.avatarRow}>
               {user?.uid ? (
                 <TouchableOpacity
@@ -339,7 +341,7 @@ export default function AddIncomeScreen() {
                     <Text style={styles.avatarInitial}>Y</Text>
                   </View>
                   <Text style={styles.avatarLabel} numberOfLines={1}>
-                    You
+                    {t('you')}
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -374,7 +376,7 @@ export default function AddIncomeScreen() {
           </Card>
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Type</Text>
+            <Text style={styles.fieldLabel}>{t('type')}</Text>
             <View style={styles.categoryChipsRow}>
               {ALL_INCOME_CATEGORIES.map((cat) => {
                 const active = category === cat;
@@ -409,7 +411,7 @@ export default function AddIncomeScreen() {
           </Card>
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Source</Text>
+            <Text style={styles.fieldLabel}>{t('source')}</Text>
             <TextInput
               style={styles.input}
               value={sourceName}
@@ -438,7 +440,7 @@ export default function AddIncomeScreen() {
           </Card>
 
           <RecurringScheduleFields
-            title="Repeat this income"
+            title={t('repeatThisIncome')}
             enabled={recurringEnabled}
             onEnabledChange={setRecurringEnabled}
             frequency={recurringFrequency}
@@ -453,19 +455,19 @@ export default function AddIncomeScreen() {
           />
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Notes (optional)</Text>
+            <Text style={styles.fieldLabel}>{t('notesOptional')}</Text>
             <TextInput
               style={[styles.input, styles.inputMultiline]}
               value={notes}
               onChangeText={setNotes}
-              placeholder="Anything else…"
+              placeholder={t('anythingElse')}
               placeholderTextColor={theme.colors.textMuted}
               multiline
             />
           </Card>
 
           <Button
-            label="Save income"
+            label={t('saveIncome')}
             onPress={handleSave}
             loading={saving}
             size="lg"

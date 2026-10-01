@@ -18,6 +18,7 @@ import { Button } from '../components/ui/Button';
 import { Theme, useStyles, useTheme } from '../constants/theme';
 import { useAuth } from '../lib/AuthContext';
 
+import { useT } from '../lib/I18nContext';
 type AccentKey = 'accent' | 'success' | 'primary';
 
 type Slide = {
@@ -67,6 +68,7 @@ const SLIDES: Slide[] = [
 ];
 
 export default function OnboardingScreen() {
+  const t = useT();
   const { markOnboardingSeen } = useAuth();
   const theme = useTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -117,7 +119,7 @@ export default function OnboardingScreen() {
           <View />
         )}
         <Pressable onPress={finish} hitSlop={12}>
-          <Text style={styles.skip}>Skip</Text>
+          <Text style={styles.skip}>{t('skip')}</Text>
         </Pressable>
       </View>
 
@@ -146,7 +148,7 @@ export default function OnboardingScreen() {
       <View style={styles.cta}>
         {isLast ? (
           <Button
-            label="Get Started"
+            label={t('getStarted')}
             size="lg"
             onPress={finish}
             style={styles.ctaButton}
@@ -154,7 +156,7 @@ export default function OnboardingScreen() {
           />
         ) : (
           <Button
-            label="Next"
+            label={t('next')}
             size="lg"
             onPress={() => goToSlide(index + 1)}
             style={styles.ctaButton}

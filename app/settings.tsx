@@ -17,11 +17,12 @@ import * as FileSystem from 'expo-file-system';
 import { useStyles, useTheme, useThemePreference } from '../constants/theme';
 import { ThemePreference } from '../lib/secureStorage';
 
-const THEME_OPTIONS: { value: ThemePreference; label: string }[] = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'System' },
+const THEME_OPTIONS: { value: ThemePreference; labelKey: 'themeLight' | 'themeDark' | 'themeSystem' }[] = [
+  { value: 'light', labelKey: 'themeLight' },
+  { value: 'dark', labelKey: 'themeDark' },
+  { value: 'system', labelKey: 'themeSystem' },
 ];
+const LANGUAGE_OPTIONS: LanguagePreference[] = ['system', 'en', 'fr'];
 const REQUEST_TIMEOUT_MS = 15000;
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
@@ -74,6 +75,8 @@ import {
 } from '../lib/currency';
 import { Category } from '../types';
 
+import { useT, useLanguage } from '../lib/I18nContext';
+import { LANGUAGE_NAMES, type LanguagePreference } from '../lib/i18n';
 function useSettingsStyles() {
   return useStyles((theme) => ({
     container: { flex: 1, backgroundColor: theme.colors.background },
@@ -385,8 +388,10 @@ function useSettingsStyles() {
 }
 
 export default function SettingsScreen() {
+  const t = useT();
   const theme = useTheme();
   const { preference: themePreference, setPreference: setThemePreference } = useThemePreference();
+  const { preference: languagePreference, setPreference: setLanguagePreference } = useLanguage();
   const styles = useSettingsStyles();
   const router = useRouter();
   const { section } = useLocalSearchParams<{ section?: string }>();
@@ -405,10 +410,10 @@ export default function SettingsScreen() {
       if (url) {
         await Linking.openURL(url);
       } else {
-        toast.show({ kind: 'error', message: "Couldn't find your subscription — try again shortly." });
+        toast.show({ kind: 'error', message: t('couldnTFindYourSubscription') });
       }
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't open subscription management." });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTOpenSubscriptionManagement') });
     } finally {
       setOpeningManageSubscription(false);
     }
@@ -502,23 +507,23 @@ export default function SettingsScreen() {
         REQUEST_TIMEOUT_MS,
       );
       if (res.ok) {
-        toast.show({ kind: 'success', message: 'Invite sent' });
+        toast.show({ kind: 'success', message: t('inviteSent') });
         setLastInvitedEmail(email);
         setInviteEmail('');
       } else {
-        toast.show({ kind: 'error', message: res.reason || "Couldn't send invite" });
+        toast.show({ kind: 'error', message: res.reason || t('couldnTSendInvite') });
       }
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't send invite" });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTSendInvite') });
     } finally {
       setInviteSending(false);
     }
   };
 
   const confirmLeaveHousehold = () => {
-    Alert.alert('Leave household?', 'You will move to your own solo household. Other members keep the shared receipts.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Leave', style: 'destructive', onPress: () => doLeaveHousehold() },
+    Alert.alert(t('leaveHousehold'), t('youWillMoveToYour'), [
+      { text: t('cancel'), style: 'cancel' },
+      { text: t('leave'), style: 'destructive', onPress: () => doLeaveHousehold() },
     ]);
   };
 
@@ -538,13 +543,13 @@ export default function SettingsScreen() {
       );
       if (res.ok) {
         await setActiveHousehold(res.nextActiveHouseholdId);
-        toast.show({ kind: 'success', message: 'You left the household' });
+        toast.show({ kind: 'success', message: t('youLeftTheHousehold') });
         await loadMembers();
       } else {
-        toast.show({ kind: 'error', message: res.reason || "Couldn't leave household" });
+        toast.show({ kind: 'error', message: res.reason || t('couldnTLeaveHousehold') });
       }
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't leave household" });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTLeaveHousehold') });
     } finally {
       setLeavingHousehold(false);
     }
@@ -655,7 +660,7 @@ export default function SettingsScreen() {
         toast.show({
           kind: 'error',
           message:
-            "Notifications are turned off for NestExpenseTracker — enable them in your device Settings to actually receive budget alerts.",
+            t('notificationsAreTurnedOffFor'),
         });
         return;
       }
@@ -682,7 +687,7 @@ export default function SettingsScreen() {
     try {
       const receipts = await getAllReceipts();
       if (receipts.length === 0) {
-        Alert.alert('Nothing to export', 'Scan a few receipts before exporting.');
+        Alert.alert(t('nothingToExport'), t('scanAFewReceiptsBefore2'));
         return;
       }
       const csv = receiptsToCsv(receipts, currency);
@@ -710,22 +715,22 @@ export default function SettingsScreen() {
         });
       } else {
         Alert.alert(
-          'Saved',
+          t('saved'),
           `Sharing isn't available in this build, but the file was written to ${path}.`,
         );
       }
     } catch (e) {
-      Alert.alert('Export failed', (e as Error)?.message ?? 'Try again.');
+      Alert.alert(t('exportFailed'), (e as Error)?.message ?? t('tryAgain'));
     } finally {
       setExportingAll(false);
     }
   };
 
   const confirmSignOut = () => {
-    Alert.alert('Sign out?', 'You will need to sign in again to use the app.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('signOut'), t('youWillNeedToSign'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Sign out',
+        text: t('signOut2'),
         style: 'destructive',
         onPress: () => {
           // iOS: wait for UIAlertController to finish dismissing before
@@ -743,12 +748,12 @@ export default function SettingsScreen() {
 
   const confirmDeleteAccount = () => {
     Alert.alert(
-      'Delete account?',
-      'This permanently deletes your account, along with your receipts, budgets, and shared household data, from this device and the cloud. This cannot be undone.',
+      t('deleteAccount'),
+      t('thisPermanentlyDeletesYourAccount'),
       [
-        { text: 'Cancel', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Delete account',
+          text: t('deleteAccount2'),
           style: 'destructive',
           onPress: async () => {
             try {
@@ -756,7 +761,7 @@ export default function SettingsScreen() {
             } catch (e) {
               toast.show({
                 kind: 'error',
-                message: (e as Error)?.message ?? 'Failed to delete account. Try again.',
+                message: (e as Error)?.message ?? t('failedToDeleteAccountTry'),
               });
             }
           },
@@ -782,9 +787,9 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
       <ScrollView ref={scrollRef} contentContainerStyle={styles.scroll}>
-        <Text style={styles.screenTitle}>Settings</Text>
+        <Text style={styles.screenTitle}>{t('settings')}</Text>
 
-        <Section title="Profile">
+        <Section title={t('profile')}>
           <View style={styles.profileHeader}>
             <View style={styles.avatar}>
               <Text style={styles.avatarInitials}>{initials || '·'}</Text>
@@ -793,7 +798,7 @@ export default function SettingsScreen() {
               <Text style={styles.profileName} numberOfLines={1}>
                 {profile
                   ? `${profile.firstName} ${profile.lastName}`.trim()
-                  : user?.displayName || 'Signed in'}
+                  : user?.displayName || t('signedIn')}
               </Text>
               <Text style={styles.profileMeta} numberOfLines={1}>
                 {user?.email ?? ''}
@@ -811,21 +816,21 @@ export default function SettingsScreen() {
               style={styles.leaveHouseholdBtn}
               hitSlop={4}
             >
-              <Text style={styles.leaveHouseholdText}>Edit profile</Text>
+              <Text style={styles.leaveHouseholdText}>{t('editProfile2')}</Text>
             </Pressable>
           </View>
         </Section>
 
-        <Section title="Premium">
+        <Section title={t('premium')}>
           <View style={{ padding: theme.spacing.md, gap: theme.spacing.sm }}>
             <Text style={styles.profileMeta}>
               {isPremium
                 ? promoRedemption
                   ? promoRedemption.grantsPro
-                    ? 'Premium unlocked via promo code.'
+                    ? t('premiumUnlockedViaPromoCode')
                     : `Premium via promo code until ${promoRedemption.freeUntil?.toLocaleDateString()}.`
-                  : 'You have unlimited AI scans, PDF export, and multiple households.'
-                : 'Unlock unlimited AI scans, PDF export, and multiple households.'}
+                  : t('youHaveUnlimitedAiScans')
+                : t('unlockUnlimitedAiScansPdf')}
             </Text>
             {isPremium ? (
               // A promo-only grant has no real store subscription to
@@ -839,23 +844,20 @@ export default function SettingsScreen() {
                   hitSlop={4}
                 >
                   <Text style={styles.leaveHouseholdText}>
-                    {openingManageSubscription ? 'Opening…' : 'Manage subscription'}
+                    {openingManageSubscription ? t('opening') : t('manageSubscription')}
                   </Text>
                 </Pressable>
               )
             ) : (
-              <Button label="Upgrade to Premium" onPress={() => router.push('/paywall')} size="lg" />
+              <Button label={t('upgradeToPremium')} onPress={() => router.push('/paywall')} size="lg" />
             )}
           </View>
         </Section>
 
-        <Section title="Household">
+        <Section title={t('household')}>
           {!isCloudSyncAvailable() && (
             <Text style={styles.cloudSyncWarning}>
-              Cloud sync isn't available on this install, so household members
-              and split can't work right now. This app may need a fresh
-              build/update — try updating the app, and if that doesn't help,
-              let the developer know.
+              {t('cloudSyncIsnTAvailable')}
             </Text>
           )}
           {(members ?? [{ uid: user?.uid ?? 'you', email: user?.email ?? null, displayName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : null, role: 'owner' as const, isYou: true }]).map(
@@ -866,11 +868,11 @@ export default function SettingsScreen() {
                     <Text style={styles.memberAvatarInitials}>{memberInitials(m)}</Text>
                   </View>
                   <Text style={styles.memberName} numberOfLines={1}>
-                    {m.displayName || m.email || 'Household member'}
+                    {m.displayName || m.email || t('householdMember')}
                   </Text>
                   <View style={styles.memberRoleBadge}>
                     <Text style={styles.memberRoleText}>
-                      {m.isYou ? 'You' : m.role === 'owner' ? 'Owner' : 'Member'}
+                      {m.isYou ? t('you') : m.role === 'owner' ? t('owner') : t('member2')}
                     </Text>
                   </View>
                 </>
@@ -895,7 +897,7 @@ export default function SettingsScreen() {
             <TextInput
               value={inviteEmail}
               onChangeText={setInviteEmail}
-              placeholder="Invite by email"
+              placeholder={t('inviteByEmail')}
               placeholderTextColor={theme.colors.textMuted}
               autoCapitalize="none"
               keyboardType="email-address"
@@ -909,7 +911,7 @@ export default function SettingsScreen() {
                 (invitingSending || !inviteEmail.trim()) && styles.inviteSendBtnDisabled,
               ]}
             >
-              <Text style={styles.inviteSendText}>{invitingSending ? 'Sending…' : 'Send'}</Text>
+              <Text style={styles.inviteSendText}>{invitingSending ? t('sending') : t('send')}</Text>
             </Pressable>
           </View>
           {emailSuggestions.length > 0 && (
@@ -945,7 +947,7 @@ export default function SettingsScreen() {
                 fontFamily: theme.fonts.display.bold,
               }}
             >
-              Add by phone contact
+              {t('addByPhoneContact')}
             </Text>
           </Pressable>
 
@@ -957,16 +959,16 @@ export default function SettingsScreen() {
               hitSlop={4}
             >
               <Text style={styles.leaveHouseholdText}>
-                {leavingHousehold ? 'Leaving…' : 'Leave household'}
+                {leavingHousehold ? t('leaving') : t('leaveHousehold2')}
               </Text>
             </Pressable>
           ) : null}
         </Section>
 
-        <Section title="Appearance">
+        <Section title={t('appearance')}>
           <View style={{ paddingVertical: theme.spacing.sm }}>
             <View style={styles.currencyRow}>
-              {THEME_OPTIONS.map(({ value, label }) => {
+              {THEME_OPTIONS.map(({ value, labelKey }) => {
                 const active = value === themePreference;
                 return (
                   <Pressable
@@ -980,7 +982,7 @@ export default function SettingsScreen() {
                         active && styles.currencyPillTextActive,
                       ]}
                     >
-                      {label}
+                      {t(labelKey)}
                     </Text>
                   </Pressable>
                 );
@@ -989,7 +991,34 @@ export default function SettingsScreen() {
           </View>
         </Section>
 
-        <Section title="Profile Currency">
+        <Section title={t('language')}>
+          <View style={{ paddingVertical: theme.spacing.sm }}>
+            <View style={styles.currencyRow}>
+              {LANGUAGE_OPTIONS.map((value) => {
+                const active = value === languagePreference;
+                return (
+                  <Pressable
+                    key={value}
+                    testID={`language-${value}`}
+                    onPress={() => setLanguagePreference(value)}
+                    style={[styles.currencyPill, active && styles.currencyPillActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.currencyPillText,
+                        active && styles.currencyPillTextActive,
+                      ]}
+                    >
+                      {value === 'system' ? t('themeSystem') : LANGUAGE_NAMES[value]}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        </Section>
+
+        <Section title={t('profileCurrency')}>
           <View style={{ paddingVertical: theme.spacing.sm }}>
             <View style={styles.currencyRow}>
               {CURRENCIES.map((code) => {
@@ -1019,7 +1048,7 @@ export default function SettingsScreen() {
         </Section>
 
         <Section
-          title="Categories & budgets"
+          title={t('categoriesBudgets')}
           onLayout={(e) => {
             budgetsSectionY.current = e.nativeEvent.layout.y;
           }}
@@ -1104,7 +1133,7 @@ export default function SettingsScreen() {
               style={styles.leaveHouseholdBtn}
               hitSlop={4}
             >
-              <Text style={styles.leaveHouseholdText}>Custom categories & budgets · Premium</Text>
+              <Text style={styles.leaveHouseholdText}>{t('customCategoriesBudgetsPremium')}</Text>
             </Pressable>
           )}
           {/* Not a receipt category — a separate axis covering ALL
@@ -1133,14 +1162,14 @@ export default function SettingsScreen() {
             style={styles.leaveHouseholdBtn}
             hitSlop={4}
           >
-            <Text style={styles.leaveHouseholdText}>View recurring schedule</Text>
+            <Text style={styles.leaveHouseholdText}>{t('viewRecurringSchedule')}</Text>
           </Pressable>
           <Pressable
             onPress={() => router.push('/incomes' as never)}
             style={styles.leaveHouseholdBtn}
             hitSlop={4}
           >
-            <Text style={styles.leaveHouseholdText}>All incomes</Text>
+            <Text style={styles.leaveHouseholdText}>{t('allIncomes')}</Text>
           </Pressable>
           <Pressable
             onPress={() => router.push(isPremium ? '/savings-goals' : '/paywall')}
@@ -1148,7 +1177,7 @@ export default function SettingsScreen() {
             hitSlop={4}
           >
             <Text style={styles.leaveHouseholdText}>
-              {isPremium ? 'Savings goals' : 'Savings goals · Premium'}
+              {isPremium ? t('savingsGoals') : t('savingsGoalsPremium')}
             </Text>
           </Pressable>
           <View style={styles.alertRow}>
@@ -1158,8 +1187,8 @@ export default function SettingsScreen() {
                 the original storage key (bs.budgets.alertsEnabled) to
                 avoid a migration; only the label changed. */}
             <View style={{ flex: 1, marginRight: theme.spacing.sm }}>
-              <Text style={styles.alertLabel}>Notifications</Text>
-              <Text style={styles.inviteHint}>Budget alerts, shared expenses, settle-ups</Text>
+              <Text style={styles.alertLabel}>{t('notifications')}</Text>
+              <Text style={styles.inviteHint}>{t('budgetAlertsSharedExpensesSettle')}</Text>
             </View>
             <Switch
               value={budgetAlertsEnabled}
@@ -1173,7 +1202,7 @@ export default function SettingsScreen() {
 
         <View style={{ marginBottom: theme.spacing.sm }}>
           <Button
-            label={exportingAll ? 'Exporting…' : 'Export all data'}
+            label={exportingAll ? t('exporting') : t('exportAllData')}
             onPress={exportAllData}
             variant="secondary"
             loading={exportingAll}
@@ -1185,11 +1214,11 @@ export default function SettingsScreen() {
         </View>
 
         <Pressable onPress={confirmSignOut} style={styles.signOutTextBtn} hitSlop={4}>
-          <Text style={styles.signOutTextLabel}>Sign out</Text>
+          <Text style={styles.signOutTextLabel}>{t('signOut2')}</Text>
         </Pressable>
 
         <Pressable onPress={confirmDeleteAccount} style={styles.signOutTextBtn} hitSlop={4}>
-          <Text style={styles.signOutTextLabel}>Delete account</Text>
+          <Text style={styles.signOutTextLabel}>{t('deleteAccount2')}</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>

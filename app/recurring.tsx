@@ -13,6 +13,7 @@ import { parseYmdLocal } from '../lib/parser';
 import { Income, Receipt } from '../types';
 import { CATEGORY_ICONS } from '../constants/categories';
 
+import { useT } from '../lib/I18nContext';
 type ExpenseTemplate = {
   kind: 'expense';
   receipt: Receipt;
@@ -42,6 +43,7 @@ const FREQUENCY_LABEL: Record<string, string> = {
  *  see the whole upcoming schedule in one place instead of discovering
  *  each occurrence only after it's already been added. */
 export default function RecurringScreen() {
+  const t = useT();
   const theme = useTheme();
   const router = useRouter();
   const styles = useRecurringStyles();
@@ -97,12 +99,12 @@ export default function RecurringScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ModalHeader title="Recurring" onBack={() => router.back()} />
+      <ModalHeader title={t('recurring2')} onBack={() => router.back()} />
       {!loading && templates.length === 0 ? (
         <EmptyState
           icon="repeat-outline"
-          title="No recurring items"
-          description={'Turn on Repeat when adding an expense or income to see its schedule here.'}
+          title={t('noRecurringItems')}
+          description={t('turnOnRepeatWhenAdding')}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>

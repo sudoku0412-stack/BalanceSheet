@@ -20,7 +20,9 @@ import { normalizePhoneE164 } from '../lib/phone';
 import { setPhoneNumberManual, removePhoneVerification } from '../lib/phoneVerification';
 import { getCurrentHouseholdId, setCurrentHouseholdId } from '../lib/database';
 
+import { useT } from '../lib/I18nContext';
 export default function EditProfileScreen() {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const toast = useToast();
@@ -83,10 +85,10 @@ export default function EditProfileScreen() {
         await removePhoneVerification(user.uid, profile.phone);
       }
       await refreshProfile();
-      toast.show({ kind: 'success', message: 'Profile updated' });
+      toast.show({ kind: 'success', message: t('profileUpdated') });
       router.back();
     } catch (e) {
-      Alert.alert('Save failed', (e as Error)?.message ?? 'Try again.');
+      Alert.alert(t('saveFailed'), (e as Error)?.message ?? t('tryAgain'));
     } finally {
       setSaving(false);
     }
@@ -94,14 +96,14 @@ export default function EditProfileScreen() {
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <ModalHeader title="Edit Profile" />
+      <ModalHeader title={t('editProfile')} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.card}>
-            <Text style={styles.label}>First name</Text>
+            <Text style={styles.label}>{t('firstName')}</Text>
             <TextInput
               value={firstName}
               onChangeText={setFirstName}
@@ -111,7 +113,7 @@ export default function EditProfileScreen() {
               style={styles.input}
             />
 
-            <Text style={styles.label}>Last name</Text>
+            <Text style={styles.label}>{t('lastName')}</Text>
             <TextInput
               value={lastName}
               onChangeText={setLastName}
@@ -122,7 +124,7 @@ export default function EditProfileScreen() {
             />
             {nameError && <Text style={styles.errorText}>{nameError}</Text>}
 
-            <Text style={styles.label}>Phone number</Text>
+            <Text style={styles.label}>{t('phoneNumber')}</Text>
             <TextInput
               value={phoneInput}
               onChangeText={setPhoneInput}
@@ -133,11 +135,11 @@ export default function EditProfileScreen() {
             />
             {phoneError && <Text style={styles.errorText}>{phoneError}</Text>}
             <Text style={styles.hint}>
-              Optional — lets others add you to a household by phone number.
+              {t('optionalLetsOthersAddYou')}
             </Text>
           </View>
 
-          <Button label="Save" onPress={save} loading={saving} size="lg" style={styles.saveBtn} />
+          <Button label={t('save')} onPress={save} loading={saving} size="lg" style={styles.saveBtn} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

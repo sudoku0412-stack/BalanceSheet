@@ -9,6 +9,7 @@ import {
   type CustomCategory,
 } from '../../lib/customCategories';
 
+import { useT } from '../../lib/I18nContext';
 const ERROR_TEXT: Record<Extract<AddCustomCategoryResult, { ok: false }>['reason'], string> = {
   empty: 'Enter a name.',
   tooLong: `Keep it under ${MAX_CUSTOM_CATEGORY_NAME} characters.`,
@@ -39,6 +40,7 @@ export function CustomCategoryPicker({
   onCustomsChange: (next: CustomCategory[]) => void;
   onUpgrade: () => void;
 }) {
+  const t = useT();
   const theme = useTheme();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -115,7 +117,7 @@ export function CustomCategoryPicker({
           >
             <Ionicons name="add" size={14} color={theme.colors.accent} />
             <Text style={styles.addText}>
-              {isPremium ? 'Custom category' : 'Custom category · Premium'}
+              {isPremium ? t('customCategory') : t('customCategoryPremium')}
             </Text>
           </TouchableOpacity>
         )}
@@ -131,14 +133,14 @@ export function CustomCategoryPicker({
                 setName(v);
                 setError(null);
               }}
-              placeholder="e.g. Pets"
+              placeholder={t('eGPets')}
               placeholderTextColor={theme.colors.textMuted}
               maxLength={MAX_CUSTOM_CATEGORY_NAME + 5}
               autoFocus
               onSubmitEditing={submit}
             />
             <Pressable testID="custom-category-save" onPress={submit} hitSlop={6}>
-              <Text style={styles.addText}>Add</Text>
+              <Text style={styles.addText}>{t('add')}</Text>
             </Pressable>
             <Pressable
               testID="custom-category-cancel"
@@ -149,7 +151,7 @@ export function CustomCategoryPicker({
               }}
               hitSlop={6}
             >
-              <Text style={[styles.addText, { color: theme.colors.textMuted }]}>Cancel</Text>
+              <Text style={[styles.addText, { color: theme.colors.textMuted }]}>{t('cancel')}</Text>
             </Pressable>
           </View>
           {error && <Text style={styles.errorText}>{error}</Text>}

@@ -20,6 +20,7 @@ import { CurrencyCode, formatCurrency } from '../../lib/currency';
 import { Receipt, Settlement } from '../../types';
 import { onLocalDataChanged } from '../../lib/dataSync';
 
+import { useT } from '../../lib/I18nContext';
 function memberLabel(m: HouseholdMember | undefined): string {
   return m?.displayName?.trim() || m?.email || 'Household member';
 }
@@ -35,6 +36,7 @@ type Row =
  *  and the header total is the sum of those — same number the Balances
  *  screen shows for this person. */
 export default function SharedExpensesScreen() {
+  const t = useT();
   const theme = useTheme();
   const router = useRouter();
   const styles = useSharedExpensesStyles();
@@ -107,7 +109,7 @@ export default function SharedExpensesScreen() {
       {!loading && rows.length === 0 ? (
         <EmptyState
           icon="receipt-outline"
-          title="No shared expenses"
+          title={t('noSharedExpenses')}
           description={`Nothing split with ${label} yet.`}
         />
       ) : (
@@ -145,7 +147,7 @@ export default function SharedExpensesScreen() {
                       <Text style={styles.avatarText}>✓</Text>
                     </View>
                     <View style={styles.rowInfo}>
-                      <Text style={styles.rowStoreName} numberOfLines={1}>Settled up</Text>
+                      <Text style={styles.rowStoreName} numberOfLines={1}>{t('settledUp')}</Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
                         {format(new Date(row.date), 'MMM d')} ·{' '}
                         {paidByYou ? `You paid ${label}` : `${label} paid you`}
