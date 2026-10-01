@@ -49,7 +49,7 @@ export default function ResetPasswordScreen() {
         setChecking(false);
       }
     })();
-  }, [oobCode]);
+  }, [oobCode, t]);
 
   const submit = async () => {
     setFormError(null);

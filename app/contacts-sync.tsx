@@ -128,7 +128,7 @@ export default function ContactsSyncScreen() {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTReadContacts') });
       setPhase('denied');
     }
-  }, [toast]);
+  }, [toast, t]);
 
   // Skip the extra "tap to start" step — the user already opted in by
   // tapping "Add by phone contact" in Settings, so ask for the OS

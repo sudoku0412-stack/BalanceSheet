@@ -57,7 +57,7 @@ export default function PaywallScreen() {
       router.back();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPremium]);
+  }, [isPremium, t]);
 
   const packages = offerings?.current?.availablePackages ?? [];
   // Annual first — it's the better deal and the one we want most

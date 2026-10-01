@@ -182,7 +182,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         );
       }
     },
-    [],
+    [t],
   );
 
   const exportCsv = useCallback(async () => {
@@ -213,7 +213,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     } finally {
       setExportingCsv(false);
     }
-  }, [monthReceipts, exportingCsv, monthStart, shareFile]);
+  }, [monthReceipts, exportingCsv, monthStart, shareFile, t]);
 
   const exportPdf = useCallback(async () => {
     if (exportingPdf) return;
@@ -241,8 +241,8 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     }
     setExportingPdf(true);
     try {
-      const startLabel = format(monthStart, 'PP');
-      const endLabel = format(monthEnd, 'PP');
+      const startLabel = format(monthStart, 'PP', { locale: dateFnsLocale(language) });
+      const endLabel = format(monthEnd, 'PP', { locale: dateFnsLocale(language) });
       const filename = buildExportFilename(monthStart, 'pdf');
       const path = await generateReceiptsPdf({
         receipts: monthReceipts,
@@ -260,7 +260,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     } finally {
       setExportingPdf(false);
     }
-  }, [monthReceipts, exportingPdf, isPremium, monthStart, monthEnd, shareFile]);
+  }, [monthReceipts, exportingPdf, isPremium, monthStart, monthEnd, shareFile, t]);
 
   return (
     <SafeAreaView style={styles.root} edges={embedded ? ['bottom'] : ['top', 'bottom']}>
