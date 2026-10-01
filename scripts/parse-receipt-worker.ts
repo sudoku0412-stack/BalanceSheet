@@ -1,7 +1,7 @@
 /**
  * Cloudflare Worker that turns raw receipt OCR text into a structured
  * receipt JSON, using Cloudflare Workers AI as the LLM provider. The
- * BalanceSheet app calls this worker as its FREE-FOR-ALL-USERS default
+ * NestExpenseTracker app calls this worker as its FREE-FOR-ALL-USERS default
  * AI parser — power users can override by adding their own Gemini key
  * in Settings (which causes the app to bypass this worker and call
  * Google directly).
@@ -30,10 +30,10 @@
  *      can't hammer your free quota:
  *        wrangler secret put APP_SECRET
  *      (paste any random 32+ char string; the SAME string goes into
- *      the BalanceSheet app's PARSE_ENDPOINT_SECRET env var)
+ *      the NestExpenseTracker app's PARSE_ENDPOINT_SECRET env var)
  *   7. `wrangler deploy` — note the URL like
  *      https://balancesheet-parser.<your-subdomain>.workers.dev
- *   8. In the BalanceSheet repo, set EAS env vars on the preview profile:
+ *   8. In the NestExpenseTracker repo, set EAS env vars on the preview profile:
  *
  *        eas env:create --environment preview --name PARSE_ENDPOINT \
  *            --value 'https://balancesheet-parser.<sub>.workers.dev/parse'

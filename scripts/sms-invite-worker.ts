@@ -28,7 +28,7 @@
  *
  *   6. `wrangler deploy` — note the URL like
  *      https://balancesheet-sms-invite.<your-subdomain>.workers.dev
- *   7. In the BalanceSheet repo, set EAS env vars on the preview profile:
+ *   7. In the NestExpenseTracker repo, set EAS env vars on the preview profile:
  *
  *        eas env:create --environment preview --name SMS_WORKER_ENDPOINT \
  *            --value 'https://balancesheet-sms-invite.<sub>.workers.dev/send'

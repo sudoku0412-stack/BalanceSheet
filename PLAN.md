@@ -143,9 +143,8 @@ once something is actually live.
   new build) — would need either Firebase Remote Config (free tier
   covers this, doesn't need Blaze) or a simple Firestore-backed config
   doc read at app launch.
-- Rename GitHub repo `BalanceSheet` → `NestExpenseTracker` (Settings →
-  General; update clone URLs after). Bundle ids / EAS slug stay
-  `receiptscanner` / `receipt-scanner` for store continuity.
+- GitHub repo renamed `BalanceSheet` → `NestExpenseTracker`. Bundle ids /
+  EAS slug stay `receiptscanner` / `receipt-scanner` for store continuity.
 
 ## Note for whoever picks this up next (human or AI)
 

@@ -124,7 +124,7 @@ docs/           store-listing copy, older planning docs (see PLAN.md for current
 | Layer | Name | Change? |
 |---|---|---|
 | Store / in-app display | **NestExpenseTracker** | Canonical — keep this everywhere user-visible |
-| GitHub repo | historically `BalanceSheet` | Safe to rename in GitHub Settings; update README clone URLs |
+| GitHub repo | `NestExpenseTracker` (renamed from `BalanceSheet`) | Done; GitHub redirects old URLs |
 | npm `package.json` `name` | `nest-expense-tracker` | Cosmetic |
 | EAS `slug` / deep-link `scheme` | `receipt-scanner` | **Leave** — tied to EAS project + existing app links |
 | Android/iOS bundle id | `com.*.receiptscanner` | **Leave** — store listing continuity |
@@ -132,7 +132,7 @@ docs/           store-listing copy, older planning docs (see PLAN.md for current
 
 Do not "fix" bundle ids or the EAS slug as part of a branding pass.
 Do fix READMEs, store listing copy, and static hosting pages when they
-still say BalanceSheet / Receipt Scanner.
+still say Receipt Scanner (or the old BalanceSheet name).
 
 ## Build & release pipeline
 
