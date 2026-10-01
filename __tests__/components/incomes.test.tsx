@@ -116,7 +116,7 @@ describe('IncomesScreen', () => {
   it('searches via searchIncomes instead of the full list', async () => {
     mockGetAllIncomes.mockResolvedValue([
       income({ id: 'i1', sourceName: 'Acme payroll' }),
-      income({ id: 'i2', sourceName: 'Uber', amountUsd: 40, category: 'Side hustle' }),
+      income({ id: 'i2', sourceName: 'Uber', amountUsd: 40, category: 'Freelance' }),
     ]);
     render(<IncomesScreen />);
     await waitFor(() => screen.getByText('Uber'));
