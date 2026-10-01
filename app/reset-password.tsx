@@ -8,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
 import { humanizeAuthError } from '../lib/authErrors';
 
+import { useT } from '../lib/I18nContext';
 /**
  * Landing screen for the password-reset deep link (see lib/auth.ts's
  * sendPasswordReset). Reached signed-out, straight from the email —
@@ -18,6 +19,7 @@ import { humanizeAuthError } from '../lib/authErrors';
  * it AND sets the new password in one call (invalid/expired throws).
  */
 export default function ResetPasswordScreen() {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const toast = useToast();
@@ -34,7 +36,7 @@ export default function ResetPasswordScreen() {
   useEffect(() => {
     (async () => {
       if (!oobCode) {
-        setCodeError('This reset link is missing its code — open it directly from the email.');
+        setCodeError(t('resetLinkMissingCode'));
         setChecking(false);
         return;
       }
@@ -47,22 +49,22 @@ export default function ResetPasswordScreen() {
         setChecking(false);
       }
     })();
-  }, [oobCode]);
+  }, [oobCode, t]);
 
   const submit = async () => {
     setFormError(null);
     if (password.length < 8) {
-      setFormError('Password must be at least 8 characters.');
+      setFormError(t('passwordMin8'));
       return;
     }
     if (password !== confirmPassword) {
-      setFormError('Passwords do not match.');
+      setFormError(t('passwordsDoNotMatch'));
       return;
     }
     try {
       setSubmitting(true);
       await auth().confirmPasswordReset(oobCode!, password);
-      toast.show({ kind: 'success', message: 'Password updated — sign in with your new password.' });
+      toast.show({ kind: 'success', message: t('passwordUpdatedSignInWith') });
       router.replace('/auth');
     } catch (e) {
       setFormError(humanizeAuthError(e));
@@ -74,7 +76,7 @@ export default function ResetPasswordScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Reset password</Text>
+        <Text style={styles.title}>{t('resetPassword')}</Text>
 
         {checking ? (
           <ActivityIndicator color={theme.colors.accent} style={{ marginTop: theme.spacing.lg }} />
@@ -82,7 +84,7 @@ export default function ResetPasswordScreen() {
           <>
             <Text style={styles.errorText}>{codeError}</Text>
             <Button
-              label="Back to sign in"
+              label={t('backToSignIn')}
               onPress={() => router.replace('/auth')}
               size="lg"
               style={styles.submitButton}
@@ -90,10 +92,10 @@ export default function ResetPasswordScreen() {
           </>
         ) : (
           <>
-            <Text style={styles.subtitle}>Setting a new password for {email}</Text>
+            <Text style={styles.subtitle}>{t('settingNewPasswordFor', { email: email ?? '' })}</Text>
 
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>New password</Text>
+              <Text style={styles.fieldLabel}>{t('newPassword')}</Text>
               <TextInput
                 style={styles.input}
                 value={password}
@@ -105,7 +107,7 @@ export default function ResetPasswordScreen() {
               />
             </View>
             <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Confirm new password</Text>
+              <Text style={styles.fieldLabel}>{t('confirmNewPassword')}</Text>
               <TextInput
                 style={styles.input}
                 value={confirmPassword}
@@ -120,7 +122,7 @@ export default function ResetPasswordScreen() {
             {formError && <Text style={styles.errorText}>{formError}</Text>}
 
             <Button
-              label="Set new password"
+              label={t('setNewPassword')}
               onPress={submit}
               loading={submitting}
               size="lg"

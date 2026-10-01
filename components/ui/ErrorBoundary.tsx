@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React from 'react';
 import { ScrollView, StyleSheet, Text } from 'react-native';
 
@@ -24,7 +25,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
     if (this.state.error) {
       return (
         <ScrollView contentContainerStyle={styles.root}>
-          <Text style={styles.title}>Something broke on this screen</Text>
+          <Text style={styles.title}>{tr('somethingBrokeOnScreen')}</Text>
           <Text style={styles.msg}>{String(this.state.error?.message ?? this.state.error)}</Text>
           <Text style={styles.stack}>{this.state.error?.stack?.slice(0, 800)}</Text>
         </ScrollView>

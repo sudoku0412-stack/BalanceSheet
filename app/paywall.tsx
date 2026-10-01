@@ -12,11 +12,12 @@ import { useToast } from '../components/ui/Toast';
 import { useStyles, useTheme, Theme } from '../constants/theme';
 import { useEntitlements } from '../lib/EntitlementsContext';
 
-const FEATURES = [
-  { icon: 'sparkles' as const, label: 'Unlimited AI receipt scanning' },
-  { icon: 'document-text' as const, label: 'Export reports as PDF' },
-  { icon: 'people' as const, label: 'Create or join multiple households' },
-  { icon: 'flag' as const, label: 'Savings goals and envelopes' },
+import { useT } from '../lib/I18nContext';
+const FEATURES: { icon: 'sparkles' | 'document-text' | 'people' | 'flag'; labelKey: 'payFeature1' | 'payFeature2' | 'payFeature3' | 'payFeature4' }[] = [
+  { icon: 'sparkles' as const, labelKey: 'payFeature1' },
+  { icon: 'document-text' as const, labelKey: 'payFeature2' },
+  { icon: 'people' as const, labelKey: 'payFeature3' },
+  { icon: 'flag' as const, labelKey: 'payFeature4' },
 ];
 
 /**
@@ -27,6 +28,7 @@ const FEATURES = [
  * belonging to more than one household at a time, plus savings goals.
  */
 export default function PaywallScreen() {
+  const t = useT();
   const theme = useTheme();
   const styles = usePaywallStyles();
   const toast = useToast();
@@ -51,11 +53,11 @@ export default function PaywallScreen() {
 
   useEffect(() => {
     if (isPremium) {
-      toast.show({ kind: 'success', message: "You're on Premium — thanks for supporting the app!" });
+      toast.show({ kind: 'success', message: t('youReOnPremiumThanks') });
       router.back();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPremium]);
+  }, [isPremium, t]);
 
   const packages = offerings?.current?.availablePackages ?? [];
   // Annual first — it's the better deal and the one we want most
@@ -97,7 +99,7 @@ export default function PaywallScreen() {
       // Success (isPremium becoming true) is handled by the effect
       // above, which shows its own toast and navigates back.
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't redeem that code." });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTRedeemThatCode') });
     } finally {
       setRedeeming(false);
     }
@@ -109,10 +111,10 @@ export default function PaywallScreen() {
     try {
       const premium = await restorePurchases();
       if (!premium) {
-        toast.show({ kind: 'error', message: 'No active subscription found for this account.' });
+        toast.show({ kind: 'error', message: t('noActiveSubscriptionFoundFor') });
       }
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't restore purchases." });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTRestorePurchases') });
     } finally {
       setRestoring(false);
     }
@@ -120,15 +122,15 @@ export default function PaywallScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ModalHeader title="Upgrade to Premium" onBack={() => router.back()} />
+      <ModalHeader title={t('upgradeToPremium')} onBack={() => router.back()} />
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.featureCard}>
           {FEATURES.map((f) => (
-            <View key={f.label} style={styles.featureRow}>
+            <View key={f.labelKey} style={styles.featureRow}>
               <View style={styles.featureIconWrap}>
                 <Ionicons name={f.icon} size={18} color={theme.colors.accent} />
               </View>
-              <Text style={styles.featureLabel}>{f.label}</Text>
+              <Text style={styles.featureLabel}>{t(f.labelKey)}</Text>
             </View>
           ))}
         </View>
@@ -137,7 +139,7 @@ export default function PaywallScreen() {
           <ActivityIndicator color={theme.colors.accent} style={styles.loading} />
         ) : sortedPackages.length === 0 ? (
           <Text style={styles.errorText}>
-            Plans aren't available right now — check your connection and try again shortly.
+            {t('plansArenTAvailableRight')}
           </Text>
         ) : (
           <View style={styles.plans}>
@@ -150,17 +152,17 @@ export default function PaywallScreen() {
                   style={[styles.planCard, isAnnual && styles.planCardBest]}
                 >
                   <View style={styles.planHeaderRow}>
-                    <Text style={styles.planTitle}>{isAnnual ? 'Annual' : 'Monthly'}</Text>
+                    <Text style={styles.planTitle}>{isAnnual ? t('annual') : t('monthly')}</Text>
                     {isAnnual && (
                       <View style={styles.planBadgeWrap}>
-                        <Text style={styles.planBadge}>BEST VALUE</Text>
+                        <Text style={styles.planBadge}>{t('bestValue')}</Text>
                       </View>
                     )}
                   </View>
                   <Text style={styles.planPrice}>{pkg.product.priceString}</Text>
-                  {hasTrial && <Text style={styles.planTrial}>Includes free trial</Text>}
+                  {hasTrial && <Text style={styles.planTrial}>{t('includesFreeTrial')}</Text>}
                   <Button
-                    label={purchasingId === pkg.identifier ? 'Processing…' : hasTrial ? 'Start free trial' : 'Subscribe'}
+                    label={purchasingId === pkg.identifier ? t('processing') : hasTrial ? t('startFreeTrial') : t('subscribe')}
                     onPress={() => onPurchase(pkg)}
                     loading={purchasingId === pkg.identifier}
                     disabled={purchasingId !== null}
@@ -177,7 +179,7 @@ export default function PaywallScreen() {
           <TextInput
             value={promoCode}
             onChangeText={setPromoCode}
-            placeholder="Promo code"
+            placeholder={t('promoCode')}
             placeholderTextColor={theme.colors.textMuted}
             autoCapitalize="characters"
             autoCorrect={false}
@@ -185,7 +187,7 @@ export default function PaywallScreen() {
             editable={!redeeming}
           />
           <Button
-            label={redeeming ? 'Applying…' : 'Apply'}
+            label={redeeming ? t('applying') : t('apply')}
             onPress={onRedeem}
             variant="secondary"
             size="md"
@@ -195,7 +197,7 @@ export default function PaywallScreen() {
         </View>
 
         <Button
-          label={restoring ? 'Restoring…' : 'Restore purchases'}
+          label={restoring ? t('restoring') : t('restorePurchases')}
           onPress={onRestore}
           variant="ghost"
           loading={restoring}
@@ -204,8 +206,7 @@ export default function PaywallScreen() {
         />
 
         <Text style={styles.legalText}>
-          Subscriptions renew automatically until cancelled — manage or cancel anytime from your
-          Google Play or App Store account settings.
+          {t('subscriptionsRenewAutomaticallyUntilCancelled')}
         </Text>
         <LegalLinksRow />
       </ScrollView>

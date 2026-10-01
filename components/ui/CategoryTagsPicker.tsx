@@ -11,6 +11,7 @@ import { ALL_CATEGORIES } from '../../constants/categories';
 import { useStyles, useTheme } from '../../constants/theme';
 import { TagChip } from './TagChip';
 
+import { useT } from '../../lib/I18nContext';
 /**
  * Multi-select chip group for the receipt's category tags. Shows the
  * selected tags as filled chips, the unselected standard categories
@@ -27,6 +28,7 @@ export function CategoryTagsPicker({
   tags: string[];
   onChange: (next: string[]) => void;
 }) {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     root: { gap: 8 },
@@ -113,7 +115,7 @@ export function CategoryTagsPicker({
       return;
     }
     if (trimmed.length > 32) {
-      Alert.alert('Tag too long', 'Keep tags under 32 characters.');
+      Alert.alert(t('tagTooLong'), t('keepTagsUnder32Characters'));
       return;
     }
     if (!selectedSet.has(trimmed)) onChange([...tags, trimmed]);
@@ -124,7 +126,7 @@ export function CategoryTagsPicker({
   return (
     <View style={styles.root}>
       {tags.length === 0 ? (
-        <Text style={styles.emptyHint}>No tags yet — pick or add below</Text>
+        <Text style={styles.emptyHint}>{t('noTagsYetPickOr')}</Text>
       ) : (
         <View style={styles.row}>
           {tags.map((tag) => (
@@ -140,7 +142,7 @@ export function CategoryTagsPicker({
 
       {standardUnselected.length > 0 && (
         <>
-          <Text style={styles.sectionHint}>Add a standard category</Text>
+          <Text style={styles.sectionHint}>{t('addAStandardCategory')}</Text>
           <View style={styles.row}>
             {standardUnselected.map((c) => (
               <TagChip
@@ -162,14 +164,14 @@ export function CategoryTagsPicker({
           hitSlop={6}
         >
           <Ionicons name="add" size={14} color={theme.colors.accent} />
-          <Text style={styles.customBtnText}>Add custom tag</Text>
+          <Text style={styles.customBtnText}>{t('addCustomTag')}</Text>
         </Pressable>
       ) : (
         <View style={styles.customRow}>
           <TextInput
             value={draft}
             onChangeText={setDraft}
-            placeholder="e.g. Pet Food"
+            placeholder={t('eGPetFood')}
             placeholderTextColor={theme.colors.textMuted}
             style={styles.customInput}
             autoFocus
@@ -178,7 +180,7 @@ export function CategoryTagsPicker({
             autoCapitalize="words"
           />
           <Pressable onPress={commitDraft} style={styles.customSaveBtn} hitSlop={6}>
-            <Text style={styles.customSaveText}>Add</Text>
+            <Text style={styles.customSaveText}>{t('add')}</Text>
           </Pressable>
           <Pressable
             onPress={() => {
@@ -194,7 +196,7 @@ export function CategoryTagsPicker({
 
       {customSelected.length > 0 && (
         <Text style={styles.customSelectedHint}>
-          Custom: {customSelected.join(', ')}
+          {t('customPrefix', { tags: customSelected.join(', ') })}
         </Text>
       )}
     </View>

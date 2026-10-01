@@ -1,21 +1,17 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { format, isToday, isYesterday } from 'date-fns';
 import { Ionicons } from '@expo/vector-icons';
 import { Receipt } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { CATEGORY_ICONS } from '../../constants/categories';
 
+import { useT, useLanguage } from '../../lib/I18nContext';
+import { relativeDayLabel } from '../../lib/dateLocale';
+import { categoryLabel } from '../../lib/categoryLabel';
 interface Props {
   receipt: Receipt;
   onDelete?: (id: string) => void;
-}
-
-function dateLabel(date: Date): string {
-  if (isToday(date)) return 'Today';
-  if (isYesterday(date)) return 'Yesterday';
-  return format(date, 'MMM d');
 }
 
 /**
@@ -25,6 +21,8 @@ function dateLabel(date: Date): string {
  * "Recent"/"Expenses" list row spec.
  */
 export function ReceiptCard({ receipt, onDelete }: Props) {
+  const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     card: {
@@ -103,7 +101,7 @@ export function ReceiptCard({ receipt, onDelete }: Props) {
             {receipt.storeName}
           </Text>
           <Text style={styles.meta}>
-            {receipt.category} · {dateLabel(new Date(receipt.date))}
+            {categoryLabel(receipt.category)} · {relativeDayLabel(new Date(receipt.date), language)}
           </Text>
         </View>
       </View>
@@ -115,7 +113,7 @@ export function ReceiptCard({ receipt, onDelete }: Props) {
             onPress={() => onDelete(receipt.id)}
             hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
             accessibilityRole="button"
-            accessibilityLabel="Delete receipt"
+            accessibilityLabel={t('deleteReceipt2')}
           >
             <Ionicons name="trash-outline" size={16} color={theme.colors.textMuted} />
           </TouchableOpacity>

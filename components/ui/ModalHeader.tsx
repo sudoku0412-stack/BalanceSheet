@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import { useStyles, useTheme } from '../../constants/theme';
 
+import { useT } from '../../lib/I18nContext';
 interface RightAction {
   icon: keyof typeof Ionicons.glyphMap;
   onPress: () => void;
@@ -51,6 +52,7 @@ export function ModalHeader({
   rightActions = [],
   style,
 }: Props) {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     root: {
@@ -103,7 +105,7 @@ export function ModalHeader({
             hitSlop={10}
             style={styles.iconBtn}
             accessibilityRole="button"
-            accessibilityLabel="Go back"
+            accessibilityLabel={t('goBack')}
           >
             <Ionicons
               name="chevron-back"

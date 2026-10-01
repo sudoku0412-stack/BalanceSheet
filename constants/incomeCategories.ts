@@ -1,4 +1,6 @@
 import { IncomeCategory } from '../types';
+import { categoryLabel } from '../lib/categoryLabel';
+import { tr, type TranslationKey } from '../lib/i18n';
 
 export const INCOME_CATEGORY_ICONS: Record<IncomeCategory, string> = {
   Salary: '💼',
@@ -22,26 +24,10 @@ export const ALL_INCOME_CATEGORIES: IncomeCategory[] = [
 
 /** Placeholder for the free-text source name field, keyed by type. */
 export function sourceNamePlaceholder(category: IncomeCategory): string {
-  switch (category) {
-    case 'Salary':
-      return 'Employer name';
-    case 'Freelance':
-      return 'Client / platform';
-    case 'Gift':
-      return 'Who gave it';
-    case 'Interest':
-      return 'Bank / account';
-    case 'Refund':
-      return 'Store or merchant';
-    case 'InvestmentReturn':
-      return 'Brokerage / fund';
-    case 'Other':
-    default:
-      return 'Describe the source';
-  }
+  const key = `sourcePlaceholder_${category}` as TranslationKey;
+  return tr(key);
 }
 
 export function incomeCategoryLabel(category: IncomeCategory): string {
-  if (category === 'InvestmentReturn') return 'Investment return';
-  return category;
+  return categoryLabel(category);
 }

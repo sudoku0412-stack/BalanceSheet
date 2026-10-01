@@ -18,10 +18,15 @@ import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { parseYmdLocal } from '../lib/parser';
 import { Receipt } from '../types';
 
+import { useT, useLanguage } from '../lib/I18nContext';
+import { formatShortDate } from '../lib/dateLocale';
+import { categoryLabel } from '../lib/categoryLabel';
 /** Review inbox: expenses the app added on its own (recurring
  *  occurrences) wait here until the user confirms, edits, or deletes
  *  them — so an auto-added charge never silently skews the month. */
 export default function ReviewScreen() {
+  const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const router = useRouter();
   const styles = useReviewStyles();
@@ -54,7 +59,7 @@ export default function ReviewScreen() {
       await action();
       await load();
     } catch {
-      Alert.alert('Something went wrong', 'Please try again.');
+      Alert.alert(t('somethingWentWrong'), t('pleaseTryAgain'));
     }
   };
 
@@ -63,10 +68,10 @@ export default function ReviewScreen() {
   const approveAll = () => run(() => clearReviewQueue());
 
   const confirmDelete = (r: Receipt) => {
-    Alert.alert('Delete expense?', `${r.storeName} will be removed.`, [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('deleteExpense2'), t('removedStore', { name: r.storeName }), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('delete'),
         style: 'destructive',
         onPress: () => run(() => deleteReceipt(r.id)),
       },
@@ -75,23 +80,23 @@ export default function ReviewScreen() {
 
   const formatDate = (ymd: string): string => {
     const d = parseYmdLocal(ymd);
-    return d ? format(d, 'MMM d, yyyy') : ymd;
+    return d ? formatShortDate(d, language) : ymd;
   };
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ModalHeader title="Review" onBack={() => router.back()} />
+      <ModalHeader title={t('review')} onBack={() => router.back()} />
       {!loading && loadFailed ? (
         <EmptyState
           icon="alert-circle-outline"
-          title="Couldn't load review items"
-          description="Pull back and reopen this screen to try again."
+          title={t('couldnTLoadReviewItems')}
+          description={t('pullBackAndReopenThis')}
         />
       ) : !loading && items.length === 0 ? (
         <EmptyState
           icon="checkmark-done-outline"
-          title="All caught up"
-          description="Recurring expenses the app adds for you show up here to confirm."
+          title={t('allCaughtUp')}
+          description={t('recurringExpensesTheAppAdds')}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
@@ -101,7 +106,7 @@ export default function ReviewScreen() {
             onPress={approveAll}
             accessibilityRole="button"
           >
-            <Text style={styles.approveAllText}>Looks good — approve all ({items.length})</Text>
+            <Text style={styles.approveAllText}>{t('approveAllCount', { count: items.length })}</Text>
           </TouchableOpacity>
           {items.map((r) => (
             <View
@@ -121,7 +126,7 @@ export default function ReviewScreen() {
                 <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
                   <Text style={styles.name} numberOfLines={1}>{r.storeName}</Text>
                   <Text style={styles.meta}>
-                    {r.category} · {formatDate(r.date)}
+                    {categoryLabel(r.category)} · {formatDate(r.date)}
                   </Text>
                 </View>
                 <Text style={styles.amount}>{formatCurrency(r.totalAmount, currency)}</Text>
@@ -133,7 +138,7 @@ export default function ReviewScreen() {
                   onPress={() => approve(r.id)}
                   accessibilityRole="button"
                 >
-                  <Text style={[styles.actionText, { color: theme.colors.success }]}>Looks good</Text>
+                  <Text style={[styles.actionText, { color: theme.colors.success }]}>{t('looksGood')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   testID={`review-edit-${r.id}`}
@@ -141,7 +146,7 @@ export default function ReviewScreen() {
                   onPress={() => router.push(`/edit/${r.id}`)}
                   accessibilityRole="button"
                 >
-                  <Text style={styles.actionText}>Edit</Text>
+                  <Text style={styles.actionText}>{t('edit')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   testID={`review-delete-${r.id}`}
@@ -149,7 +154,7 @@ export default function ReviewScreen() {
                   onPress={() => confirmDelete(r)}
                   accessibilityRole="button"
                 >
-                  <Text style={[styles.actionText, { color: theme.colors.error }]}>Delete</Text>
+                  <Text style={[styles.actionText, { color: theme.colors.error }]}>{t('delete')}</Text>
                 </TouchableOpacity>
               </View>
             </View>

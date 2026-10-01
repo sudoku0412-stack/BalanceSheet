@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -20,8 +21,10 @@ import { CurrencyCode, formatCurrency } from '../../lib/currency';
 import { Receipt, Settlement } from '../../types';
 import { onLocalDataChanged } from '../../lib/dataSync';
 
+import { useT, useLanguage } from '../../lib/I18nContext';
+import { formatMonthDay } from '../../lib/dateLocale';
 function memberLabel(m: HouseholdMember | undefined): string {
-  return m?.displayName?.trim() || m?.email || 'Household member';
+  return m?.displayName?.trim() || m?.email || tr('householdMember');
 }
 
 type Row =
@@ -35,6 +38,8 @@ type Row =
  *  and the header total is the sum of those — same number the Balances
  *  screen shows for this person. */
 export default function SharedExpensesScreen() {
+  const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const router = useRouter();
   const styles = useSharedExpensesStyles();
@@ -103,19 +108,19 @@ export default function SharedExpensesScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ModalHeader title={`Shared with ${label}`} onBack={() => router.back()} />
+      <ModalHeader title={t('sharedWithLabel', { label })} onBack={() => router.back()} />
       {!loading && rows.length === 0 ? (
         <EmptyState
           icon="receipt-outline"
-          title="No shared expenses"
-          description={`Nothing split with ${label} yet.`}
+          title={t('noSharedExpenses')}
+          description={t('nothingSplitWith', { label })}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
           {rows.length > 0 && (
             <View style={styles.totalCard}>
               <Text style={styles.totalLabel}>
-                {totalOwesYou ? `${label} owes you` : `You owe ${label}`}
+                {totalOwesYou ? t('labelOwesYou', { label }) : t('youOweLabel', { label })}
               </Text>
               <Text
                 style={[
@@ -145,10 +150,10 @@ export default function SharedExpensesScreen() {
                       <Text style={styles.avatarText}>✓</Text>
                     </View>
                     <View style={styles.rowInfo}>
-                      <Text style={styles.rowStoreName} numberOfLines={1}>Settled up</Text>
+                      <Text style={styles.rowStoreName} numberOfLines={1}>{t('settledUp')}</Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
-                        {format(new Date(row.date), 'MMM d')} ·{' '}
-                        {paidByYou ? `You paid ${label}` : `${label} paid you`}
+                        {formatMonthDay(new Date(row.date), language)} ·{' '}
+                        {paidByYou ? t('youPaidLabel', { label }) : t('labelPaidYou', { label })}
                       </Text>
                     </View>
                     <Text
@@ -176,7 +181,7 @@ export default function SharedExpensesScreen() {
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowStoreName} numberOfLines={1}>{r.storeName}</Text>
                     <Text style={styles.rowMeta} numberOfLines={1}>
-                      {format(new Date(r.date), 'MMM d')} · {oweYou ? `${label} owes you` : `You owe ${label}`}
+                      {formatMonthDay(new Date(r.date), language)} · {oweYou ? t('labelOwesYou', { label }) : t('youOweLabel', { label })}
                     </Text>
                   </View>
                   <Text

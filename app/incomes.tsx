@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,11 +34,11 @@ import { getCurrency } from '../lib/secureStorage';
 import { useToast } from '../components/ui/Toast';
 import { Income } from '../types';
 
-function dateGroupLabel(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (isToday(d)) return 'Today';
-  if (isYesterday(d)) return 'Yesterday';
-  return format(d, 'MMM d, yyyy');
+import { useT, useLanguage } from '../lib/I18nContext';
+import { relativeDayLabel } from '../lib/dateLocale';
+import type { Language } from '../lib/i18n';
+function dateGroupLabel(dateStr: string, language: Language): string {
+  return relativeDayLabel(new Date(dateStr), language, true);
 }
 
 function memberName(
@@ -45,13 +46,15 @@ function memberName(
   members: HouseholdMember[],
   currentUid: string | undefined,
 ): string {
-  if (currentUid && uid === currentUid) return 'You';
+  if (currentUid && uid === currentUid) return tr('you');
   const m = members.find((x) => x.uid === uid);
-  if (m?.isYou) return 'You';
+  if (m?.isYou) return tr('you');
   return m?.displayName?.trim() || m?.email?.trim() || (uid.length > 8 ? `${uid.slice(0, 6)}…` : uid);
 }
 
 export default function IncomesScreen() {
+  const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const toast = useToast();
   const { user } = useAuth();
@@ -187,22 +190,22 @@ export default function IncomesScreen() {
   const sections = useMemo(() => {
     const groups: { title: string; data: Income[] }[] = [];
     for (const row of visible) {
-      const title = dateGroupLabel(row.date);
+      const title = dateGroupLabel(row.date, language);
       const last = groups[groups.length - 1];
       if (last && last.title === title) last.data.push(row);
       else groups.push({ title, data: [row] });
     }
     return groups;
-  }, [visible]);
+  }, [visible, language]);
 
   const totalUsd = visible.reduce((s, i) => s + (i.amountUsd || 0), 0);
 
   const confirmDelete = (income: Income) => {
     swipeableRefs.current[income.id]?.close();
-    Alert.alert('Delete income', 'This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('deleteIncome'), t('thisActionCannotBeUndone'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('delete'),
         style: 'destructive',
         onPress: async () => {
           if (deletingId) return;
@@ -211,7 +214,7 @@ export default function IncomesScreen() {
             await deleteIncome(income.id);
             await load();
           } catch (e) {
-            toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't delete that income." });
+            toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTDeleteThatIncome') });
           } finally {
             setDeletingId(null);
           }
@@ -223,18 +226,18 @@ export default function IncomesScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <ModalHeader
-        title="Incomes"
+        title={t('incomes')}
         iconLeading="💰"
         rightActions={[
           {
             icon: 'add',
             onPress: () => router.push('/add-income' as never),
-            accessibilityLabel: 'Add income',
+            accessibilityLabel: t('addIncome'),
           },
         ]}
       />
       <Text style={styles.totalLine}>
-        {visible.length} {visible.length === 1 ? 'entry' : 'entries'} · {formatCurrency(totalUsd, currency)}
+        {visible.length} {visible.length === 1 ? t('entry') : t('entries')} · {formatCurrency(totalUsd, currency)}
       </Text>
       <View style={styles.search}>
         <Ionicons name="search-outline" size={18} color={theme.colors.accent} />
@@ -242,7 +245,7 @@ export default function IncomesScreen() {
           style={styles.searchInput}
           value={query}
           onChangeText={setQuery}
-          placeholder="Search source or notes"
+          placeholder={t('searchSourceOrNotes')}
           placeholderTextColor={theme.colors.textMuted}
           returnKeyType="search"
           testID="incomes-search"
@@ -252,9 +255,9 @@ export default function IncomesScreen() {
         <View style={styles.list}>
           <EmptyState
             icon="cash-outline"
-            title="No incomes yet"
-            description="Add a paycheck or other income and it will show up here."
-            actionLabel="Add income"
+            title={t('noIncomesYet')}
+            description={t('addAPaycheckOrOther')}
+            actionLabel={t('addIncome')}
             onAction={() => router.push('/add-income' as never)}
           />
         </View>
@@ -293,7 +296,7 @@ export default function IncomesScreen() {
                         ) : (
                           <>
                             <Ionicons name="trash" size={20} color="#fff" />
-                            <Text style={styles.deleteText}>Delete</Text>
+                            <Text style={styles.deleteText}>{t('delete')}</Text>
                           </>
                         )}
                       </TouchableOpacity>

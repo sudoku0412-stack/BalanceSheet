@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -63,6 +64,10 @@ import { PaidBySection } from '../../components/ui/PaidBySection';
 import { DateField } from '../../components/ui/DateField';
 import { sanitizeAmountInput, parseAmountInput } from '../../lib/amountValidation';
 
+import { useT } from '../../lib/I18nContext';
+import { categoryLabel } from '../../lib/categoryLabel';
+import { dateFnsLocale } from '../../lib/dateLocale';
+import { getActiveLanguage } from '../../lib/i18n';
 /** Validate the persisted currency code, defaulting to USD when unset
  *  or unrecognized (matches lib/currency.ts's canonical-USD design). */
 function toCurrencyCode(raw: string | null): CurrencyCode {
@@ -82,7 +87,7 @@ function safeFormat(input: unknown, fmt: string): string {
   try {
     const d = new Date(input as string);
     if (isNaN(d.getTime())) return '';
-    return format(d, fmt);
+    return format(d, fmt, { locale: dateFnsLocale(getActiveLanguage()) });
   } catch {
     return '';
   }
@@ -96,7 +101,7 @@ function safeAmount(n: number | null | undefined, digits = 2): string {
 }
 
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email?.trim() || 'Member';
+  return m.displayName?.trim() || m.email?.trim() || tr('memberFallback');
 }
 
 function initialFor(label: string): string {
@@ -113,6 +118,7 @@ export default function EditReceiptScreenWrapped() {
 }
 
 function EditReceiptScreen() {
+  const t = useT();
   const theme = useTheme();
   const { user, profile, setEditInProgress } = useAuth();
 
@@ -900,12 +906,12 @@ function EditReceiptScreen() {
   const handleSave = async () => {
     if (!receipt) return;
     if (!storeName.trim()) {
-      Alert.alert('Missing field', 'Please enter a store name.');
+      Alert.alert(t('missingField'), t('pleaseEnterAStoreName'));
       return;
     }
     const amountVal = parseAmountInput(amount);
     if (amountVal === null || amountVal < 0) {
-      Alert.alert('Invalid amount', 'Please enter a valid amount.');
+      Alert.alert(t('invalidAmount'), t('pleaseEnterAValidAmount'));
       return;
     }
 
@@ -927,13 +933,13 @@ function EditReceiptScreen() {
       String(recurringDurationVal) === durationTrimmed;
     if (recurringEnabled && !originalRecurring && !validDuration) {
       Alert.alert(
-        'Missing duration',
-        'Please enter how many months this expense should repeat for.',
+        t('missingDuration'),
+        t('pleaseEnterHowManyMonths'),
       );
       return;
     }
     if (recurringEnabled && !parseYmdLocal(recurringNextDate.trim())) {
-      Alert.alert('Invalid date', 'Please enter a valid next auto-add date (YYYY-MM-DD).');
+      Alert.alert(t('invalidDate'), t('pleaseEnterAValidNext'));
       return;
     }
 
@@ -1059,7 +1065,7 @@ function EditReceiptScreen() {
       notifySuccess();
       router.back();
     } catch {
-      Alert.alert('Error', 'Failed to save changes.');
+      Alert.alert(t('error'), t('failedToSaveChanges'));
     } finally {
       setSaving(false);
     }
@@ -1069,10 +1075,10 @@ function EditReceiptScreen() {
     // Keep the existing confirm-before-delete Alert — the design
     // handoff prototype deletes immediately + shows a toast, but this
     // codebase already has a safety check here and it stays intact.
-    Alert.alert('Delete Receipt', 'This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('deleteReceipt'), t('thisActionCannotBeUndone'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('delete'),
         style: 'destructive',
         onPress: async () => {
           if (!receipt) return;
@@ -1097,8 +1103,8 @@ function EditReceiptScreen() {
   if (!receipt) {
     return (
       <View style={[styles.screen, styles.centered]}>
-        <Text style={styles.notFoundText}>Receipt not found</Text>
-        <Button label="Go back" onPress={() => router.back()} variant="ghost" />
+        <Text style={styles.notFoundText}>{t('receiptNotFound')}</Text>
+        <Button label={t('goBack')} onPress={() => router.back()} variant="ghost" />
       </View>
     );
   }
@@ -1181,12 +1187,12 @@ function EditReceiptScreen() {
   const saveItemModal = () => {
     const trimmedName = itemName.trim();
     if (!trimmedName) {
-      Alert.alert('Missing name', 'Please enter an item name.');
+      Alert.alert(t('missingName'), t('pleaseEnterAnItemName'));
       return;
     }
     const amt = parseAmountInput(itemAmount);
     if (amt === null || amt < 0) {
-      Alert.alert('Invalid amount', 'Please enter a valid item amount.');
+      Alert.alert(t('invalidAmount'), t('pleaseEnterAValidItem'));
       return;
     }
     // Solo household (no other members) — nothing to split, so this
@@ -1248,13 +1254,13 @@ function EditReceiptScreen() {
 
   // "Split with N people" / "You only" summary shown on each item row.
   const splitSummaryLabel = (item: LineItem): string => {
-    if (otherMembers.length === 0) return 'You only';
+    if (otherMembers.length === 0) return tr('youOnly');
     const resolvedCount =
       item.splitWith && item.splitWith.length
         ? item.splitWith.length
         : participantIds.length;
-    if (resolvedCount <= 1) return 'You only';
-    return `Split with ${resolvedCount} people`;
+    if (resolvedCount <= 1) return tr('youOnly');
+    return tr('splitWithPeople', { count: resolvedCount });
   };
 
   return (
@@ -1275,7 +1281,7 @@ function EditReceiptScreen() {
         >
           <Ionicons name="chevron-back" size={26} color={theme.colors.textPrimary} />
         </Pressable>
-        <Text style={styles.headerLabel}>EXPENSE</Text>
+        <Text style={styles.headerLabel}>{t('expense')}</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -1309,7 +1315,7 @@ function EditReceiptScreen() {
         style={styles.merchantInput}
         value={storeName}
         onChangeText={setStoreName}
-        placeholder="Store name"
+        placeholder={t('storeName')}
         placeholderTextColor={theme.colors.textMuted}
         autoCorrect={false}
       />
@@ -1378,16 +1384,16 @@ function EditReceiptScreen() {
       {/* Added/edited timestamps — pre-existing info, tucked below the
           transaction-date caption rather than removed. */}
       <View style={styles.meta}>
-        {safeFormat(receipt.createdAt, 'MMM d, yyyy · h:mm a') !== '' && (
+        {safeFormat(receipt.createdAt, t('dateTimePattern')) !== '' && (
           <Text style={styles.metaText}>
-            Added {safeFormat(receipt.createdAt, 'MMM d, yyyy · h:mm a')}
+            {t('addedAt', { when: safeFormat(receipt.createdAt, t('dateTimePattern')) })}
           </Text>
         )}
         {receipt.updatedAt &&
           receipt.updatedAt !== receipt.createdAt &&
-          safeFormat(receipt.updatedAt, 'MMM d, yyyy') !== '' && (
+          safeFormat(receipt.updatedAt, t('datePattern')) !== '' && (
             <Text style={styles.metaText}>
-              Edited {safeFormat(receipt.updatedAt, 'MMM d, yyyy')}
+              {t('editedAt', { when: safeFormat(receipt.updatedAt, t('datePattern')) })}
             </Text>
           )}
       </View>
@@ -1406,10 +1412,10 @@ function EditReceiptScreen() {
               { backgroundColor: theme.colors.category[category] },
             ]}
           />
-          <Text style={styles.categoryRowLabel}>{category}</Text>
+          <Text style={styles.categoryRowLabel}>{categoryLabel(category)}</Text>
           {isRecurring && (
             <View style={styles.recurringBadge}>
-              <Text style={styles.recurringBadgeText}>Recurring</Text>
+              <Text style={styles.recurringBadgeText}>{t('recurring2')}</Text>
             </View>
           )}
         </View>
@@ -1421,9 +1427,9 @@ function EditReceiptScreen() {
           of future occurrences; turning it off (recurring: undefined on
           save) stops it. */}
       <Card style={styles.fieldCard}>
-        <Text style={styles.sectionLabel}>RECURRING</Text>
+        <Text style={styles.sectionLabel}>{t('recurring3')}</Text>
         <View style={styles.splitToggleRow}>
-          <Text style={styles.splitToggleLabel}>Repeat this expense</Text>
+          <Text style={styles.splitToggleLabel}>{t('repeatThisExpense')}</Text>
           <Switch
             value={recurringEnabled}
             onValueChange={setRecurringEnabled}
@@ -1437,14 +1443,7 @@ function EditReceiptScreen() {
             <View style={styles.segmented}>
               {(['weekly', 'biweekly', 'monthly', 'yearly'] as const).map((freq) => {
                 const active = recurringFrequency === freq;
-                const label =
-                  freq === 'weekly'
-                    ? 'Weekly'
-                    : freq === 'biweekly'
-                      ? 'Bi-weekly'
-                      : freq === 'monthly'
-                        ? 'Monthly'
-                        : 'Yearly';
+                const label = t(freq);
                 return (
                   <Pressable
                     key={freq}
@@ -1467,17 +1466,17 @@ function EditReceiptScreen() {
               })}
             </View>
 
-            <Text style={styles.fieldLabel}>Next auto-add date</Text>
+            <Text style={styles.fieldLabel}>{t('nextAutoAddDate')}</Text>
             <DateField
               value={recurringNextDate}
               onChange={(v) => {
                 setRecurringNextDateTouched(true);
                 setRecurringNextDate(v);
               }}
-              placeholder="Select date"
+              placeholder={t('selectDate')}
             />
 
-            <Text style={styles.fieldLabel}>For how many months</Text>
+            <Text style={styles.fieldLabel}>{t('forHowManyMonths')}</Text>
             <TextInput
               style={styles.input}
               value={recurringDuration}
@@ -1533,7 +1532,7 @@ function EditReceiptScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={styles.itemRemoveBtn}
               accessibilityRole="button"
-              accessibilityLabel={`Remove ${item.name}`}
+              accessibilityLabel={t('removeName', { name: item.name })}
             >
               <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>
@@ -1541,7 +1540,7 @@ function EditReceiptScreen() {
         ))}
         <TouchableOpacity style={styles.addItemRow} onPress={openAddItem} activeOpacity={0.7}>
           <Ionicons name="add-circle-outline" size={18} color={theme.colors.accent} />
-          <Text style={styles.addItemText}>Add item</Text>
+          <Text style={styles.addItemText}>{t('addItem')}</Text>
         </TouchableOpacity>
       </Card>
 
@@ -1556,20 +1555,20 @@ function EditReceiptScreen() {
           <Pressable style={styles.itemModalCard} onPress={() => {}}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.itemModalTitle}>
-                {editingItemId ? 'Edit Item' : 'Add Item'}
+                {editingItemId ? t('editItem') : t('addItem2')}
               </Text>
 
-              <Text style={styles.fieldLabel}>Name</Text>
+              <Text style={styles.fieldLabel}>{t('name')}</Text>
               <TextInput
                 style={styles.input}
                 value={itemName}
                 onChangeText={setItemName}
-                placeholder="e.g. Milk"
+                placeholder={t('eGMilk')}
                 placeholderTextColor={theme.colors.textMuted}
                 autoCorrect={false}
               />
 
-              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>Amount</Text>
+              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>{t('amount')}</Text>
               <TextInput
                 style={styles.input}
                 value={itemAmount}
@@ -1579,7 +1578,7 @@ function EditReceiptScreen() {
                 keyboardType="decimal-pad"
               />
 
-              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>Category</Text>
+              <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>{t('category')}</Text>
               <View style={styles.categoryChipsRow}>
                 {ALL_CATEGORIES.map((cat) => {
                   const active = itemCategory === cat;
@@ -1604,7 +1603,7 @@ function EditReceiptScreen() {
                           { color: active ? '#fff' : color },
                         ]}
                       >
-                        {cat}
+                        {categoryLabel(cat)}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -1628,7 +1627,7 @@ function EditReceiptScreen() {
                 >
                   <Ionicons name="person-add-outline" size={14} color={theme.colors.accent} />
                   <Text style={styles.inviteHintText}>
-                    Nobody to split with yet — invite someone in Settings → Household
+                    {t('nobodyToSplitWithYet')}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -1636,7 +1635,7 @@ function EditReceiptScreen() {
               {otherMembers.length > 0 && (
                 <>
                   <Text style={[styles.fieldLabel, styles.itemModalSpacer]}>
-                    Split with
+                    {t('splitWith')}
                   </Text>
                   <View style={[styles.avatarRow, { marginTop: 8 }]}>
                     <TouchableOpacity
@@ -1658,7 +1657,7 @@ function EditReceiptScreen() {
                         <Text style={styles.avatarInitial}>Y</Text>
                       </View>
                       <Text style={styles.avatarLabel} numberOfLines={1}>
-                        You
+                        {t('you')}
                       </Text>
                     </TouchableOpacity>
                     {otherMembers.map((m) => {
@@ -1694,11 +1693,11 @@ function EditReceiptScreen() {
 
               <View style={styles.itemModalFooter}>
                 <TouchableOpacity onPress={closeItemModal} style={styles.cancelBtn}>
-                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                  <Text style={styles.cancelBtnText}>{t('cancel')}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={saveItemModal} style={styles.doneBtn}>
                   <Text style={styles.doneBtnText}>
-                    {editingItemId ? 'Save' : 'Add'}
+                    {editingItemId ? t('save') : t('add')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -1735,7 +1734,7 @@ function EditReceiptScreen() {
           style={[styles.input, styles.inputMultiline, styles.notesText]}
           value={notes}
           onChangeText={setNotes}
-          placeholder="No notes added."
+          placeholder={t('noNotesAdded')}
           placeholderTextColor={theme.colors.textMuted}
           multiline
           numberOfLines={3}
@@ -1748,7 +1747,7 @@ function EditReceiptScreen() {
           regress the ability to persist any edits made above, so it
           stays — placed above the spec'd outlined Delete button. */}
       <Button
-        label="Save Changes"
+        label={t('saveChanges2')}
         onPress={handleSave}
         loading={saving}
         size="lg"
@@ -1756,7 +1755,7 @@ function EditReceiptScreen() {
       />
 
       <Pressable onPress={handleDelete} style={styles.deleteBtnOutlined}>
-        <Text style={styles.deleteBtnOutlinedText}>Delete expense</Text>
+        <Text style={styles.deleteBtnOutlinedText}>{t('deleteExpense')}</Text>
       </Pressable>
     </ScrollView>
     </SafeAreaView>

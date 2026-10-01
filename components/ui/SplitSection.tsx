@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React from 'react';
 import { Platform, Pressable, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,8 +10,9 @@ import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { tapLight } from '../../lib/haptics';
 import { LineItem } from '../../types';
 
+import { useT } from '../../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email?.trim() || 'Member';
+  return m.displayName?.trim() || m.email?.trim() || tr('memberFallback');
 }
 
 function initialFor(label: string): string {
@@ -53,6 +55,7 @@ export function SplitSection(props: {
    *  per-item split override preview, same as the receipt's own items. */
   lineItems: LineItem[];
 }) {
+  const t = useT();
   const theme = useTheme();
   const styles = useSplitSectionStyles();
   const {
@@ -168,7 +171,7 @@ export function SplitSection(props: {
     <Card style={styles.fieldCard}>
       <Text style={styles.sectionLabel}>SPLIT</Text>
       <View style={styles.splitToggleRow}>
-        <Text style={styles.splitToggleLabel}>Split this expense</Text>
+        <Text style={styles.splitToggleLabel}>{t('splitThisExpense')}</Text>
         <Switch
           value={enabled}
           onValueChange={onEnabledChange}
@@ -184,7 +187,7 @@ export function SplitSection(props: {
               <View style={[styles.avatarCircle, { borderColor: theme.colors.accent, opacity: 1 }]}>
                 <Text style={styles.avatarInitial}>Y</Text>
               </View>
-              <Text style={styles.avatarLabel} numberOfLines={1}>You</Text>
+              <Text style={styles.avatarLabel} numberOfLines={1}>{t('you')}</Text>
             </View>
             {otherMembers.map((m) => {
               const label = memberLabel(m);
@@ -218,7 +221,7 @@ export function SplitSection(props: {
             >
               <Ionicons name="person-add-outline" size={14} color={theme.colors.accent} />
               <Text style={styles.inviteHintText}>
-                Nobody to split with yet — invite someone in Settings → Household
+                {t('nobodyToSplitWithYet')}
               </Text>
             </TouchableOpacity>
           )}
@@ -242,7 +245,7 @@ export function SplitSection(props: {
 
           <View>
             <View style={styles.participantRow}>
-              <Text style={styles.participantName}>You</Text>
+              <Text style={styles.participantName}>{t('you')}</Text>
               {method === 'equal' && (
                 <Text style={styles.participantValueReadOnly}>
                   {formatCurrency(usesPerItemSplit ? perItemShares.self ?? 0 : yourShare, currencyCode)}
@@ -356,11 +359,14 @@ export function SplitSection(props: {
           {splitWarning && <Text style={styles.splitWarning}>{splitWarning}</Text>}
 
           {usesPerItemSplit && (
-            <Text style={styles.captionText}>Split by item — some items are shared with fewer people</Text>
+            <Text style={styles.captionText}>{t('splitByItemSomeItems')}</Text>
           )}
 
           <Text style={styles.splitSummary}>
-            You paid {formatCurrency(totalAmountUsd, currencyCode)} · {formatCurrency(owedToYou, currencyCode)} owed to you
+            {t('youPaidOwed', {
+              paid: formatCurrency(totalAmountUsd, currencyCode),
+              owed: formatCurrency(owedToYou, currencyCode),
+            })}
           </Text>
         </View>
       )}

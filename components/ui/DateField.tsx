@@ -5,6 +5,8 @@ import { useStyles, useTheme } from '../../constants/theme';
 import { parseYmdLocal } from '../../lib/parser';
 import { Button } from './Button';
 
+import { useT, useLanguage } from '../../lib/I18nContext';
+import { formatShortDate } from '../../lib/dateLocale';
 /**
  * @react-native-community/datetimepicker is a native module — the
  * currently installed binary on a device may predate this feature and
@@ -44,6 +46,8 @@ export function DateField({
   placeholder?: string;
   style?: ViewStyle;
 }) {
+  const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const styles = useDateFieldStyles();
   const [showPicker, setShowPicker] = useState(false);
@@ -96,7 +100,7 @@ export function DateField({
     <>
       <Pressable style={[styles.input, style]} onPress={openPicker}>
         <Text style={displayDate ? styles.valueText : styles.placeholderText}>
-          {displayDate ? format(displayDate, 'MMM d, yyyy') : placeholder ?? 'Select date'}
+          {displayDate ? formatShortDate(displayDate, language) : placeholder ?? t('selectDate')}
         </Text>
       </Pressable>
 
@@ -115,7 +119,7 @@ export function DateField({
                 onChange={handleIosChange}
                 themeVariant={theme.isDark ? 'dark' : 'light'}
               />
-              <Button label="Done" onPress={confirmIos} style={styles.doneBtn} />
+              <Button label={t('done')} onPress={confirmIos} style={styles.doneBtn} />
             </Pressable>
           </Pressable>
         </Modal>

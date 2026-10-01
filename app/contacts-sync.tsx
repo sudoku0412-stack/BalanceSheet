@@ -22,6 +22,7 @@ import {
   type MatchedContact,
 } from '../lib/contactsSync';
 
+import { useT } from '../lib/I18nContext';
 /** First-letter-of-first-and-last-word initials for a contact avatar,
  *  matching the design export's two-letter avatar chips. */
 function initialsFor(name: string): string {
@@ -65,6 +66,7 @@ const MATCH_TIMEOUT_MAX_MS = 90000;
  * bulk sync so there's one entry point, not two.
  */
 export default function ContactsSyncScreen() {
+  const t = useT();
   const theme = useTheme();
   const styles = useContactsSyncStyles();
   const router = useRouter();
@@ -95,7 +97,7 @@ export default function ContactsSyncScreen() {
     if (!isContactsSyncAvailable()) {
       toast.show({
         kind: 'error',
-        message: 'This app needs an update before contacts sync works — try again after updating.',
+        message: t('thisAppNeedsAnUpdate'),
       });
       setPhase('denied');
       return;
@@ -106,7 +108,7 @@ export default function ContactsSyncScreen() {
     try {
       const contacts = await readAllContacts();
       if (!contacts) {
-        toast.show({ kind: 'error', message: 'Contacts permission was denied.' });
+        toast.show({ kind: 'error', message: t('contactsPermissionWasDenied') });
         setPhase('denied');
         return;
       }
@@ -123,10 +125,10 @@ export default function ContactsSyncScreen() {
       setBudgets(budgetsSnapshot);
       setPhase('done');
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't read contacts" });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTReadContacts') });
       setPhase('denied');
     }
-  }, [toast]);
+  }, [toast, t]);
 
   // Skip the extra "tap to start" step — the user already opted in by
   // tapping "Add by phone contact" in Settings, so ask for the OS
@@ -152,7 +154,7 @@ export default function ContactsSyncScreen() {
           budgets,
         });
         if (!res.ok) {
-          toast.show({ kind: 'error', message: res.reason || "Couldn't add contact" });
+          toast.show({ kind: 'error', message: res.reason || t('couldnTAddContact') });
           return;
         }
         if (!res.matched) {
@@ -169,7 +171,7 @@ export default function ContactsSyncScreen() {
           }
           toast.show({
             kind: 'success',
-            message: `${item.contact.name} wasn't found — invite sent instead`,
+            message: t('wasntFoundInviteSent', { name: item.contact.name }),
           });
           return;
         }
@@ -191,7 +193,7 @@ export default function ContactsSyncScreen() {
         }
         toast.show({
           kind: 'success',
-          message: `${item.displayName || item.contact.name} will join automatically once their app is open`,
+          message: t('willJoinAutomatically', { name: item.displayName || item.contact.name }),
         });
       } else {
         const res = await withTimeout(
@@ -206,7 +208,7 @@ export default function ContactsSyncScreen() {
           REQUEST_TIMEOUT_MS,
         );
         if (!res.ok) {
-          toast.show({ kind: 'error', message: res.reason || "Couldn't invite contact" });
+          toast.show({ kind: 'error', message: res.reason || t('couldnTInviteContact') });
           return;
         }
         // Email accounts still require the invitee's own accept tap on
@@ -229,11 +231,11 @@ export default function ContactsSyncScreen() {
         }
         toast.show({
           kind: 'success',
-          message: `Invited ${item.displayName || item.contact.name} — they'll join once they open the app`,
+          message: t('invitedWillJoin', { name: item.displayName || item.contact.name }),
         });
       }
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't add contact" });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTAddContact') });
     } finally {
       setBusyId(null);
     }
@@ -254,7 +256,7 @@ export default function ContactsSyncScreen() {
           budgets,
         });
         if (!res.ok) {
-          toast.show({ kind: 'error', message: res.reason || "Couldn't invite contact" });
+          toast.show({ kind: 'error', message: res.reason || t('couldnTInviteContact') });
           return;
         }
         if (res.matched) {
@@ -274,7 +276,7 @@ export default function ContactsSyncScreen() {
           }
           toast.show({
             kind: 'success',
-            message: `${res.displayName || contact.name} will join automatically once their app is open`,
+            message: t('willJoinAutomatically', { name: res.displayName || contact.name }),
           });
           return;
         }
@@ -297,7 +299,7 @@ export default function ContactsSyncScreen() {
           REQUEST_TIMEOUT_MS,
         );
         if (!res.ok) {
-          toast.show({ kind: 'error', message: res.reason || "Couldn't invite contact" });
+          toast.show({ kind: 'error', message: res.reason || t('couldnTInviteContact') });
           return;
         }
         try {
@@ -309,9 +311,9 @@ export default function ContactsSyncScreen() {
         }
       }
       setUnmatched((prev) => prev.filter((c) => c.id !== contact.id));
-      toast.show({ kind: 'success', message: `Invite sent to ${contact.name}` });
+      toast.show({ kind: 'success', message: t('inviteSentTo', { name: contact.name }) });
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't invite contact" });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTInviteContact') });
     } finally {
       setBusyId(null);
     }
@@ -327,14 +329,14 @@ export default function ContactsSyncScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ModalHeader title="Add from contacts" onBack={() => router.back()} />
+      <ModalHeader title={t('addFromContacts')} onBack={() => router.back()} />
 
       {phase === 'denied' && (
         <EmptyState
           icon="people-outline"
-          title="Contacts access needed"
-          description="We'll check your contacts against NestExpenseTracker accounts — accounts get added directly, everyone else gets an invite link you send yourself. Grant contacts access to continue."
-          actionLabel="Try again"
+          title={t('contactsAccessNeeded')}
+          description={t('weLlCheckYourContacts')}
+          actionLabel={t('tryAgain2')}
           onAction={startSync}
         />
       )}
@@ -342,21 +344,21 @@ export default function ContactsSyncScreen() {
       {(phase === 'idle' || phase === 'loading') && (
         <View style={styles.centered}>
           <ActivityIndicator color={theme.colors.accent} />
-          <Text style={styles.loadingText}>Reading contacts…</Text>
+          <Text style={styles.loadingText}>{t('readingContacts')}</Text>
         </View>
       )}
 
       {phase === 'done' && (
         <ScrollView contentContainerStyle={styles.scroll}>
           {matched.length === 0 && unmatched.length === 0 && (
-            <Text style={styles.emptyText}>No contacts with a phone number or email found.</Text>
+            <Text style={styles.emptyText}>{t('noContactsWithAPhone')}</Text>
           )}
 
           {(matched.length > 0 || unmatched.length > 0) && (
             <TextInput
               value={search}
               onChangeText={setSearch}
-              placeholder="Search contacts"
+              placeholder={t('searchContacts')}
               placeholderTextColor={theme.colors.textMuted}
               style={styles.searchInput}
               autoCapitalize="none"
@@ -366,12 +368,12 @@ export default function ContactsSyncScreen() {
           {(matched.length > 0 || unmatched.length > 0) &&
             filteredMatched.length === 0 &&
             filteredUnmatched.length === 0 && (
-              <Text style={styles.emptyText}>No contacts match "{search.trim()}".</Text>
+              <Text style={styles.emptyText}>{t('noContactsMatch', { query: search.trim() })}</Text>
             )}
 
           {filteredMatched.length > 0 && (
             <>
-              <Text style={styles.sectionHeader}>On NestExpenseTracker</Text>
+              <Text style={styles.sectionHeader}>{t('onNestexpensetracker')}</Text>
               {filteredMatched.map((item) => {
                 const added = addedUids.has(item.uid);
                 const busy = busyId === item.contact.id;
@@ -393,7 +395,7 @@ export default function ContactsSyncScreen() {
                         <ActivityIndicator size="small" color={theme.colors.accent} />
                       ) : (
                         <Text style={[styles.actionText, (added) && styles.actionTextDone]}>
-                          {item.matchedVia === 'phone' ? (added ? 'Added' : 'Add') : added ? 'Invited' : 'Invite'}
+                          {item.matchedVia === 'phone' ? (added ? t('added') : t('add')) : added ? t('invited') : t('invite')}
                         </Text>
                       )}
                     </Pressable>
@@ -405,7 +407,7 @@ export default function ContactsSyncScreen() {
 
           {filteredUnmatched.length > 0 && (
             <>
-              <Text style={styles.sectionHeader}>Invite to NestExpenseTracker</Text>
+              <Text style={styles.sectionHeader}>{t('inviteToNestexpensetracker')}</Text>
               {filteredUnmatched.map((contact) => {
                 const busy = busyId === contact.id;
                 return (
@@ -424,7 +426,7 @@ export default function ContactsSyncScreen() {
                       {busy ? (
                         <ActivityIndicator size="small" color={theme.colors.accent} />
                       ) : (
-                        <Text style={styles.actionText}>Invite</Text>
+                        <Text style={styles.actionText}>{t('invite')}</Text>
                       )}
                     </Pressable>
                   </View>

@@ -3,19 +3,21 @@ import { Linking, Pressable, Text, View } from 'react-native';
 import { useStyles } from '../../constants/theme';
 import { PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../../lib/legalLinks';
 
+import { useT } from '../../lib/I18nContext';
 /** Privacy Policy / Terms of Service link row — shared by the auth
  *  screen and Settings so the two don't drift out of sync with each
  *  other (they previously duplicated this styling verbatim). */
 export function LegalLinksRow() {
+  const t = useT();
   const styles = useLegalLinksStyles();
   return (
     <View style={styles.row}>
       <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} hitSlop={4}>
-        <Text style={styles.link}>Privacy Policy</Text>
+        <Text style={styles.link}>{t('privacyPolicy')}</Text>
       </Pressable>
       <Text style={styles.divider}>·</Text>
       <Pressable onPress={() => Linking.openURL(TERMS_OF_SERVICE_URL)} hitSlop={4}>
-        <Text style={styles.link}>Terms of Service</Text>
+        <Text style={styles.link}>{t('termsOfService')}</Text>
       </Pressable>
     </View>
   );

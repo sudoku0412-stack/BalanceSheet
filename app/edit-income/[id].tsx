@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -51,8 +52,9 @@ import {
 } from '../../components/RecurringScheduleFields';
 import { Income, IncomeCategory } from '../../types';
 
+import { useT } from '../../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email?.trim() || 'Member';
+  return m.displayName?.trim() || m.email?.trim() || tr('memberFallback');
 }
 
 function initialFor(label: string): string {
@@ -61,6 +63,7 @@ function initialFor(label: string): string {
 }
 
 export default function EditIncomeScreen() {
+  const t = useT();
   const theme = useTheme();
   const { user } = useAuth();
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -286,16 +289,16 @@ export default function EditIncomeScreen() {
   const handleSave = async () => {
     const parsed = parseAmountInput(amount);
     if (parsed == null || parsed <= 0) {
-      Alert.alert('Amount required', 'Enter a valid amount greater than zero.');
+      Alert.alert(t('amountRequired'), t('enterAValidAmountGreater'));
       return;
     }
     const trimmedSource = sourceName.trim();
     if (!trimmedSource) {
-      Alert.alert('Source required', 'Name where this income came from.');
+      Alert.alert(t('sourceRequired'), t('nameWhereThisIncomeCame'));
       return;
     }
     if (!earnedBy || !user?.uid || !id) {
-      Alert.alert('Whose income?', 'Pick who earned this income.');
+      Alert.alert(t('whoseIncome'), t('pickWhoEarnedThisIncome'));
       return;
     }
     const recurringRes = resolveRecurringFromForm({
@@ -307,7 +310,7 @@ export default function EditIncomeScreen() {
       existingEndDate: originalRecurring?.endDate,
     });
     if (!recurringRes.ok) {
-      Alert.alert('Repeat schedule', recurringRes.message);
+      Alert.alert(t('repeatSchedule'), recurringRes.message);
       return;
     }
 
@@ -333,17 +336,17 @@ export default function EditIncomeScreen() {
       notifySuccess();
       router.back();
     } catch (e) {
-      Alert.alert('Save failed', (e as Error)?.message ?? 'Try again.');
+      Alert.alert(t('saveFailed'), (e as Error)?.message ?? t('tryAgain'));
     } finally {
       setSaving(false);
     }
   };
 
   const confirmDelete = () => {
-    Alert.alert('Delete income', 'This action cannot be undone.', [
-      { text: 'Cancel', style: 'cancel' },
+    Alert.alert(t('deleteIncome'), t('thisActionCannotBeUndone'), [
+      { text: t('cancel'), style: 'cancel' },
       {
-        text: 'Delete',
+        text: t('delete'),
         style: 'destructive',
         onPress: performDelete,
       },
@@ -358,7 +361,7 @@ export default function EditIncomeScreen() {
       notifySuccess();
       router.back();
     } catch (e) {
-      Alert.alert('Delete failed', (e as Error)?.message ?? 'Try again.');
+      Alert.alert(t('deleteFailed'), (e as Error)?.message ?? t('tryAgain'));
     } finally {
       setDeleting(false);
     }
@@ -375,10 +378,10 @@ export default function EditIncomeScreen() {
   if (notFound) {
     return (
       <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-        <ModalHeader title="Edit Income" />
+        <ModalHeader title={t('editIncome')} />
         <View style={styles.centered}>
-          <Text style={styles.notFoundText}>Income not found</Text>
-          <Button label="Go back" onPress={() => router.back()} />
+          <Text style={styles.notFoundText}>{t('incomeNotFound')}</Text>
+          <Button label={t('goBack')} onPress={() => router.back()} />
         </View>
       </SafeAreaView>
     );
@@ -387,7 +390,7 @@ export default function EditIncomeScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <ModalHeader
-        title="Edit Income"
+        title={t('editIncome')}
         iconLeading="💰"
         rightActions={[
           {
@@ -408,7 +411,7 @@ export default function EditIncomeScreen() {
         >
           <Card style={styles.fieldCard}>
             <Text style={styles.fieldLabel}>
-              Amount ({CURRENCY_SYMBOLS[currency]})
+              {t('amountWithSymbol', { symbol: CURRENCY_SYMBOLS[currency] })}
             </Text>
             <TextInput
               style={[styles.input, styles.amountInput]}
@@ -418,16 +421,16 @@ export default function EditIncomeScreen() {
               placeholderTextColor={theme.colors.textMuted}
               keyboardType="decimal-pad"
             />
-            <Text style={styles.currencyHint}>Saved in {currency}</Text>
+            <Text style={styles.currencyHint}>{t('savedInCurrency', { currency })}</Text>
           </Card>
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Date</Text>
+            <Text style={styles.fieldLabel}>{t('date')}</Text>
             <DateField value={date} onChange={setDate} placeholder="YYYY-MM-DD" />
           </Card>
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Whose income</Text>
+            <Text style={styles.fieldLabel}>{t('whoseIncome2')}</Text>
             <View style={styles.avatarRow}>
               {user?.uid ? (
                 <TouchableOpacity
@@ -447,7 +450,7 @@ export default function EditIncomeScreen() {
                     <Text style={styles.avatarInitial}>Y</Text>
                   </View>
                   <Text style={styles.avatarLabel} numberOfLines={1}>
-                    You
+                    {t('you')}
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -482,7 +485,7 @@ export default function EditIncomeScreen() {
           </Card>
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Type</Text>
+            <Text style={styles.fieldLabel}>{t('type')}</Text>
             <View style={styles.categoryChipsRow}>
               {ALL_INCOME_CATEGORIES.map((cat) => {
                 const active = category === cat;
@@ -517,7 +520,7 @@ export default function EditIncomeScreen() {
           </Card>
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Source</Text>
+            <Text style={styles.fieldLabel}>{t('source')}</Text>
             <TextInput
               style={styles.input}
               value={sourceName}
@@ -546,7 +549,7 @@ export default function EditIncomeScreen() {
           </Card>
 
           <RecurringScheduleFields
-            title="Repeat this income"
+            title={t('repeatThisIncome')}
             enabled={recurringEnabled}
             onEnabledChange={setRecurringEnabled}
             frequency={recurringFrequency}
@@ -562,26 +565,26 @@ export default function EditIncomeScreen() {
           />
 
           <Card style={styles.fieldCard}>
-            <Text style={styles.fieldLabel}>Notes (optional)</Text>
+            <Text style={styles.fieldLabel}>{t('notesOptional')}</Text>
             <TextInput
               style={[styles.input, styles.inputMultiline]}
               value={notes}
               onChangeText={setNotes}
-              placeholder="Anything else…"
+              placeholder={t('anythingElse')}
               placeholderTextColor={theme.colors.textMuted}
               multiline
             />
           </Card>
 
           <Button
-            label="Save changes"
+            label={t('saveChanges')}
             onPress={handleSave}
             loading={saving}
             size="lg"
             style={styles.saveBtn}
           />
           <Button
-            label="Delete"
+            label={t('delete')}
             onPress={confirmDelete}
             loading={deleting}
             variant="danger"

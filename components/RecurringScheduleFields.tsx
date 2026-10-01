@@ -4,13 +4,14 @@ import { Card } from './ui/Card';
 import { DateField } from './ui/DateField';
 import { useStyles, useTheme } from '../constants/theme';
 
+import { useT } from '../lib/I18nContext';
 export type RecurringFrequency = 'weekly' | 'biweekly' | 'monthly' | 'yearly';
 
-const FREQS: { id: RecurringFrequency; label: string }[] = [
-  { id: 'weekly', label: 'Weekly' },
-  { id: 'biweekly', label: 'Bi-weekly' },
-  { id: 'monthly', label: 'Monthly' },
-  { id: 'yearly', label: 'Yearly' },
+const FREQS: { id: RecurringFrequency; labelKey: 'weekly' | 'biweekly' | 'monthly' | 'yearly' }[] = [
+  { id: 'weekly', labelKey: 'weekly' },
+  { id: 'biweekly', labelKey: 'biweekly' },
+  { id: 'monthly', labelKey: 'monthly' },
+  { id: 'yearly', labelKey: 'yearly' },
 ];
 
 export function RecurringScheduleFields({
@@ -37,6 +38,7 @@ export function RecurringScheduleFields({
   /** When editing an existing schedule, duration can stay blank. */
   durationOptional?: boolean;
 }) {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     card: { gap: t.spacing.sm, borderRadius: t.radius.lg },
@@ -109,15 +111,15 @@ export function RecurringScheduleFields({
                   style={[styles.tab, active && { backgroundColor: theme.colors.accent }]}
                   onPress={() => onFrequencyChange(f.id)}
                 >
-                  <Text style={[styles.tabText, active && { color: '#fff' }]}>{f.label}</Text>
+                  <Text style={[styles.tabText, active && { color: '#fff' }]}>{t(f.labelKey)}</Text>
                 </Pressable>
               );
             })}
           </View>
-          <Text style={styles.label}>Next auto-add date</Text>
-          <DateField value={nextDueDate} onChange={onNextDueDateChange} placeholder="Select date" />
+          <Text style={styles.label}>{t('nextAutoAddDate')}</Text>
+          <DateField value={nextDueDate} onChange={onNextDueDateChange} placeholder={t('selectDate')} />
           <Text style={styles.label}>
-            For how many months{durationOptional ? ' (optional)' : ''}
+            {t('forHowManyMonths')}{durationOptional ? t('optional') : ''}
           </Text>
           <TextInput
             style={styles.input}

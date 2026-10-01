@@ -28,6 +28,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { humanizeAuthError } from '../lib/authErrors';
 import { LegalLinksRow } from '../components/ui/LegalLinksRow';
 
+import { useT } from '../lib/I18nContext';
 type Tab = 'login' | 'signup';
 
 /**
@@ -78,6 +79,7 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
 }
 
 export default function AuthScreen() {
+  const t = useT();
   const [tab, setTab] = useState<Tab>('login');
   const theme = useTheme();
   const styles = useStyles(makeStyles);
@@ -109,14 +111,14 @@ export default function AuthScreen() {
         </FadeInUp>
         <FadeInUp delay={40}>
           <Text style={styles.headline}>
-            {tab === 'login' ? 'Welcome back' : 'Create your account'}
+            {tab === 'login' ? t('welcomeBack') : t('createYourAccount')}
           </Text>
         </FadeInUp>
         <FadeInUp delay={80}>
           <Text style={styles.subhead}>
             {tab === 'login'
-              ? "Sign in to see where your money's going."
-              : 'Start tracking every receipt in seconds.'}
+              ? t('signInToSeeWhere')
+              : t('startTrackingEveryReceiptIn')}
           </Text>
         </FadeInUp>
       </View>
@@ -132,8 +134,8 @@ export default function AuthScreen() {
           >
             <FadeInUp delay={100}>
               <View style={styles.tabs}>
-                <TabButton label="Log In" active={tab === 'login'} onPress={() => setTab('login')} />
-                <TabButton label="Sign Up" active={tab === 'signup'} onPress={() => setTab('signup')} />
+                <TabButton label={t('logIn')} active={tab === 'login'} onPress={() => setTab('login')} />
+                <TabButton label={t('signUp')} active={tab === 'signup'} onPress={() => setTab('signup')} />
               </View>
             </FadeInUp>
 
@@ -153,11 +155,11 @@ export default function AuthScreen() {
             </FadeInUp>
 
             <Pressable onPress={onGuest} hitSlop={8} style={styles.guestRow}>
-              <Text style={styles.linkAccent}>Continue as guest</Text>
+              <Text style={styles.linkAccent}>{t('continueAsGuest')}</Text>
             </Pressable>
 
             <Pressable onPress={() => router.replace('/onboarding')} hitSlop={8} style={styles.backRow}>
-              <Text style={styles.linkMuted}>‹ Back to intro</Text>
+              <Text style={styles.linkMuted}>{t('backToIntro')}</Text>
             </Pressable>
 
             <View style={{ marginTop: theme.spacing.md }}>
@@ -191,6 +193,7 @@ function TabButton({
 }
 
 function EmailForm({ mode }: { mode: Tab }) {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const toast = useToast();
@@ -206,13 +209,13 @@ function EmailForm({ mode }: { mode: Tab }) {
   const submitReset = async () => {
     setError(null);
     if (!email.trim()) {
-      setError('Enter your email above first, then tap "Forgot password?".');
+      setError(t('enterEmailFirst'));
       return;
     }
     try {
       setResetSending(true);
       await sendPasswordReset(email);
-      toast.show({ kind: 'success', message: `Password reset link sent to ${email.trim()}` });
+      toast.show({ kind: 'success', message: t('resetLinkSent', { email: email.trim() }) });
     } catch (e: any) {
       setError(humanizeAuthError(e));
     } finally {
@@ -223,15 +226,15 @@ function EmailForm({ mode }: { mode: Tab }) {
   const submit = async () => {
     setError(null);
     if (mode === 'signup' && !fullName.trim()) {
-      setError('Full name is required.');
+      setError(t('fullNameRequired'));
       return;
     }
     if (!email.trim() || !password) {
-      setError('Email and password are required.');
+      setError(t('emailPasswordRequired'));
       return;
     }
     if (mode === 'signup' && password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(t('passwordsDoNotMatch'));
       return;
     }
     try {
@@ -255,7 +258,7 @@ function EmailForm({ mode }: { mode: Tab }) {
       {mode === 'signup' && (
         <FadeInUp delay={120}>
           <Field
-            label="Full name"
+            label={t('fullName')}
             value={fullName}
             onChangeText={setFullName}
             placeholder="Jane Doe"
@@ -265,7 +268,7 @@ function EmailForm({ mode }: { mode: Tab }) {
       )}
       <FadeInUp delay={140}>
         <Field
-          label="Email"
+          label={t('email')}
           value={email}
           onChangeText={setEmail}
           placeholder="you@email.com"
@@ -276,7 +279,7 @@ function EmailForm({ mode }: { mode: Tab }) {
       </FadeInUp>
       <FadeInUp delay={160}>
         <Field
-          label="Password"
+          label={t('password')}
           value={password}
           onChangeText={setPassword}
           placeholder="••••••••"
@@ -287,14 +290,14 @@ function EmailForm({ mode }: { mode: Tab }) {
       {mode === 'login' && (
         <Pressable onPress={submitReset} disabled={resetSending} hitSlop={8}>
           <Text style={styles.forgotPasswordText}>
-            {resetSending ? 'Sending…' : 'Forgot password?'}
+            {resetSending ? t('sending') : t('forgotPassword')}
           </Text>
         </Pressable>
       )}
       {mode === 'signup' && (
         <FadeInUp delay={180}>
           <Field
-            label="Confirm password"
+            label={t('confirmPassword')}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             placeholder="••••••••"
@@ -308,7 +311,7 @@ function EmailForm({ mode }: { mode: Tab }) {
 
       <FadeInUp delay={200}>
         <Button
-          label={mode === 'login' ? 'Log In' : 'Create Account'}
+          label={mode === 'login' ? t('logIn') : t('createAccount')}
           onPress={submit}
           loading={loading}
           size="lg"
@@ -320,6 +323,7 @@ function EmailForm({ mode }: { mode: Tab }) {
 }
 
 function GoogleForm() {
+  const t = useT();
   const { ensureProfile } = useAuth();
   const styles = useStyles(makeStyles);
   const toast = useToast();
@@ -342,7 +346,7 @@ function GoogleForm() {
 
   return (
     <Button
-      label="Continue with Google"
+      label={t('continueWithGoogle')}
       onPress={onPress}
       loading={loading}
       variant="secondary"
@@ -353,6 +357,7 @@ function GoogleForm() {
 }
 
 function AppleButton() {
+  const t = useT();
   const { ensureProfile } = useAuth();
   const toast = useToast();
   const styles = useStyles(makeStyles);
@@ -383,7 +388,7 @@ function AppleButton() {
 
   return (
     <Button
-      label="Continue with Apple"
+      label={t('continueWithApple')}
       onPress={onPress}
       loading={loading}
       variant="secondary"
@@ -398,6 +403,7 @@ function Field({
   secureTextEntry,
   ...input
 }: { label: string } & React.ComponentProps<typeof TextInput>) {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const [hidden, setHidden] = useState(true);
@@ -416,7 +422,7 @@ function Field({
             onPress={() => setHidden((v) => !v)}
             style={styles.eyeBtn}
             hitSlop={8}
-            accessibilityLabel={hidden ? 'Show password' : 'Hide password'}
+            accessibilityLabel={hidden ? t('showPassword') : t('hidePassword')}
           >
             <Ionicons
               name={hidden ? 'eye-outline' : 'eye-off-outline'}

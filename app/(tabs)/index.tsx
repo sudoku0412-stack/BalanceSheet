@@ -33,6 +33,10 @@ import { onLocalDataChanged } from '../../lib/dataSync';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { CATEGORY_ICONS, ALL_CATEGORIES } from '../../constants/categories';
 
+import { useT, useLanguage, type TFn } from '../../lib/I18nContext';
+import { categoryLabel } from '../../lib/categoryLabel';
+import { formatMonthYear, relativeDayLabel } from '../../lib/dateLocale';
+import type { Language } from '../../lib/i18n';
 /**
  * Single-arc radial progress ring, reusing the same react-native-svg
  * stroke-dasharray technique as reports.tsx's CategoryDonut (this repo's
@@ -85,9 +89,9 @@ function RingProgress({
   );
 }
 
-function greeting(firstName: string | null): string {
+function greeting(firstName: string | null, t: TFn): string {
   const h = new Date().getHours();
-  const base = h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+  const base = h < 12 ? t('goodMorning') : h < 18 ? t('goodAfternoon') : t('goodEvening');
   return firstName ? `${base}, ${firstName}` : base;
 }
 
@@ -101,10 +105,8 @@ function firstNameOf(displayName: string | null | undefined, profile: Profile | 
   return full ? full.split(/\s+/)[0] : null;
 }
 
-function dateLabel(date: Date): string {
-  if (isToday(date)) return 'Today';
-  if (isYesterday(date)) return 'Yesterday';
-  return format(date, 'MMM d');
+function dateLabel(date: Date, language: Language): string {
+  return relativeDayLabel(date, language);
 }
 
 type BudgetStatus = 'onTrack' | 'watch' | 'over';
@@ -120,6 +122,8 @@ function budgetStatus(spent: number, limit: number): BudgetStatus {
 }
 
 export default function DashboardScreen() {
+  const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const { memberships, user, profile } = useAuth();
   const { isPremium } = useEntitlements();
@@ -732,9 +736,9 @@ export default function DashboardScreen() {
     }));
 
   const statusMeta: Record<BudgetStatus, { label: string; color: string; bg: string }> = {
-    onTrack: { label: 'On track', color: theme.colors.success, bg: theme.colors.successFaint },
-    watch: { label: 'Watch', color: theme.colors.accent, bg: theme.colors.accentTint },
-    over: { label: 'Over', color: theme.colors.error, bg: theme.colors.errorFaint },
+    onTrack: { label: t('onTrack'), color: theme.colors.success, bg: theme.colors.successFaint },
+    watch: { label: t('watch'), color: theme.colors.accent, bg: theme.colors.accentTint },
+    over: { label: t('over'), color: theme.colors.error, bg: theme.colors.errorFaint },
   };
 
   // Hero "pace" ring: how much of the WHOLE month's configured budget has
@@ -768,7 +772,7 @@ export default function DashboardScreen() {
             <Ionicons name="home" size={16} color="#fff" />
             <Text style={styles.householdRowName} numberOfLines={1}>
               {memberships.find((m) => m.householdId === getCurrentHouseholdId())?.name ||
-                'Unnamed household'}
+                t('unnamedHousehold')}
             </Text>
             <Ionicons name="swap-horizontal" size={18} color="#fff" />
           </TouchableOpacity>
@@ -778,7 +782,7 @@ export default function DashboardScreen() {
         <View style={styles.heroCard}>
           <View style={styles.heroDecorCircle} />
           <Ionicons name="receipt" size={120} color="#fff" style={styles.heroDecorWatermark} />
-          <Text style={styles.heroLabel}>{greeting(firstNameOf(user?.displayName, profile))}</Text>
+          <Text style={styles.heroLabel}>{greeting(firstNameOf(user?.displayName, profile), t)}</Text>
           <View style={styles.heroAmountRow}>
             <View style={styles.heroAmountShrinkWrap}>
               <Text
@@ -803,7 +807,7 @@ export default function DashboardScreen() {
                   />
                   <Text style={styles.paceRingPctText}>{Math.round(paceRatio * 100)}%</Text>
                 </View>
-                <Text style={styles.paceRingCap}>of budget</Text>
+                <Text style={styles.paceRingCap}>{t('ofBudget')}</Text>
               </View>
             )}
           </View>
@@ -815,7 +819,7 @@ export default function DashboardScreen() {
             >
               <Ionicons name="chevron-back" size={16} color="rgba(255,255,255,0.85)" />
             </TouchableOpacity>
-            <Text style={styles.monthNavLabel}>{format(viewedMonth, 'MMMM yyyy')}</Text>
+            <Text style={styles.monthNavLabel}>{formatMonthYear(viewedMonth, language)}</Text>
             <TouchableOpacity
               onPress={() => setMonthOffset((v) => v + 1)}
               disabled={isCurrentMonth}
@@ -831,8 +835,9 @@ export default function DashboardScreen() {
           </View>
           <View style={styles.heroMetaRow}>
             <Text style={styles.heroMetaText}>
-              {stats.receiptCount} expense{stats.receiptCount === 1 ? '' : 's'}{' '}
-              {isCurrentMonth ? 'this month' : 'that month'}
+              {t(isCurrentMonth ? 'expensesThisMonth' : 'expensesThatMonth', {
+                count: stats.receiptCount,
+              })}
             </Text>
             {trendPct != null && (
               <View style={styles.trendPill}>
@@ -842,8 +847,7 @@ export default function DashboardScreen() {
                     { color: trendPct <= 0 ? '#9FE0C8' : '#F0B4B6' },
                   ]}
                 >
-                  {trendPct > 0 ? '+' : ''}
-                  {trendPct}% vs last month
+                  {t('pctVsLastMonth', { pct: `${trendPct > 0 ? '+' : ''}${trendPct}` })}
                 </Text>
               </View>
             )}
@@ -872,12 +876,12 @@ export default function DashboardScreen() {
                   <TouchableOpacity
                     onPress={openAllIncomes}
                     accessibilityRole="button"
-                    accessibilityLabel="View all incomes"
+                    accessibilityLabel={t('viewAllIncomes')}
                     testID="cashflow-earned"
                     style={styles.cashflowBarRow}
                   >
                     <View style={styles.cashflowBarHead}>
-                      <Text style={styles.cashflowBarLabel}>Earned</Text>
+                      <Text style={styles.cashflowBarLabel}>{t('earned')}</Text>
                       <Text style={styles.cashflowBarValue}>
                         {formatCurrency(cashflow.totalEarned, currency)}
                       </Text>
@@ -886,7 +890,7 @@ export default function DashboardScreen() {
                   <TouchableOpacity
                     onPress={openIncomesByMember}
                     accessibilityRole="button"
-                    accessibilityLabel="View incomes by person"
+                    accessibilityLabel={t('viewIncomesByPerson')}
                     testID="cashflow-bars"
                     style={{ gap: 8 }}
                   >
@@ -915,19 +919,19 @@ export default function DashboardScreen() {
                       })
                     }
                     accessibilityRole="button"
-                    accessibilityLabel="View expenses"
+                    accessibilityLabel={t('viewExpenses')}
                     testID="cashflow-spent"
                     style={styles.cashflowBarRow}
                   >
                     <View style={styles.cashflowBarHead}>
-                      <Text style={styles.cashflowBarLabel}>Spent</Text>
+                      <Text style={styles.cashflowBarLabel}>{t('spent')}</Text>
                       <Text style={styles.cashflowBarValue}>
                         {formatCurrency(cashflow.totalSpent, currency)}
                       </Text>
                     </View>
                   </TouchableOpacity>
                   <View style={styles.cashflowBarHead}>
-                    <Text style={styles.cashflowBarLabel}>Net</Text>
+                    <Text style={styles.cashflowBarLabel}>{t('net')}</Text>
                     <Text
                       style={
                         cashflow.net >= 0 ? styles.cashflowNetPositive : styles.cashflowNetNegative
@@ -941,9 +945,9 @@ export default function DashboardScreen() {
             })()}
             {cashflow.investedUsd > 0 ? (
               <Text style={styles.cashflowInvested}>
-                Invested {formatCurrency(cashflow.investedUsd, currency)}
+                {t('investedAmount', { amount: formatCurrency(cashflow.investedUsd, currency) })}
                 {cashflow.savingsRate != null
-                  ? ` · Saved ${(cashflow.savingsRate * 100).toFixed(0)}% of earned`
+                  ? t('savedPctOfEarned', { pct: (cashflow.savingsRate * 100).toFixed(0) })
                   : ''}
               </Text>
             ) : null}
@@ -953,7 +957,7 @@ export default function DashboardScreen() {
                   const member = members.find((x) => x.uid === m.earnedBy);
                   const name =
                     member?.isYou
-                      ? 'You'
+                      ? t('you')
                       : member?.displayName?.trim() ||
                         member?.email?.trim() ||
                         (m.earnedBy.length > 8
@@ -973,7 +977,7 @@ export default function DashboardScreen() {
                         })
                       }
                       accessibilityRole="button"
-                      accessibilityLabel={`${name} income`}
+                      accessibilityLabel={t('incomeOfName', { name })}
                       style={styles.cashflowMemberRow}
                     >
                       <Text style={styles.cashflowMemberName} numberOfLines={1}>
@@ -994,8 +998,8 @@ export default function DashboardScreen() {
         {stats.categories.length > 0 && (
           <View style={styles.compositionCard}>
             <View style={styles.compositionHead}>
-              <Text style={styles.sectionTitle}>Where it went</Text>
-              <Text style={styles.compNote}>{formatCurrency(stats.totalSpent, currency)} total</Text>
+              <Text style={styles.sectionTitle}>{t('whereItWent')}</Text>
+              <Text style={styles.compNote}>{t('amountTotal', { amount: formatCurrency(stats.totalSpent, currency) })}</Text>
             </View>
             <View style={styles.compBar}>
               {stats.categories.map((c) => {
@@ -1028,7 +1032,7 @@ export default function DashboardScreen() {
                   <View key={c.category} style={styles.compLegendItem}>
                     <View style={[styles.compDot, { backgroundColor: color }]} />
                     <Text style={styles.compLegendText}>
-                      {c.category} {Math.round(c.percentage)}%
+                      {categoryLabel(c.category)} {Math.round(c.percentage)}%
                     </Text>
                   </View>
                 );
@@ -1047,9 +1051,7 @@ export default function DashboardScreen() {
           >
             <Ionicons name="checkmark-done-outline" size={20} color={theme.colors.accent} />
             <Text style={styles.reviewBannerText}>
-              {reviewCount === 1
-                ? '1 recurring expense to review'
-                : `${reviewCount} recurring expenses to review`}
+              {t('recurringToReview', { count: reviewCount })}
             </Text>
             <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
           </TouchableOpacity>
@@ -1060,51 +1062,51 @@ export default function DashboardScreen() {
             onPress={() => router.push('/(tabs)/scan?mode=manual' as never)}
           >
             <Ionicons name="add-circle-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>Add expense</Text>
+            <Text style={styles.actionBtnText}>{t('addExpense')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.mint }]}
             onPress={() => router.push('/add-income' as never)}
           >
             <Ionicons name="cash-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>Add income</Text>
+            <Text style={styles.actionBtnText}>{t('addIncome')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.lavender }]}
             onPress={() => router.push('/recurring' as never)}
           >
             <Ionicons name="repeat-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>Recurring</Text>
+            <Text style={styles.actionBtnText}>{t('recurring2')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.peach }]}
             onPress={() => router.push('/balances' as never)}
           >
             <Ionicons name="wallet-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>Balances</Text>
+            <Text style={styles.actionBtnText}>{t('balances')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.lilac }]}
             onPress={() => router.push('/incomes' as never)}
           >
             <Ionicons name="list-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>Incomes</Text>
+            <Text style={styles.actionBtnText}>{t('incomes')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.sky }]}
             onPress={() => router.push(isPremium ? '/savings-goals' : '/paywall')}
           >
             <Ionicons name="flag-outline" size={20} color={theme.colors.textPrimary} />
-            <Text style={styles.actionBtnText}>{isPremium ? 'Goals' : 'Goals · Pro'}</Text>
+            <Text style={styles.actionBtnText}>{isPremium ? t('goals') : t('goalsPro')}</Text>
           </TouchableOpacity>
         </View>
   
         {isPremium && savingsGoals.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Savings goals</Text>
+              <Text style={styles.sectionTitle}>{t('savingsGoals')}</Text>
               <TouchableOpacity onPress={() => router.push('/savings-goals' as never)} hitSlop={8}>
-                <Text style={styles.sectionLink}>Manage</Text>
+                <Text style={styles.sectionLink}>{t('manage')}</Text>
               </TouchableOpacity>
             </View>
             {savingsGoals.map((goal) => {
@@ -1118,8 +1120,10 @@ export default function DashboardScreen() {
                 >
                   <Text style={styles.budgetChipName}>{goal.name}</Text>
                   <Text style={styles.budgetChipAmt}>
-                    {formatCurrency(goal.allocatedUsd, currency)} of{' '}
-                    {formatCurrency(goal.targetUsd, currency)}
+                    {t('amountOfAmount', {
+                      a: formatCurrency(goal.allocatedUsd, currency),
+                      b: formatCurrency(goal.targetUsd, currency),
+                    })}
                   </Text>
                   <View style={styles.goalTrack}>
                     <View style={[styles.goalFill, { width: `${ratio * 100}%` }]} />
@@ -1134,9 +1138,9 @@ export default function DashboardScreen() {
         {budgetRows.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Budgets</Text>
+              <Text style={styles.sectionTitle}>{t('budgets')}</Text>
               <TouchableOpacity onPress={() => router.push('/settings?section=budgets' as never)} hitSlop={8}>
-                <Text style={styles.sectionLink}>Manage</Text>
+                <Text style={styles.sectionLink}>{t('manage')}</Text>
               </TouchableOpacity>
             </View>
             <ScrollView
@@ -1178,10 +1182,13 @@ export default function DashboardScreen() {
                       </View>
                     </View>
                     <Text style={styles.budgetChipName} numberOfLines={1}>
-                      {b.category}
+                      {categoryLabel(b.category)}
                     </Text>
                     <Text style={styles.budgetChipAmt}>
-                      {formatCurrency(b.spent, currency)} of {formatCurrency(b.limit, currency)}
+                      {t('amountOfAmount', {
+                        a: formatCurrency(b.spent, currency),
+                        b: formatCurrency(b.limit, currency),
+                      })}
                     </Text>
                   </View>
                 );
@@ -1194,9 +1201,9 @@ export default function DashboardScreen() {
         {recentReceipts.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recent</Text>
+              <Text style={styles.sectionTitle}>{t('recent')}</Text>
               <TouchableOpacity onPress={() => router.push('/(tabs)/history' as never)} hitSlop={8}>
-                <Text style={styles.sectionLink}>See all</Text>
+                <Text style={styles.sectionLink}>{t('seeAll')}</Text>
               </TouchableOpacity>
             </View>
             <View style={styles.list}>
@@ -1220,7 +1227,7 @@ export default function DashboardScreen() {
                           {r.storeName}
                         </Text>
                         <Text style={styles.rowMeta}>
-                          {r.category} · {dateLabel(new Date(r.date))}
+                          {categoryLabel(r.category)} · {dateLabel(new Date(r.date), language)}
                         </Text>
                       </View>
                     </View>
@@ -1235,9 +1242,9 @@ export default function DashboardScreen() {
         {receipts.length === 0 && (
           <EmptyState
             icon="receipt-outline"
-            title="No receipts yet"
-            description="Tap the camera button below to scan your first receipt and start tracking your spending."
-            actionLabel="Scan a receipt"
+            title={t('noReceiptsYet')}
+            description={t('tapTheCameraButtonBelow')}
+            actionLabel={t('scanAReceipt')}
             onAction={() => router.push('/(tabs)/scan')}
           />
         )}

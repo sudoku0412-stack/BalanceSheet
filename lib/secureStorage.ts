@@ -24,6 +24,7 @@ const Keys = {
   // read even though the legacy data was never meant for it.
   legacyBudgetsMigrated: 'bs.budgets.legacyMigrated',
   themePreference: 'bs.theme.preference',
+  languagePreference: 'bs.language.preference',
   // Free-tier AI-parse quota (lib/entitlements.ts). Suffixed per uid AND
   // per calendar month (`.${uid}.${yyyy-MM}`) so the count naturally
   // resets every month without a separate rollover job, and each user
@@ -231,6 +232,19 @@ export async function getThemePreference(): Promise<ThemePreference> {
 
 export async function setThemePreference(pref: ThemePreference): Promise<void> {
   await SecureStore.setItemAsync(Keys.themePreference, pref);
+}
+
+export type LanguagePreferenceValue = 'system' | 'en' | 'fr';
+
+/** App language override, independent of the device language — Settings'
+ *  "Language" control. Defaults to 'system' (follow the device). */
+export async function getLanguagePreference(): Promise<LanguagePreferenceValue> {
+  const v = await SecureStore.getItemAsync(Keys.languagePreference);
+  return v === 'en' || v === 'fr' ? v : 'system';
+}
+
+export async function setLanguagePreference(pref: LanguagePreferenceValue): Promise<void> {
+  await SecureStore.setItemAsync(Keys.languagePreference, pref);
 }
 
 function currentYearMonth(): string {

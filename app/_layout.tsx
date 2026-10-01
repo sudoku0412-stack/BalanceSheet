@@ -22,12 +22,14 @@ import {
 import { RobotoMono_400Regular, RobotoMono_500Medium } from '@expo-google-fonts/roboto-mono';
 import { initDatabase } from '../lib/database';
 import { ThemeProvider, useTheme, getBootstrapTheme } from '../constants/theme';
+import { I18nProvider } from '../lib/I18nContext';
 import { AuthProvider, useAuth } from '../lib/AuthContext';
 import { EntitlementsProvider } from '../lib/EntitlementsContext';
 import { ToastProvider } from '../components/ui/Toast';
 import { hrefForAuthGuard } from '../lib/routeGuard';
 import { scheduleRouteReplace } from '../lib/scheduleRouteReplace';
 
+import { useT } from '../lib/I18nContext';
 export default function RootLayout() {
   // Previously fire-and-forget — the rest of the app (Home's receipt
   // load, AuthContext's post-sign-in bootstrap) could start reading/
@@ -81,14 +83,16 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <ToastProvider>
-            <AuthProvider>
-              <EntitlementsProvider>
-                <ThemedStatusBar />
-                <RootStack />
-              </EntitlementsProvider>
-            </AuthProvider>
-          </ToastProvider>
+          <I18nProvider>
+            <ToastProvider>
+              <AuthProvider>
+                <EntitlementsProvider>
+                  <ThemedStatusBar />
+                  <RootStack />
+                </EntitlementsProvider>
+              </AuthProvider>
+            </ToastProvider>
+          </I18nProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
@@ -102,6 +106,7 @@ function ThemedStatusBar() {
 }
 
 function RootStack() {
+  const t = useT();
   const theme = useTheme();
   const { initializing, user, onboardingSeen } = useAuth();
   const router = useRouter();
@@ -196,7 +201,7 @@ function RootStack() {
       <Stack.Screen
         name="settings"
         options={{
-          title: 'Settings',
+          title: t('settings'),
           // Regular stack screen, not a modal sheet — navigates like
           // every other page (slide transition + back chevron) instead
           // of popping up as a separate overlay.
@@ -206,7 +211,7 @@ function RootStack() {
       <Stack.Screen
         name="edit/[id]"
         options={{
-          title: 'Edit Receipt',
+          title: t('editReceipt'),
           headerStyle: { backgroundColor: theme.colors.surface },
         }}
       />

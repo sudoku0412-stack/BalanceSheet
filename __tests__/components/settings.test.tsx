@@ -18,6 +18,8 @@ const mockToastShow = jest.fn();
 
 const mockSettingsPush = jest.fn();
 let mockIsPremium = false;
+let mockLanguagePreference = 'system';
+const mockSetLanguage = jest.fn();
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn(), push: mockSettingsPush, replace: jest.fn() }),
@@ -61,6 +63,19 @@ jest.mock('../../lib/EntitlementsContext', () => ({
     restorePurchases: jest.fn(),
   }),
 }));
+
+jest.mock('../../lib/I18nContext', () => {
+  const { translate } = require('../../lib/i18n');
+  return {
+    useT: () => (key: string, params?: Record<string, string | number>) =>
+      translate('en', key, params),
+    useLanguage: () => ({
+      language: 'en',
+      preference: mockLanguagePreference,
+      setPreference: mockSetLanguage,
+    }),
+  };
+});
 
 jest.mock('../../lib/entitlements', () => ({
   getManagementUrl: jest.fn(async () => null),
@@ -140,6 +155,7 @@ describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsPremium = false;
+    mockLanguagePreference = 'system';
     mockGetHouseholdMembers.mockResolvedValue([]);
     mockInviteUserToHousehold.mockResolvedValue({ ok: true });
     mockLeaveHousehold.mockResolvedValue({ ok: true, nextActiveHouseholdId: 'hh-solo' });
@@ -167,6 +183,19 @@ describe('SettingsScreen', () => {
     expect(mockSettingsPush).toHaveBeenCalledWith('/incomes');
     fireEvent.press(screen.getByText('Savings goals · Premium'));
     expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
+  });
+
+  it('language picker offers System / English / Français and saves the choice', async () => {
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('language-fr'));
+    expect(screen.getByText('English')).toBeTruthy();
+    expect(screen.getByText('Français')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('language-fr'));
+    expect(mockSetLanguage).toHaveBeenCalledWith('fr');
+    fireEvent.press(screen.getByTestId('language-en'));
+    expect(mockSetLanguage).toHaveBeenCalledWith('en');
+    fireEvent.press(screen.getByTestId('language-system'));
+    expect(mockSetLanguage).toHaveBeenCalledWith('system');
   });
 
   it('free user: premium currency pill opens the paywall instead of switching', async () => {

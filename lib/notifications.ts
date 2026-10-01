@@ -1,3 +1,5 @@
+import { categoryLabel } from './categoryLabel';
+import { tr } from './i18n';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import { Receipt } from '../types';
@@ -153,10 +155,10 @@ function computeBudgetStatusSummary(
   }
   if (over.length === 0 && watch.length === 0) return null;
 
-  const title = over.length > 0 ? 'Over budget' : 'Nearing budget';
+  const title = over.length > 0 ? tr('overBudget') : tr('nearingBudget');
   const parts: string[] = [];
-  if (over.length > 0) parts.push(`Over: ${over.join(', ')}`);
-  if (watch.length > 0) parts.push(`Nearing limit: ${watch.join(', ')}`);
+  if (over.length > 0) parts.push(tr('overList', { list: over.map(categoryLabel).join(', ') }));
+  if (watch.length > 0) parts.push(tr('nearingLimitList', { list: watch.map(categoryLabel).join(', ') }));
   return { title, body: parts.join(' · ') };
 }
 

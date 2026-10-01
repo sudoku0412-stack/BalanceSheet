@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -30,6 +31,7 @@ import { computeMemberBalances, type MemberBalance } from '../lib/balances';
 import { formatCurrency, type CurrencyCode } from '../lib/currency';
 import { v4 as uuidv4 } from 'uuid';
 
+import { useT } from '../lib/I18nContext';
 /**
  * Multi-household switcher. Lists every household the signed-in user
  * belongs to (lib/AuthContext's `memberships`), lets them switch the
@@ -41,6 +43,7 @@ import { v4 as uuidv4 } from 'uuid';
  * that flag on mount/unmount.
  */
 export default function HouseholdsScreen() {
+  const t = useT();
   const theme = useTheme();
   const styles = useHouseholdsStyles();
   const router = useRouter();
@@ -123,7 +126,7 @@ export default function HouseholdsScreen() {
     if (editInProgress) {
       toast.show({
         kind: 'error',
-        message: 'Finish or discard your in-progress expense before switching households.',
+        message: t('finishOrDiscardYourIn'),
       });
       return;
     }
@@ -131,9 +134,9 @@ export default function HouseholdsScreen() {
     try {
       await withTimeout(setActiveHousehold(householdId), REQUEST_TIMEOUT_MS);
       setActiveHouseholdIdState(householdId);
-      toast.show({ kind: 'success', message: 'Switched household' });
+      toast.show({ kind: 'success', message: t('switchedHousehold') });
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't switch household" });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTSwitchHousehold') });
     } finally {
       setSwitchingTo(null);
     }
@@ -154,16 +157,16 @@ export default function HouseholdsScreen() {
       const res = await withTimeout(createHousehold({ uid: user.uid, name }), REQUEST_TIMEOUT_MS);
       if (!isMountedRef.current) return;
       if (!res.ok) {
-        toast.show({ kind: 'error', message: res.reason || "Couldn't create household" });
+        toast.show({ kind: 'error', message: res.reason || t('couldnTCreateHousehold') });
         return;
       }
       await setActiveHousehold(res.householdId);
       if (!isMountedRef.current) return;
       setForm({ mode: 'none' });
-      toast.show({ kind: 'success', message: `${name} created` });
+      toast.show({ kind: 'success', message: t('nameCreated', { name }) });
     } catch (e) {
       if (isMountedRef.current) {
-        toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't create household" });
+        toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTCreateHousehold') });
       }
     } finally {
       if (isMountedRef.current) {
@@ -191,14 +194,14 @@ export default function HouseholdsScreen() {
       const res = await withTimeout(renameHousehold({ householdId: hid, name, uid: user.uid }), REQUEST_TIMEOUT_MS);
       if (!isMountedRef.current) return;
       if (!res.ok) {
-        toast.show({ kind: 'error', message: res.reason || "Couldn't rename household" });
+        toast.show({ kind: 'error', message: res.reason || t('couldnTRenameHousehold') });
         return;
       }
       setForm({ mode: 'none' });
       await refreshMemberships();
     } catch (e) {
       if (isMountedRef.current) {
-        toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't rename household" });
+        toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTRenameHousehold') });
       }
     } finally {
       // Checks `f.hid === hid`, not just `f.mode === 'rename'` — the
@@ -247,19 +250,22 @@ export default function HouseholdsScreen() {
     const otherCount = memberArr.filter((mm) => mm.uid !== user.uid).length;
     const otherMembersWarning =
       otherCount > 0
-        ? ` The other ${otherCount} member${otherCount === 1 ? '' : 's'} will lose access to it.`
+        ? t('otherMembersLoseAccess', { count: otherCount })
         : '';
     if (pending.length > 0) {
       const total = pending.reduce((sum, b) => sum + Math.abs(b.netUsd), 0);
       Alert.alert(
-        'Unsettled balances',
-        `"${label}" has ${formatCurrency(total, currency)} in unsettled balances. Deleting it will auto-settle ${
-          pending.length === 1 ? 'it' : 'them'
-        } and permanently delete every receipt and settlement in it.${otherMembersWarning} This can't be undone.`,
+        t('unsettledBalances'),
+        t('unsettledDeleteBody', {
+          count: pending.length,
+          label,
+          amount: formatCurrency(total, currency),
+          warning: otherMembersWarning,
+        }),
         [
-          { text: 'Cancel', style: 'cancel' },
+          { text: t('cancel'), style: 'cancel' },
           {
-            text: 'Settle & Delete',
+            text: t('settleDelete'),
             style: 'destructive',
             onPress: () => performDelete(householdId, pending, isActive),
           },
@@ -267,11 +273,11 @@ export default function HouseholdsScreen() {
       );
     } else {
       Alert.alert(
-        `Delete "${label}"?`,
-        `This permanently deletes every receipt and settlement in it.${otherMembersWarning} This can't be undone.`,
+        t('deleteHouseholdTitle', { label }),
+        t('deleteHouseholdBody', { warning: otherMembersWarning }),
         [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Delete', style: 'destructive', onPress: () => performDelete(householdId, [], isActive) },
+          { text: t('cancel'), style: 'cancel' },
+          { text: t('delete'), style: 'destructive', onPress: () => performDelete(householdId, [], isActive) },
         ],
       );
     }
@@ -300,7 +306,7 @@ export default function HouseholdsScreen() {
       }
       const res = await deleteHousehold({ householdId, uid: user.uid });
       if (!res.ok) {
-        toast.show({ kind: 'error', message: res.reason || "Couldn't delete household" });
+        toast.show({ kind: 'error', message: res.reason || t('couldnTDeleteHousehold') });
         return;
       }
       await deleteAllRowsForHousehold(householdId);
@@ -317,7 +323,7 @@ export default function HouseholdsScreen() {
           if (!created.ok) {
             toast.show({
               kind: 'error',
-              message: "Household deleted, but couldn't set up a new one — restart the app.",
+              message: t('householdDeletedButCouldnT'),
             });
             return;
           }
@@ -326,9 +332,9 @@ export default function HouseholdsScreen() {
         await setActiveHousehold(nextHid);
       }
       await refreshMemberships();
-      toast.show({ kind: 'success', message: 'Household deleted' });
+      toast.show({ kind: 'success', message: t('householdDeleted') });
     } catch (e) {
-      toast.show({ kind: 'error', message: (e as Error)?.message ?? "Couldn't delete household" });
+      toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTDeleteHousehold') });
     } finally {
       setDeletingHid(null);
     }
@@ -337,7 +343,7 @@ export default function HouseholdsScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <ModalHeader
-        title="Households"
+        title={t('households')}
         onBack={() => router.back()}
         rightActions={[
           {
@@ -355,7 +361,7 @@ export default function HouseholdsScreen() {
               setForm((f) => (f.mode === 'create' ? { mode: 'none' } : { mode: 'create', value: '', saving: false }));
             },
             disabled: formBusy,
-            accessibilityLabel: 'Create household',
+            accessibilityLabel: t('createHousehold'),
           },
         ]}
       />
@@ -365,7 +371,7 @@ export default function HouseholdsScreen() {
           <TextInput
             value={form.value}
             onChangeText={(text) => setForm((f) => (f.mode === 'create' ? { ...f, value: text } : f))}
-            placeholder="Household name"
+            placeholder={t('householdName')}
             placeholderTextColor={theme.colors.textMuted}
             style={styles.input}
             autoFocus
@@ -375,7 +381,7 @@ export default function HouseholdsScreen() {
             disabled={form.saving || !form.value.trim()}
             style={[styles.saveBtn, (form.saving || !form.value.trim()) && styles.saveBtnDisabled]}
           >
-            <Text style={styles.saveBtnText}>{form.saving ? 'Creating…' : 'Create'}</Text>
+            <Text style={styles.saveBtnText}>{form.saving ? t('creating') : t('create')}</Text>
           </Pressable>
         </View>
       )}
@@ -383,15 +389,15 @@ export default function HouseholdsScreen() {
       {!loading && memberships.length === 0 ? (
         <EmptyState
           icon="home-outline"
-          title="No households yet"
-          description="Tap + to create your first household."
+          title={t('noHouseholdsYet')}
+          description={t('tapToCreateYourFirst')}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
           {memberships.map((m) => {
             const isActive = m.householdId === activeHouseholdId;
             const isRenaming = form.mode === 'rename' && form.hid === m.householdId;
-            const label = m.name || 'Unnamed household';
+            const label = m.name || tr('unnamedHousehold');
             const nameItDisabled = formBusy || deletingHid === m.householdId;
             const card = (
               <View style={[styles.card, isActive && styles.cardActive]}>
@@ -402,7 +408,7 @@ export default function HouseholdsScreen() {
                       onChangeText={(text) =>
                         setForm((f) => (f.mode === 'rename' ? { ...f, value: text } : f))
                       }
-                      placeholder="Household name"
+                      placeholder={t('householdName')}
                       placeholderTextColor={theme.colors.textMuted}
                       style={styles.input}
                       autoFocus
@@ -412,7 +418,7 @@ export default function HouseholdsScreen() {
                       disabled={form.saving || !form.value.trim()}
                       style={[styles.saveBtn, (form.saving || !form.value.trim()) && styles.saveBtnDisabled]}
                     >
-                      <Text style={styles.saveBtnText}>{form.saving ? 'Saving…' : 'Save'}</Text>
+                      <Text style={styles.saveBtnText}>{form.saving ? t('saving') : t('save')}</Text>
                     </Pressable>
                   </View>
                 ) : (
@@ -431,8 +437,8 @@ export default function HouseholdsScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.name} numberOfLines={1}>{label}</Text>
                       <Text style={styles.meta}>
-                        {m.memberCount} {m.memberCount === 1 ? 'member' : 'members'} ·{' '}
-                        {m.role === 'owner' ? 'Owner' : 'Member'}
+                        {m.memberCount} {m.memberCount === 1 ? t('member') : t('members')} ·{' '}
+                        {m.role === 'owner' ? t('owner') : t('member2')}
                       </Text>
                       {!m.name && m.role === 'owner' && (
                         <Pressable
@@ -441,7 +447,7 @@ export default function HouseholdsScreen() {
                           hitSlop={4}
                         >
                           <Text style={[styles.nameItLink, nameItDisabled && { opacity: 0.4 }]}>
-                            Name it
+                            {t('nameIt')}
                           </Text>
                         </Pressable>
                       )}
@@ -464,7 +470,7 @@ export default function HouseholdsScreen() {
                       <ActivityIndicator color={theme.colors.accent} />
                     ) : isActive ? (
                       <View style={styles.activeBadge}>
-                        <Text style={styles.activeBadgeText}>Active</Text>
+                        <Text style={styles.activeBadgeText}>{t('active')}</Text>
                       </View>
                     ) : null}
                   </Pressable>
@@ -499,7 +505,7 @@ export default function HouseholdsScreen() {
                     ) : (
                       <>
                         <Ionicons name="trash" size={20} color="#fff" />
-                        <Text style={styles.deleteActionText}>Delete</Text>
+                        <Text style={styles.deleteActionText}>{t('delete')}</Text>
                       </>
                     )}
                   </Pressable>

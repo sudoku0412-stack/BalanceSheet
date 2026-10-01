@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -18,6 +19,7 @@ import { Button } from '../components/ui/Button';
 import { Theme, useStyles, useTheme } from '../constants/theme';
 import { useAuth } from '../lib/AuthContext';
 
+import { useT } from '../lib/I18nContext';
 type AccentKey = 'accent' | 'success' | 'primary';
 
 type Slide = {
@@ -29,44 +31,48 @@ type Slide = {
   points?: { label: string; badge: 'Free' | 'Premium' }[];
 };
 
-const SLIDES: Slide[] = [
+function getSlides(): Slide[] {
+  return [
   {
     key: 'capture',
     icon: 'camera-outline',
-    title: "Snap a receipt, we'll do the rest",
-    body: 'Photograph a receipt or pay stub. Amount, merchant, and category land in your ledger — included on Free.',
+    title: tr('onbCaptureTitle'),
+    body: tr('onbCaptureBody'),
     accent: 'accent',
   },
   {
     key: 'cashflow',
     icon: 'swap-vertical-outline',
-    title: 'Income and spending together',
-    body: 'Log paychecks, see earned / spent / net, and open every income on its own page. Budgets and history stay Free.',
+    title: tr('onbCashflowTitle'),
+    body: tr('onbCashflowBody'),
     accent: 'success',
   },
   {
     key: 'household',
     icon: 'people-outline',
-    title: 'Share one household, free',
-    body: 'Invite a partner, split expenses, and settle up. One household is Free. Extra households are Premium.',
+    title: tr('onbHouseholdTitle'),
+    body: tr('onbHouseholdBody'),
     accent: 'accent',
   },
   {
     key: 'plans',
     icon: 'diamond-outline',
-    title: 'Free vs Premium',
-    body: 'Start Free. Upgrade only if you want more AI scans, exports, or savings goals.',
+    title: tr('onbPlansTitle'),
+    body: tr('onbPlansBody'),
     accent: 'primary',
     points: [
-      { badge: 'Free', label: 'Receipt scan, income, budgets, one household' },
-      { badge: 'Free', label: 'Splits, settle up, recurring, All incomes' },
-      { badge: 'Premium', label: 'Unlimited AI receipt scanning' },
-      { badge: 'Premium', label: 'PDF export, extra households, savings goals' },
+      { badge: 'Free', label: tr('onbPoint1') },
+      { badge: 'Free', label: tr('onbPoint2') },
+      { badge: 'Premium', label: tr('onbPoint3') },
+      { badge: 'Premium', label: tr('onbPoint4') },
     ],
   },
-];
+  ];
+}
 
 export default function OnboardingScreen() {
+  const t = useT();
+  const slides = getSlides();
   const { markOnboardingSeen } = useAuth();
   const theme = useTheme();
   const { width: screenWidth } = useWindowDimensions();
@@ -104,7 +110,7 @@ export default function OnboardingScreen() {
   };
 
   const isFirst = index === 0;
-  const isLast = index === SLIDES.length - 1;
+  const isLast = index === slides.length - 1;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -117,13 +123,13 @@ export default function OnboardingScreen() {
           <View />
         )}
         <Pressable onPress={finish} hitSlop={12}>
-          <Text style={styles.skip}>Skip</Text>
+          <Text style={styles.skip}>{t('skip')}</Text>
         </Pressable>
       </View>
 
       <FlatList
         ref={listRef}
-        data={SLIDES}
+        data={slides}
         keyExtractor={(s) => s.key}
         horizontal
         pagingEnabled
@@ -136,7 +142,7 @@ export default function OnboardingScreen() {
       />
 
       <View style={styles.dotsRow}>
-        {SLIDES.map((s, i) => (
+        {slides.map((s, i) => (
           <Pressable key={s.key} onPress={() => goToSlide(i)} hitSlop={8}>
             <View style={[styles.dot, i === index && styles.dotActive]} />
           </Pressable>
@@ -146,7 +152,7 @@ export default function OnboardingScreen() {
       <View style={styles.cta}>
         {isLast ? (
           <Button
-            label="Get Started"
+            label={t('getStarted')}
             size="lg"
             onPress={finish}
             style={styles.ctaButton}
@@ -154,7 +160,7 @@ export default function OnboardingScreen() {
           />
         ) : (
           <Button
-            label="Next"
+            label={t('next')}
             size="lg"
             onPress={() => goToSlide(index + 1)}
             style={styles.ctaButton}
@@ -167,6 +173,7 @@ export default function OnboardingScreen() {
 }
 
 function SlideView({ slide, width }: { slide: Slide; width: number }) {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles(makeStyles);
   const tileColor = theme.colors[slide.accent];
@@ -231,7 +238,7 @@ function SlideView({ slide, width }: { slide: Slide; width: number }) {
                     point.badge === 'Premium' ? styles.badgeTextPremium : styles.badgeTextFree,
                   ]}
                 >
-                  {point.badge}
+                  {point.badge === 'Premium' ? t('premium') : t('free')}
                 </Text>
               </View>
               <Text style={styles.pointLabel}>{point.label}</Text>

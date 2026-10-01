@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 import type Purchases from 'react-native-purchases';
 import type { CustomerInfo, PurchasesOfferings, PurchasesPackage } from 'react-native-purchases';
 
@@ -102,7 +103,7 @@ export type PurchaseOutcome =
 
 export async function purchasePackage(pkg: PurchasesPackage): Promise<PurchaseOutcome> {
   const Purchases = loadPurchases();
-  if (!Purchases) return { ok: false, userCancelled: false, message: 'Purchases unavailable.' };
+  if (!Purchases) return { ok: false, userCancelled: false, message: tr('purchasesUnavailable') };
   try {
     const { customerInfo } = await Purchases.purchasePackage(pkg);
     return { ok: true, isPremium: isPremiumFromInfo(customerInfo) };
@@ -111,7 +112,7 @@ export async function purchasePackage(pkg: PurchasesPackage): Promise<PurchaseOu
     return {
       ok: false,
       userCancelled: err.userCancelled === true,
-      message: err.message ?? 'Purchase failed.',
+      message: err.message ?? tr('purchaseFailed'),
     };
   }
 }

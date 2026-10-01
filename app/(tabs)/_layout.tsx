@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { GestureResponderEvent, Pressable, Text, View, ViewStyle } from 'react-native';
 import { Theme, useStyles, useTheme } from '../../constants/theme';
 
+import { useT } from '../../lib/I18nContext';
 function makeTabItemStyles(t: Theme) {
   return {
     tabButton: {
@@ -83,6 +84,7 @@ function TabButton({
 }
 
 export default function TabLayout() {
+  const t = useT();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     tabBar: {
@@ -140,12 +142,12 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
+          title: t('home'),
           headerShown: false,
           tabBarButton: (props) => (
             <TabButton
               name="home-outline"
-              label="Home"
+              label={t('home')}
               routeName="index"
               onPress={props.onPress}
             />
@@ -155,11 +157,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="history"
         options={{
-          title: 'Expenses',
+          title: t('expenses'),
           tabBarButton: (props) => (
             <TabButton
               name="receipt-outline"
-              label="Expenses"
+              label={t('expenses')}
               routeName="history"
               onPress={props.onPress}
             />
@@ -169,7 +171,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="scan"
         options={{
-          title: 'Scan',
+          title: t('scan'),
           tabBarShowLabel: false,
           tabBarLabel: () => null,
           tabBarIcon: () => (
@@ -182,11 +184,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="reports-tab"
         options={{
-          title: 'Reports',
+          title: t('reports'),
           tabBarButton: (props) => (
             <TabButton
               name="bar-chart-outline"
-              label="Reports"
+              label={t('reports')}
               routeName="reports-tab"
               onPress={props.onPress}
             />
@@ -196,11 +198,11 @@ export default function TabLayout() {
       <Tabs.Screen
         name="settings-tab"
         options={{
-          title: 'Settings',
+          title: t('settings'),
           tabBarButton: (props) => (
             <TabButton
               name="settings-outline"
-              label="Settings"
+              label={t('settings')}
               routeName="settings-tab"
               onPress={props.onPress}
             />

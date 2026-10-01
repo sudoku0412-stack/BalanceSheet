@@ -36,12 +36,16 @@ import { useEntitlements } from '../lib/EntitlementsContext';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { CategorySummary, MonthlyStats, Receipt, Category, Income, CashflowStats } from '../types';
 
+import { useT, useLanguage, type TFn } from '../lib/I18nContext';
+import { dateFnsLocale, formatMonthYear } from '../lib/dateLocale';
+import { getActiveLanguage } from '../lib/i18n';
+import { categoryLabel } from '../lib/categoryLabel';
 /**
  * Build a human-readable filename for the exported receipt report,
  * e.g. "NestExpenseTracker Expense Report - July 2026.pdf".
  */
 function buildExportFilename(month: Date, ext: 'pdf' | 'csv'): string {
-  return `NestExpenseTracker Expense Report - ${format(month, 'MMMM yyyy')}.${ext}`;
+  return `NestExpenseTracker Expense Report - ${format(month, 'MMMM yyyy', { locale: dateFnsLocale(getActiveLanguage()) })}.${ext}`;
 }
 
 export default function ReportsScreenWrapped() {
@@ -66,6 +70,8 @@ export function ReportsScreenEmbedded() {
 }
 
 function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
+  const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const styles = useReportsStyles();
   const { isPremium } = useEntitlements();
@@ -171,20 +177,20 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         await Sharing.shareAsync(path, { mimeType, dialogTitle, UTI: uti });
       } else {
         Alert.alert(
-          'Saved',
-          `Sharing isn't available in this build, but the file was written to ${path}. Rebuild the app to enable in-app share.`,
+          t('saved'),
+          t('sharingUnavailableWithPath', { path }),
         );
       }
     },
-    [],
+    [t],
   );
 
   const exportCsv = useCallback(async () => {
     if (exportingCsv) return;
     if (monthReceipts.length === 0) {
       Alert.alert(
-        'Nothing to export',
-        'Scan a few receipts before generating a report.',
+        t('nothingToExport'),
+        t('scanAFewReceiptsBefore'),
       );
       return;
     }
@@ -200,21 +206,21 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         path,
         'text/csv',
         'public.comma-separated-values-text',
-        'Export expense report',
+        t('exportExpenseReport'),
       );
     } catch (e) {
-      Alert.alert('Export failed', (e as Error)?.message ?? 'Try again.');
+      Alert.alert(t('exportFailed'), (e as Error)?.message ?? t('tryAgain'));
     } finally {
       setExportingCsv(false);
     }
-  }, [monthReceipts, exportingCsv, monthStart, shareFile]);
+  }, [monthReceipts, exportingCsv, monthStart, shareFile, t]);
 
   const exportPdf = useCallback(async () => {
     if (exportingPdf) return;
     if (monthReceipts.length === 0) {
       Alert.alert(
-        'Nothing to export',
-        'Scan a few receipts before generating a report.',
+        t('nothingToExport'),
+        t('scanAFewReceiptsBefore'),
       );
       return;
     }
@@ -228,15 +234,15 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
     // until the user installs a fresh build.
     if (!isPdfExportAvailable()) {
       Alert.alert(
-        'PDF unavailable',
-        'PDF export needs a newer build of the app. Use Export CSV for now, or rebuild to enable PDF.',
+        t('pdfUnavailable'),
+        t('pdfExportNeedsANewer'),
       );
       return;
     }
     setExportingPdf(true);
     try {
-      const startLabel = format(monthStart, 'PP');
-      const endLabel = format(monthEnd, 'PP');
+      const startLabel = format(monthStart, 'PP', { locale: dateFnsLocale(language) });
+      const endLabel = format(monthEnd, 'PP', { locale: dateFnsLocale(language) });
       const filename = buildExportFilename(monthStart, 'pdf');
       const path = await generateReceiptsPdf({
         receipts: monthReceipts,
@@ -247,18 +253,18 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         currency,
       });
       if (path) {
-        await shareFile(path, 'application/pdf', 'com.adobe.pdf', 'Export expense report');
+        await shareFile(path, 'application/pdf', 'com.adobe.pdf', t('exportExpenseReport'));
       }
     } catch (e) {
-      Alert.alert('Export failed', (e as Error)?.message ?? 'Try again.');
+      Alert.alert(t('exportFailed'), (e as Error)?.message ?? t('tryAgain'));
     } finally {
       setExportingPdf(false);
     }
-  }, [monthReceipts, exportingPdf, isPremium, monthStart, monthEnd, shareFile]);
+  }, [monthReceipts, exportingPdf, isPremium, monthStart, monthEnd, shareFile, t]);
 
   return (
     <SafeAreaView style={styles.root} edges={embedded ? ['bottom'] : ['top', 'bottom']}>
-      {!embedded && <ModalHeader title="Reports" />}
+      {!embedded && <ModalHeader title={t('reports')} />}
       <View style={styles.monthNavRow}>
         <Pressable
           onPress={() => setMonthOffset((v) => v - 1)}
@@ -267,7 +273,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         >
           <Ionicons name="chevron-back" size={20} color={theme.colors.textPrimary} />
         </Pressable>
-        <Text style={styles.subhead}>{format(now, 'MMMM yyyy')}</Text>
+        <Text style={styles.subhead}>{formatMonthYear(now, language)}</Text>
         <Pressable
           onPress={() => setMonthOffset((v) => v + 1)}
           disabled={isSameMonth(now, new Date())}
@@ -311,8 +317,8 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
           {monthReceipts.length === 0 && (
             <EmptyState
               icon="bar-chart-outline"
-              title="No data yet"
-              description="Scan a few receipts and your monthly summary will appear here."
+              title={t('noDataYet')}
+              description={t('scanAFewReceiptsAnd')}
             />
           )}
 
@@ -321,7 +327,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
               per the design spec — the only actions on this screen. */}
           <View style={styles.exportRow}>
             <Button
-              label="Export CSV"
+              label={t('exportCsv')}
               variant="secondary"
               onPress={exportCsv}
               loading={exportingCsv}
@@ -329,7 +335,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
               style={styles.exportButton}
             />
             <Button
-              label={isPremium ? 'Export PDF' : 'Export PDF · Premium'}
+              label={isPremium ? t('exportPdf') : t('exportPdfPremium')}
               variant="secondary"
               onPress={exportPdf}
               loading={exportingPdf}
@@ -353,18 +359,24 @@ function sliceColor(
   return resolveCategoryColor(key, theme.colors.category, customs, theme.colors.accent);
 }
 
-function donutCaption(donut: BudgetDonutModel, currency: CurrencyCode): string {
+function donutCaption(donut: BudgetDonutModel, currency: CurrencyCode, t: TFn): string {
   const total = formatCurrency(donut.circleTotal, currency);
-  const pot =
+  const pot = t(
     donut.source === 'budget'
-      ? `One circle, one total: ${total} (your category budgets).`
+      ? 'donutPotBudget'
       : donut.source === 'income'
-        ? `One circle, one total: ${total} (this month's earned).`
-        : `One circle, one total: ${total}.`;
+        ? 'donutPotIncome'
+        : 'donutPotSpent',
+    { total },
+  );
   if (donut.remaining > 0.009) {
-    return `${pot} The colored wedges are what's already been eaten up by spending, and the dashed gray wedge is what's still untouched — ${donut.remainingPct.toFixed(1)}%, or ${formatCurrency(donut.remaining, currency)}.`;
+    return t('donutRemaining', {
+      pot,
+      pct: donut.remainingPct.toFixed(1),
+      amount: formatCurrency(donut.remaining, currency),
+    });
   }
-  return `${pot} Spending has filled the circle.`;
+  return t('donutFilled', { pot });
 }
 
 function SummaryCard({
@@ -382,11 +394,12 @@ function SummaryCard({
   theme: Theme;
   customs: CustomCategory[];
 }) {
+  const t = useT();
   const styles = useReportsStyles();
   const count = stats.receiptCount;
   return (
     <View style={styles.summaryCard}>
-      <View style={styles.donutWrap} accessibilityLabel="Monthly budget donut">
+      <View style={styles.donutWrap} accessibilityLabel={t('monthlyBudgetDonut')}>
         <BudgetDonut donut={donut} theme={theme} size={220} customs={customs} />
         <View style={styles.donutCenter} pointerEvents="none">
           {donut.circleTotal > 0 ? (
@@ -395,11 +408,11 @@ function SummaryCard({
                 {donut.remainingPct.toFixed(1)}%
               </Text>
               <Text style={styles.donutCenterSub}>
-                left · {formatCurrency(donut.remaining, currency)}
+                {t('leftAmount', { amount: formatCurrency(donut.remaining, currency) })}
               </Text>
             </>
           ) : (
-            <Text style={styles.donutCenterSub}>No pot yet</Text>
+            <Text style={styles.donutCenterSub}>{t('noPotYet')}</Text>
           )}
         </View>
       </View>
@@ -414,39 +427,37 @@ function SummaryCard({
               ]}
             />
             <Text style={styles.legendLabel} numberOfLines={1}>
-              {slice.label}
+              {slice.remaining ? t('remainingUnspent') : categoryLabel(slice.key)}
             </Text>
             <Text style={styles.legendPct}>{slice.percentage.toFixed(1)}%</Text>
           </View>
         ))}
       </View>
       {donut.circleTotal > 0 ? (
-        <Text style={styles.donutCaption}>{donutCaption(donut, currency)}</Text>
+        <Text style={styles.donutCaption}>{donutCaption(donut, currency, t)}</Text>
       ) : (
         <Text style={styles.donutCaption}>
-          Add income or category budgets and this ring becomes one pot — spend
-          as colored wedges, leftover as the dashed gray slice.
+          {t('addIncomeOrCategoryBudgets')}
         </Text>
       )}
       <Text style={styles.summarySub}>
-        {formatCurrency(stats.totalSpent, currency)} total across {count} expense
-        {count === 1 ? '' : 's'}
+        {t('totalAcrossExpenses', { amount: formatCurrency(stats.totalSpent, currency), count })}
       </Text>
       <View style={styles.cashflowRow}>
         <View style={styles.cashflowCell}>
-          <Text style={styles.cashflowLabel}>Earned</Text>
+          <Text style={styles.cashflowLabel}>{t('earned')}</Text>
           <Text style={[styles.cashflowValue, { color: theme.colors.success }]}>
             {formatCurrency(cashflow.totalEarned, currency)}
           </Text>
         </View>
         <View style={styles.cashflowCell}>
-          <Text style={styles.cashflowLabel}>Spent</Text>
+          <Text style={styles.cashflowLabel}>{t('spent')}</Text>
           <Text style={styles.cashflowValue}>
             {formatCurrency(cashflow.totalSpent, currency)}
           </Text>
         </View>
         <View style={styles.cashflowCell}>
-          <Text style={styles.cashflowLabel}>Net</Text>
+          <Text style={styles.cashflowLabel}>{t('net')}</Text>
           <Text
             style={[
               styles.cashflowValue,
@@ -460,19 +471,19 @@ function SummaryCard({
       {cashflow.investedUsd > 0 ? (
         <View style={styles.cashflowRow}>
           <View style={styles.cashflowCell}>
-            <Text style={styles.cashflowLabel}>Invested</Text>
+            <Text style={styles.cashflowLabel}>{t('invested')}</Text>
             <Text style={styles.cashflowValue}>
               {formatCurrency(cashflow.investedUsd, currency)}
             </Text>
           </View>
           <View style={styles.cashflowCell}>
-            <Text style={styles.cashflowLabel}>Consumed</Text>
+            <Text style={styles.cashflowLabel}>{t('consumed')}</Text>
             <Text style={styles.cashflowValue}>
               {formatCurrency(cashflow.consumedUsd, currency)}
             </Text>
           </View>
           <View style={styles.cashflowCell}>
-            <Text style={styles.cashflowLabel}>Saved</Text>
+            <Text style={styles.cashflowLabel}>{t('saved')}</Text>
             <Text style={[styles.cashflowValue, { color: theme.colors.success }]}>
               {cashflow.savingsRate != null
                 ? `${(cashflow.savingsRate * 100).toFixed(0)}%`
