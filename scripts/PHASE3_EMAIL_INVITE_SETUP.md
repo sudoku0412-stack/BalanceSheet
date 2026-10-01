@@ -122,7 +122,7 @@ Android reads this. Content:
 Get the SHA-256 of your app signing certificate:
 
 ```bash
-# From the BalanceSheet repo:
+# From the NestExpenseTracker repo:
 npx eas-cli credentials --platform android
 # Pick "BalanceSheet preview" credentials → it prints the SHA-256.
 # Format it as colon-separated hex: AA:BB:CC:DD:...
@@ -154,7 +154,7 @@ right MIME type (no extension trips up the default server):
 
 If someone taps the link from a desktop browser (no app to open),
 Firebase shows a generic page. You can override it with a tiny
-`firebase-hosting/index.html` that explains what BalanceSheet is +
+`firebase-hosting/index.html` that explains what NestExpenseTracker is +
 links to the App / Play Store. Not required for the flow to work.
 
 ### Deploy
@@ -200,14 +200,14 @@ automatically. Wait for it (~16 min from push), download from
    - Enter the OTHER email you'll use to sign in on App B
    - Tap "Send invite" → expect "Invite sent" toast
 2. Check the other email's inbox — there should be a Firebase email
-   with subject like "Sign in to BalanceSheet". Body has a button /
+   with subject like "Sign in to NestExpenseTracker". Body has a button /
    link.
 3. App B (other phone, OR a different Android emulator, OR same
-   phone with BalanceSheet uninstalled):
+   phone with NestExpenseTracker uninstalled):
    - If app installed: tap the link in the email → app opens to the
      "Confirm your email" screen → enter the email → tap Continue.
    - If app NOT installed: tap the link → Play Store / App Store
-     opens with BalanceSheet → install → app launches via the link
+     opens with NestExpenseTracker → install → app launches via the link
      → "Confirm your email" screen.
 4. After Continue, Firebase Auth signs them in. AuthContext spots
    the pending invite in `invites/{email}` and shows the existing

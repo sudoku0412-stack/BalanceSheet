@@ -1,6 +1,6 @@
 /**
  * Cloudflare Worker that proxies item-name classification requests from the
- * BalanceSheet mobile app to the Anthropic API. Keeps the API key
+ * NestExpenseTracker mobile app to the Anthropic API. Keeps the API key
  * server-side so it never ships in the APK.
  *
  * Deploy:
@@ -13,7 +13,7 @@
  *      (paste your key from https://console.anthropic.com/settings/keys)
  *   5. `wrangler deploy` — you'll get a URL like
  *      https://balancesheet-classifier.<your-subdomain>.workers.dev
- *   6. In the BalanceSheet repo, set `extra.classifyEndpoint` in
+ *   6. In the NestExpenseTracker repo, set `extra.classifyEndpoint` in
  *      `app.config.js`:
  *
  *        extra: {

@@ -4,11 +4,6 @@ Personal + household expense tracker built around receipt scanning. Point
 your phone at a receipt → on-device OCR + AI turns it into structured,
 categorized spending you can search, chart, split with family, and export.
 
-> **Repo note:** the GitHub repository may still be named `BalanceSheet`
-> (legacy). The product name everywhere user-facing is **NestExpenseTracker**.
-> Rename the GitHub repo under *Settings → General → Repository name* when
-> you're ready; clone URLs below use the current remote.
-
 Built with React Native (Expo) for Android and iOS, Firebase for auth +
 cloud sync, and a Cloudflare Workers AI fallback so receipt parsing keeps
 working even when the primary AI provider's free tier is exhausted.
@@ -28,8 +23,8 @@ working even when the primary AI provider's free tier is exhausted.
 ## Quick start (development)
 
 ```bash
-git clone https://github.com/sudoku0412-stack/BalanceSheet.git
-cd BalanceSheet
+git clone https://github.com/sudoku0412-stack/NestExpenseTracker.git
+cd NestExpenseTracker
 npm install --legacy-peer-deps
 npx expo prebuild --platform android   # or ios
 npx expo start

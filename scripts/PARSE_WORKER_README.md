@@ -1,6 +1,6 @@
 # Cloudflare Worker — receipt parser fallback
 
-This worker lets BalanceSheet keep working when the bundled Gemini free
+This worker lets NestExpenseTracker keep working when the bundled Gemini free
 tier hits its daily 1500-request limit. It proxies receipt OCR text
 through Cloudflare Workers AI (Llama 3.3 70B by default), which has a
 separate free tier (~10k neurons/day, enough for ~300 parses/day).
@@ -66,7 +66,7 @@ wrangler secret put APP_SECRET
 # paste the random string
 ```
 
-Keep the same string handy — you'll add it to the BalanceSheet app
+Keep the same string handy — you'll add it to the NestExpenseTracker app
 config in step 8.
 
 ### 7. Deploy
@@ -80,7 +80,7 @@ Note the URL Wrangler prints, e.g.
 
 ### 8. Wire the worker into the app
 
-Back in the BalanceSheet repo, add two EAS env vars on the `preview`
+Back in the NestExpenseTracker repo, add two EAS env vars on the `preview`
 environment (and `production` if you publish to the Play Store):
 
 ```sh

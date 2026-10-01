@@ -1,6 +1,6 @@
-# BalanceSheet — Handover Notes (supersedes the previous version of this file)
+# NestExpenseTracker — Handover Notes (supersedes the previous version of this file)
 
-Repo root: `/Users/kaushiksudesna/Claude/BalanceSheet`. React Native / Expo, expo-router, Firebase (auth/firestore/storage), SQLite local store, EAS build/update/submit, GitHub Actions CI. App is marketed as **NestExpenseTracker** — repo/folder names and some internal identifiers still say BalanceSheet/ReceiptScanner on purpose (locked infra identifiers — see "Deliberately NOT renamed" in git history if it matters again).
+Repo renamed from `BalanceSheet` to `NestExpenseTracker` (2026-10-01); the local folder is still `/Users/kaushiksudesna/Claude/BalanceSheet` until the user renames it. Infra identifiers `balancesheet-android` (Firebase project, `balancesheet-android.web.app` links) and the `balancesheet-*` Cloudflare worker names are deliberately unchanged. React Native / Expo, expo-router, Firebase (auth/firestore/storage), SQLite local store, EAS build/update/submit, GitHub Actions CI. App is marketed as **NestExpenseTracker** — repo/folder names and some internal identifiers still say NestExpenseTracker/ReceiptScanner on purpose (locked infra identifiers — see "Deliberately NOT renamed" in git history if it matters again).
 
 **User preferences — apply from message one:**
 - Caveman-mode terse responses, every session, by default (saved in cross-session memory — see below). Minimize tokens overall: silent progress (no intermediate "still running"/"step N done" pings — only speak up on real failures or final completion), dense turns, batched tool calls.

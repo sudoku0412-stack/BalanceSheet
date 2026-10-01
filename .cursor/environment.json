@@ -1,4 +1,4 @@
 {
-  "name": "BalanceSheet (Expo receipt scanner)",
+  "name": "NestExpenseTracker (Expo receipt scanner)",
   "install": "npm ci --legacy-peer-deps"
 }
