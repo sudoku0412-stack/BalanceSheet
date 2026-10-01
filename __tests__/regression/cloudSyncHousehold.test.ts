@@ -179,9 +179,13 @@ jest.mock('../../lib/secureStorage', () => ({
 }));
 
 const mockApplyCustomCategories = jest.fn();
+const mockClearPending = jest.fn(async () => undefined);
+const mockGetPending = jest.fn(async () => ({ add: [] as unknown[], remove: [] as string[] }));
 
 jest.mock('../../lib/customCategories', () => ({
   applyCustomCategories: (...args: unknown[]) => mockApplyCustomCategories(...args),
+  clearPendingCustomCategoryChanges: (...args: unknown[]) => (mockClearPending as jest.Mock)(...args),
+  getPendingCustomCategoryChanges: (...args: unknown[]) => (mockGetPending as jest.Mock)(...args),
 }));
 
 jest.mock('../../lib/dataSync', () => ({
@@ -210,6 +214,7 @@ import {
   setPhoneIndex,
   subscribeToHouseholdBudgets,
   syncCustomCategoriesToCloud,
+  flushPendingCustomCategories,
   type PendingInvite,
 } from '../../lib/cloudSync';
 
@@ -237,6 +242,7 @@ beforeEach(() => {
   lastSnapshotHandler = undefined;
   autoId = 0;
   jest.clearAllMocks();
+  mockGetPending.mockResolvedValue({ add: [], remove: [] });
   mockApplyBudgetsSnapshot.mockResolvedValue(undefined);
   mockGetCloudMigrationDone.mockResolvedValue(false);
   jest.useFakeTimers();
@@ -735,6 +741,34 @@ describe('custom category sync', () => {
     });
     await expect(syncCustomCategoriesToCloud('hh1', { remove: [pets] })).resolves.toBe(true);
     expect(mockStore.get('households/hh1')?.customCategories).toEqual([hobbies]);
+  });
+
+  it('acknowledges pending changes only after a successful write', async () => {
+    seed('households/hh1', { memberUids: ['u1'], customCategories: [pets] });
+    await syncCustomCategoriesToCloud('hh1', { add: [hobbies] });
+    expect(mockClearPending).toHaveBeenCalledWith('hh1', { add: ['Hobbies'], remove: undefined });
+    mockClearPending.mockClear();
+    await syncCustomCategoriesToCloud('hh1', { remove: [pets] });
+    expect(mockClearPending).toHaveBeenCalledWith('hh1', { add: undefined, remove: ['Pets'] });
+    mockClearPending.mockClear();
+    await syncCustomCategoriesToCloud('', { add: [pets] });
+    expect(mockClearPending).not.toHaveBeenCalled();
+  });
+
+  it('flushPendingCustomCategories re-sends unacknowledged adds and removes', async () => {
+    seed('households/hh1', { memberUids: ['u1'], customCategories: [pets] });
+    mockGetPending.mockResolvedValue({ add: [hobbies], remove: ['Pets'] });
+    await flushPendingCustomCategories('hh1');
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([hobbies]);
+    expect(mockClearPending).toHaveBeenCalledTimes(2);
+  });
+
+  it('starting the listener flushes pending changes', async () => {
+    seed('households/hh1', { memberUids: ['u1'], customCategories: [] });
+    mockGetPending.mockResolvedValue({ add: [pets], remove: [] });
+    subscribeToHouseholdBudgets('hh1');
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([pets]);
   });
 
   it('resolves false without a household id and true on success', async () => {

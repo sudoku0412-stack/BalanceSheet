@@ -54,6 +54,61 @@ async function save(householdId: string, list: CustomCategory[]): Promise<void> 
   await SecureStore.setItemAsync(storageKey(householdId), JSON.stringify(list));
 }
 
+/** Local changes not yet acknowledged by the household's cloud copy.
+ *  Kept so a cloud snapshot that lands before our own write finishes
+ *  (or while offline) cannot wipe a just-added category or resurrect a
+ *  just-removed one. */
+export interface PendingCustomCategoryChanges {
+  add: CustomCategory[];
+  remove: string[];
+}
+
+const pendingKey = (householdId: string) => `${KEY}.pending.${householdId}`;
+
+export async function getPendingCustomCategoryChanges(
+  householdId: string,
+): Promise<PendingCustomCategoryChanges> {
+  const empty: PendingCustomCategoryChanges = { add: [], remove: [] };
+  const raw = await SecureStore.getItemAsync(pendingKey(householdId));
+  if (!raw) return empty;
+  try {
+    const parsed = JSON.parse(raw) as Partial<PendingCustomCategoryChanges>;
+    return {
+      add: Array.isArray(parsed.add) ? parsed.add.filter(isCustomCategory) : [],
+      remove: Array.isArray(parsed.remove)
+        ? parsed.remove.filter((n): n is string => typeof n === 'string')
+        : [],
+    };
+  } catch {
+    return empty;
+  }
+}
+
+async function savePending(
+  householdId: string,
+  pending: PendingCustomCategoryChanges,
+): Promise<void> {
+  if (pending.add.length === 0 && pending.remove.length === 0) {
+    await SecureStore.deleteItemAsync(pendingKey(householdId));
+  } else {
+    await SecureStore.setItemAsync(pendingKey(householdId), JSON.stringify(pending));
+  }
+}
+
+const sameName = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+
+/** Drops pending entries the cloud has acknowledged (matched by name). */
+export async function clearPendingCustomCategoryChanges(
+  householdId: string,
+  ack: { add?: string[]; remove?: string[] },
+): Promise<void> {
+  const p = await getPendingCustomCategoryChanges(householdId);
+  await savePending(householdId, {
+    add: p.add.filter((c) => !(ack.add ?? []).some((n) => sameName(n, c.name))),
+    remove: p.remove.filter((n) => !(ack.remove ?? []).some((a) => sameName(a, n))),
+  });
+}
+
 export type AddCustomCategoryResult =
   | { ok: true; categories: CustomCategory[]; added: CustomCategory }
   | { ok: false; reason: 'empty' | 'tooLong' | 'duplicate' | 'limit' };
@@ -82,6 +137,11 @@ export async function addCustomCategory(
   };
   const categories = [...existing, added];
   await save(householdId, categories);
+  const pending = await getPendingCustomCategoryChanges(householdId);
+  await savePending(householdId, {
+    add: [...pending.add.filter((c) => !sameName(c.name, name)), added],
+    remove: pending.remove.filter((n) => !sameName(n, name)),
+  });
   return { ok: true, categories, added };
 }
 
@@ -93,11 +153,19 @@ export async function removeCustomCategory(
 ): Promise<CustomCategory[]> {
   const next = (await getCustomCategories(householdId)).filter((c) => c.name !== name);
   await save(householdId, next);
+  const pending = await getPendingCustomCategoryChanges(householdId);
+  await savePending(householdId, {
+    add: pending.add.filter((c) => !sameName(c.name, name)),
+    remove: [...pending.remove.filter((n) => !sameName(n, name)), name],
+  });
   return next;
 }
 
 export async function clearCustomCategoriesForHousehold(householdId: string): Promise<void> {
-  await SecureStore.deleteItemAsync(storageKey(householdId));
+  await Promise.all([
+    SecureStore.deleteItemAsync(storageKey(householdId)),
+    SecureStore.deleteItemAsync(pendingKey(householdId)),
+  ]);
 }
 
 /** Color for any category name: built-in palette first, then a custom
@@ -112,22 +180,38 @@ export function resolveCategoryColor(
 }
 
 /** Replaces this device's list with the household's cloud copy (the
- *  source of truth once synced). Drops malformed entries, duplicate
- *  names, and anything past the limit. */
+ *  source of truth once synced), then re-applies local changes the cloud
+ *  hasn't acknowledged yet: pending adds stay, pending removes stay gone.
+ *  A pending entry the cloud already reflects is dropped as acknowledged.
+ *  Malformed entries, duplicate names and anything past the limit are
+ *  discarded. */
 export async function applyCustomCategories(
   householdId: string,
   incoming: unknown[],
 ): Promise<CustomCategory[]> {
+  const pending = await getPendingCustomCategoryChanges(householdId);
   const seen = new Set<string>();
   const next: CustomCategory[] = [];
   for (const c of incoming) {
     if (!isCustomCategory(c)) continue;
     const key = c.name.toLowerCase();
-    if (seen.has(key) || next.length >= MAX_CUSTOM_CATEGORIES) continue;
+    if (seen.has(key)) continue;
+    if (pending.remove.some((n) => sameName(n, c.name))) continue;
     seen.add(key);
+    if (next.length < MAX_CUSTOM_CATEGORIES) next.push({ name: c.name, color: c.color });
+  }
+  const cloudNames = new Set(incoming.filter(isCustomCategory).map((c) => c.name.toLowerCase()));
+  for (const c of pending.add) {
+    if (seen.has(c.name.toLowerCase())) continue;
+    if (next.length >= MAX_CUSTOM_CATEGORIES) break;
+    seen.add(c.name.toLowerCase());
     next.push({ name: c.name, color: c.color });
   }
   await save(householdId, next);
+  await savePending(householdId, {
+    add: pending.add.filter((c) => !cloudNames.has(c.name.toLowerCase())),
+    remove: pending.remove.filter((n) => cloudNames.has(n.toLowerCase())),
+  });
   return next;
 }
 

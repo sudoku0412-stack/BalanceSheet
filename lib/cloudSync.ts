@@ -1,5 +1,10 @@
 import { Receipt, Settlement, Income, SavingsGoal } from '../types';
-import { applyCustomCategories, type CustomCategory } from './customCategories';
+import {
+  applyCustomCategories,
+  clearPendingCustomCategoryChanges,
+  getPendingCustomCategoryChanges,
+  type CustomCategory,
+} from './customCategories';
 import {
   applyBudgetsSnapshot,
   BudgetsSnapshot,
@@ -928,11 +933,39 @@ export async function syncCustomCategoriesToCloud(
         );
       }
     }
+    // Acknowledged: stop shielding these names from cloud snapshots.
+    try {
+      await clearPendingCustomCategoryChanges(householdId, {
+        add: change.add?.map((c) => c.name),
+        remove: change.remove?.map((c) => c.name),
+      });
+    } catch {
+      // harmless: the entry is dropped on the next snapshot that reflects it
+    }
     return true;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[cloudSync] syncCustomCategoriesToCloud failed:', (e as Error)?.message);
     return false;
+  }
+}
+
+/** Re-sends custom category changes that never got acknowledged (offline
+ *  at the time, or the app closed mid-write). Called when the household
+ *  listener starts. */
+export async function flushPendingCustomCategories(householdId: string): Promise<void> {
+  try {
+    const pending = await getPendingCustomCategoryChanges(householdId);
+    if (pending.add.length > 0) {
+      await syncCustomCategoriesToCloud(householdId, { add: pending.add });
+    }
+    if (pending.remove.length > 0) {
+      await syncCustomCategoriesToCloud(householdId, {
+        remove: pending.remove.map((name) => ({ name, color: '' })),
+      });
+    }
+  } catch {
+    // retried on the next listener start
   }
 }
 
@@ -967,6 +1000,7 @@ export function subscribeToHouseholdBudgets(
   try {
     const db = firestore();
     const ref = db.collection('households').doc(householdId);
+    void flushPendingCustomCategories(householdId);
     const unsub = ref.onSnapshot(
       async (snapshot) => {
         if (!snapshot || !snapshot.exists) return;

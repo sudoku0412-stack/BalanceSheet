@@ -16,6 +16,8 @@ import {
   MAX_CUSTOM_CATEGORY_NAME,
   addCustomCategory,
   applyCustomCategories,
+  clearPendingCustomCategoryChanges,
+  getPendingCustomCategoryChanges,
   clearCustomCategoriesForHousehold,
   getCustomCategories,
   getCustomCategoriesSynced,
@@ -105,6 +107,7 @@ describe('resolveCategoryColor', () => {
 describe('applyCustomCategories (cloud copy)', () => {
   it('replaces the local list, dropping malformed, duplicate (any case) and over-limit entries', async () => {
     await addCustomCategory('h1', 'Local only');
+    await clearPendingCustomCategoryChanges('h1', { add: ['Local only'] }); // acknowledged
     const incoming: unknown[] = [
       { name: 'Pets', color: '#111' },
       { name: 'pets', color: '#222' },
@@ -130,6 +133,7 @@ describe('applyCustomCategories (cloud copy)', () => {
 
   it('an empty cloud list clears local categories', async () => {
     await addCustomCategory('h1', 'Pets');
+    await clearPendingCustomCategoryChanges('h1', { add: ['Pets'] }); // acknowledged
     expect(await applyCustomCategories('h1', [])).toEqual([]);
   });
 });
@@ -140,5 +144,63 @@ describe('synced flag', () => {
     await setCustomCategoriesSynced('h1');
     expect(await getCustomCategoriesSynced('h1')).toBe(true);
     expect(await getCustomCategoriesSynced('h2')).toBe(false);
+  });
+});
+
+describe('pending local changes survive cloud snapshots (race fix)', () => {
+  it('keeps a just-added category when a stale snapshot arrives before the write is acknowledged', async () => {
+    await addCustomCategory('h1', 'Pets');
+    // Another member's update lands; the cloud copy does not have Pets yet.
+    const next = await applyCustomCategories('h1', [{ name: 'Hobbies', color: '#333' }]);
+    expect(next.map((c) => c.name)).toEqual(['Hobbies', 'Pets']);
+    expect((await getPendingCustomCategoryChanges('h1')).add.map((c) => c.name)).toEqual(['Pets']);
+  });
+
+  it('stops shielding once the cloud reflects the add', async () => {
+    await addCustomCategory('h1', 'Pets');
+    await applyCustomCategories('h1', [{ name: 'Pets', color: '#111' }]);
+    expect((await getPendingCustomCategoryChanges('h1')).add).toEqual([]);
+    // later cloud removal by someone else now sticks
+    expect(await applyCustomCategories('h1', [])).toEqual([]);
+  });
+
+  it('keeps a just-removed category gone until the cloud reflects the removal', async () => {
+    await applyCustomCategories('h1', [{ name: 'Pets', color: '#111' }]);
+    await removeCustomCategory('h1', 'Pets');
+    const stale = await applyCustomCategories('h1', [{ name: 'Pets', color: '#111' }]);
+    expect(stale).toEqual([]);
+    expect((await getPendingCustomCategoryChanges('h1')).remove).toEqual(['Pets']);
+    // cloud caught up
+    expect(await applyCustomCategories('h1', [])).toEqual([]);
+    expect((await getPendingCustomCategoryChanges('h1')).remove).toEqual([]);
+  });
+
+  it('re-adding a removed name cancels the pending removal', async () => {
+    await applyCustomCategories('h1', [{ name: 'Pets', color: '#111' }]);
+    await removeCustomCategory('h1', 'Pets');
+    await addCustomCategory('h1', 'Pets');
+    const p = await getPendingCustomCategoryChanges('h1');
+    expect(p.remove).toEqual([]);
+    expect(p.add.map((c) => c.name)).toEqual(['Pets']);
+  });
+
+  it('removing a pending add cancels it instead of queueing a removal of nothing', async () => {
+    await addCustomCategory('h1', 'Pets');
+    await removeCustomCategory('h1', 'Pets');
+    expect((await getPendingCustomCategoryChanges('h1')).add).toEqual([]);
+  });
+
+  it('clearing the household wipes pending state; ack only clears named entries', async () => {
+    await addCustomCategory('h1', 'Pets');
+    await addCustomCategory('h1', 'Hobbies');
+    await clearPendingCustomCategoryChanges('h1', { add: ['pets'] });
+    expect((await getPendingCustomCategoryChanges('h1')).add.map((c) => c.name)).toEqual(['Hobbies']);
+    await clearCustomCategoriesForHousehold('h1');
+    expect(await getPendingCustomCategoryChanges('h1')).toEqual({ add: [], remove: [] });
+  });
+
+  it('tolerates corrupt pending storage', async () => {
+    store.set('bs.customCategories.pending.h1', '{oops');
+    expect(await getPendingCustomCategoryChanges('h1')).toEqual({ add: [], remove: [] });
   });
 });
