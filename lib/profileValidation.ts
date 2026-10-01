@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 export type ProfileDraft = {
   firstName: string;
   lastName: string;
@@ -13,11 +14,11 @@ export const MAX_NAME_LEN = 40;
 export function validateProfileDraft(draft: ProfileDraft): ProfileValidationError {
   const errors: ProfileValidationError = {};
   const firstName = draft.firstName.trim();
-  if (!firstName) errors.firstName = 'Name is required.';
-  else if (firstName.length > MAX_NAME_LEN) errors.firstName = `Keep it under ${MAX_NAME_LEN} characters.`;
+  if (!firstName) errors.firstName = tr('nameRequired2');
+  else if (firstName.length > MAX_NAME_LEN) errors.firstName = tr('keepUnderChars', { max: MAX_NAME_LEN });
 
   const lastName = draft.lastName.trim();
-  if (lastName.length > MAX_NAME_LEN) errors.lastName = `Keep it under ${MAX_NAME_LEN} characters.`;
+  if (lastName.length > MAX_NAME_LEN) errors.lastName = tr('keepUnderChars', { max: MAX_NAME_LEN });
 
   return errors;
 }

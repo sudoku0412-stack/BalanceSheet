@@ -1799,23 +1799,23 @@ export default function ScanScreen() {
     if (!err) return '';
     switch (err.kind) {
       case 'rate-limited':
-        return 'AI quota reached — using basic parser. Try again in a few minutes or edit items manually.';
+        return t('aiRateLimited');
       case 'network':
-        return 'No internet for AI — using basic parser. Tap to retry.';
+        return t('aiNetwork');
       case 'auth':
-        return 'AI key rejected — please check Settings.';
+        return t('aiAuth');
       case 'server':
-        return 'AI service is down — using basic parser. Tap to retry.';
+        return t('aiServer');
       case 'no-key':
-        return 'AI not configured.';
+        return t('aiNoKey');
       case 'empty':
-        return 'AI returned nothing — using basic parser. Tap to retry.';
+        return t('aiEmpty');
       case 'quota':
-        return `You've used all ${FREE_AI_PARSE_MONTHLY_LIMIT} free AI scans this month — using basic parser. Tap to upgrade for unlimited.`;
+        return t('aiQuota', { limit: FREE_AI_PARSE_MONTHLY_LIMIT });
       case 'parse':
       case 'unknown':
       default:
-        return "AI couldn't read this — using basic parser. Tap to retry.";
+        return t('aiUnknown');
     }
   };
 

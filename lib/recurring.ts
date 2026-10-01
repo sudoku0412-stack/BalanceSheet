@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 import { addMonths, addWeeks, addYears, format, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -70,12 +71,12 @@ export function resolveRecurringFromForm(args: {
   | { ok: false; message: string } {
   if (!args.enabled) return { ok: true, schedule: undefined };
   const next = parseYmdLocal(args.nextDueDate.trim());
-  if (!next) return { ok: false, message: 'Pick a valid next auto-add date.' };
+  if (!next) return { ok: false, message: tr('pickValidNextDate') };
   const trimmed = args.duration.trim();
   const months = parseInt(trimmed, 10);
   const validDuration = trimmed.length > 0 && !Number.isNaN(months) && months > 0 && String(months) === trimmed;
   if (!args.existingEndDate && !validDuration) {
-    return { ok: false, message: 'Enter how many months this should repeat.' };
+    return { ok: false, message: tr('enterMonthsToRepeat') };
   }
   const endDate = validDuration
     ? computeRecurringEndDate(args.startDate, months)

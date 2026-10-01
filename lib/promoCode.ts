@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 import type FirestoreModuleType from '@react-native-firebase/firestore';
 
 /** Same defensive-load pattern as lib/cloudSync.ts's loadFirestore —
@@ -50,22 +51,22 @@ export type RedeemPromoCodeResult =
  */
 export async function redeemPromoCode(code: string, uid: string): Promise<RedeemPromoCodeResult> {
   const firestore = loadFirestore();
-  if (!firestore) return { ok: false, reason: 'Promo codes need a newer build of the app.' };
+  if (!firestore) return { ok: false, reason: tr('promoNeedsNewBuild') };
 
   const normalized = code.trim().toUpperCase();
-  if (!normalized) return { ok: false, reason: 'Enter a code first.' };
+  if (!normalized) return { ok: false, reason: tr('promoEnterCode') };
 
   const db = firestore();
   try {
     const codeSnap = await db.collection('promoCodes').doc(normalized).get();
-    if (!codeSnap.exists) return { ok: false, reason: "That code isn't valid." };
+    if (!codeSnap.exists) return { ok: false, reason: tr('promoInvalid') };
     const data = codeSnap.data() ?? {};
-    if (data.active !== true) return { ok: false, reason: 'That code has expired.' };
+    if (data.active !== true) return { ok: false, reason: tr('promoExpired') };
 
     const grantsPro = data.grantsPro === true;
     const freeDays = typeof data.freeDays === 'number' && data.freeDays > 0 ? data.freeDays : null;
     if (!grantsPro && !freeDays) {
-      return { ok: false, reason: "That code isn't valid." };
+      return { ok: false, reason: tr('promoInvalid') };
     }
     const freeUntil = grantsPro ? null : new Date(Date.now() + freeDays! * 24 * 60 * 60 * 1000);
 
@@ -85,9 +86,9 @@ export async function redeemPromoCode(code: string, uid: string): Promise<Redeem
       // attempt (doc already exists) or the code went inactive between
       // the read above and the write — both look identical from here,
       // and "already redeemed" is the far more common real cause.
-      return { ok: false, reason: "You've already redeemed a promo code on this account." };
+      return { ok: false, reason: tr('promoAlreadyRedeemed') };
     }
-    return { ok: false, reason: err.message ?? "Couldn't redeem that code." };
+    return { ok: false, reason: err.message ?? tr('couldnTRedeemThatCode') };
   }
 }
 

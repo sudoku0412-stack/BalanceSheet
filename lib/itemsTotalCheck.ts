@@ -1,3 +1,4 @@
+import { tr } from './i18n';
 import { LineItem } from '../types';
 
 /**
@@ -66,9 +67,9 @@ function round2(n: number): number {
 function hintWhenOver(items: LineItem[], diff: number): string {
   const suspect = items.find((it) => Math.abs(it.amount - diff) < 0.02);
   if (suspect) {
-    return `One item ("${suspect.name}") matches the difference of $${diff.toFixed(2)} — it may have been counted twice or should be a discount.`;
+    return tr('itemTwiceHint', { name: suspect.name, diff: `$${diff.toFixed(2)}` });
   }
-  return `Items add up to $${diff.toFixed(2)} more than the subtotal — a line may have been duplicated or a discount missed.`;
+  return tr('itemsOverHint', { diff: `$${diff.toFixed(2)}` });
 }
 
 /**
@@ -77,5 +78,5 @@ function hintWhenOver(items: LineItem[], diff: number): string {
  */
 function hintWhenUnder(diff: number): string {
   const missing = Math.abs(diff).toFixed(2);
-  return `Items add up to $${missing} less than the subtotal — a line may be missing or an amount mistyped.`;
+  return tr('itemsUnderHint', { diff: `$${missing}` });
 }

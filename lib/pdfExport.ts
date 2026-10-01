@@ -1,3 +1,6 @@
+import { tr, getActiveLanguage } from './i18n';
+import { categoryLabel } from './categoryLabel';
+import { intlLocale } from './dateLocale';
 import { Income, Receipt } from '../types';
 import { CurrencyCode, CURRENCY_SYMBOLS, convertFromUsd, currencyDecimals, currencyPrefix } from './currency';
 import { computeCashflow } from './cashflowStats';
@@ -168,7 +171,7 @@ function buildHtml(args: {
           <div class="cat-head">
             <span class="cat-name">
               <span class="cat-icon" style="background:${v.tint};color:${v.color};">${v.icon}</span>
-              ${escapeHtml(cat)}
+              ${escapeHtml(categoryLabel(cat))}
             </span>
             <span class="cat-meta">
               <span class="cat-pct">${pct.toFixed(1)}%</span>
@@ -189,7 +192,7 @@ function buildHtml(args: {
       const tagPills = tags
         .map((t) => {
           const v = visualFor(t);
-          return `<span class="tag-pill" style="background:${v.tint};color:${v.color};">${v.icon} ${escapeHtml(t)}</span>`;
+          return `<span class="tag-pill" style="background:${v.tint};color:${v.color};">${v.icon} ${escapeHtml(categoryLabel(t))}</span>`;
         })
         .join('');
       const lineItemRows = (r.lineItems ?? [])
@@ -200,7 +203,7 @@ function buildHtml(args: {
               <td class="item-name">${escapeHtml(it.name)}</td>
               <td class="item-cat">
                 <span class="item-cat-dot" style="background:${v.color};"></span>
-                ${escapeHtml((it.category ?? '') as string)}
+                ${escapeHtml(categoryLabel((it.category ?? '') as string))}
               </td>
               <td class="num">${money(it.amount)}</td>
             </tr>`;
@@ -208,20 +211,20 @@ function buildHtml(args: {
         .join('');
       const itemsTable = lineItemRows
         ? `<table class="items">
-             <thead><tr><th>Item</th><th>Category</th><th class="num">Amount</th></tr></thead>
+             <thead><tr><th>${tr('pdfItem')}</th><th>${tr('pdfCategory')}</th><th class="num">${tr('pdfAmount')}</th></tr></thead>
              <tbody>${lineItemRows}</tbody>
            </table>`
-        : '<p class="muted">No line items captured.</p>';
+        : `<p class="muted">${tr('pdfNoLineItems')}</p>`;
       const subtotal =
         r.subtotalAmount != null
-          ? `<span class="tot-sub">Subtotal <strong>${money(r.subtotalAmount)}</strong></span>`
+          ? `<span class="tot-sub">${tr('pdfSubtotal')} <strong>${money(r.subtotalAmount)}</strong></span>`
           : '';
       const tax =
         r.taxAmount != null
-          ? `<span class="tot-sub">Tax <strong>${money(r.taxAmount)}</strong></span>`
+          ? `<span class="tot-sub">${tr('pdfTax')} <strong>${money(r.taxAmount)}</strong></span>`
           : '';
       const notes = r.notes
-        ? `<p class="notes"><strong>Notes:</strong> ${escapeHtml(r.notes)}</p>`
+        ? `<p class="notes"><strong>${tr('pdfNotes')}</strong> ${escapeHtml(r.notes)}</p>`
         : '';
       const headlineColor = visualFor(tags[0] ?? 'Other').color;
       return `
@@ -439,40 +442,42 @@ function buildHtml(args: {
   return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8" />
-<title>NestExpenseTracker Expense Report</title>
+<title>${tr('pdfTitle')}</title>
 <style>${styles}</style>
 </head><body>
 
 <section class="hero">
-  <div class="hero-brand"><span class="dot"></span> NestExpenseTracker · Expense Report</div>
+  <div class="hero-brand"><span class="dot"></span> ${tr('pdfBrand')}</div>
   <h1>${escapeHtml(startLabel)} — ${escapeHtml(endLabel)}</h1>
-  <p class="hero-range">Generated ${escapeHtml(
-    generatedAt.toLocaleString(undefined, {
-      dateStyle: 'medium',
-      timeStyle: 'short',
+  <p class="hero-range">${escapeHtml(
+    tr('pdfGenerated', {
+      when: generatedAt.toLocaleString(intlLocale(getActiveLanguage()), {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }),
     }),
   )}</p>
   <div class="stats">
     <div class="stat">
-      <div class="stat-label">Receipts</div>
+      <div class="stat-label">${tr('pdfReceipts')}</div>
       <span class="stat-value">${totalReceipts}</span>
     </div>
     <div class="stat">
-      <div class="stat-label">Total spent</div>
+      <div class="stat-label">${tr('pdfTotalSpent')}</div>
       <span class="stat-value">${money(totalSpent)}</span>
     </div>
     <div class="stat">
-      <div class="stat-label">Avg / receipt</div>
+      <div class="stat-label">${tr('pdfAvgPerReceipt')}</div>
       <span class="stat-value">${money(avgPerReceipt)}</span>
     </div>
     ${
       incomes.length > 0
         ? `<div class="stat">
-      <div class="stat-label">Earned</div>
+      <div class="stat-label">${tr('pdfEarned')}</div>
       <span class="stat-value">${money(cashflow.totalEarned)}</span>
     </div>
     <div class="stat">
-      <div class="stat-label">Net</div>
+      <div class="stat-label">${tr('pdfNet')}</div>
       <span class="stat-value">${money(cashflow.net)}</span>
     </div>`
         : ''
@@ -483,12 +488,12 @@ function buildHtml(args: {
 <section class="frame">
   ${
     incomes.length > 0
-      ? `<h2>Cashflow</h2>
-         <p class="muted">Earned ${money(cashflow.totalEarned)} · Spent ${money(cashflow.totalSpent)} · Net ${money(cashflow.net)}${
+      ? `<h2>${tr('pdfCashflow')}</h2>
+         <p class="muted">${tr('pdfEarned')} ${money(cashflow.totalEarned)} · ${tr('pdfSpent')} ${money(cashflow.totalSpent)} · ${tr('pdfNet')} ${money(cashflow.net)}${
            cashflow.investedUsd > 0
-             ? ` · Investments ${money(cashflow.investedUsd)}${
+             ? ` · ${tr('pdfInvestments')} ${money(cashflow.investedUsd)}${
                  cashflow.savingsRate != null
-                   ? ` (${(cashflow.savingsRate * 100).toFixed(0)}% of earned saved)`
+                   ? ` (${tr('pdfSavedPct', { pct: (cashflow.savingsRate * 100).toFixed(0) })})`
                    : ''
                }`
              : ''
@@ -497,18 +502,18 @@ function buildHtml(args: {
   }
   ${
     categoryRows
-      ? `<h2>Spending by category</h2>
+      ? `<h2>${tr('pdfSpendingByCategory')}</h2>
          ${categoryRows}`
       : ''
   }
 
-  <h2>Receipts</h2>
-  ${receiptCards || '<p class="muted">No receipts in this range.</p>'}
+  <h2>${tr('pdfReceipts')}</h2>
+  ${receiptCards || `<p class="muted">${tr('pdfNoReceipts')}</p>`}
 </section>
 
 <footer class="footer">
-  <span>NestExpenseTracker · ${totalReceipts} receipt${totalReceipts === 1 ? '' : 's'}</span>
-  <span>${money(totalSpent)} total</span>
+  <span>NestExpenseTracker · ${tr('pdfFooterReceipts', { count: totalReceipts })}</span>
+  <span>${tr('pdfTotalSuffix', { amount: money(totalSpent) })}</span>
 </footer>
 
 </body></html>`;
