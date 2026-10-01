@@ -46,12 +46,22 @@ jest.mock('../../lib/database', () => ({
   getCurrentHouseholdId: jest.fn(() => null),
 }));
 
+jest.mock('../../lib/customCategories', () => ({
+  getCustomCategories: jest.fn(async () => [{ name: 'Pets', color: '#D6336C' }]),
+}));
+
 jest.mock('../../lib/secureStorage', () => ({
   getCurrency: jest.fn(async () => 'USD'),
 }));
 
 import HistoryScreen from '../../app/(tabs)/history';
-import { getAllReceipts, searchReceipts, getAllIncomes, searchIncomes } from '../../lib/database';
+import {
+  getAllReceipts,
+  searchReceipts,
+  getAllIncomes,
+  searchIncomes,
+  getCurrentHouseholdId,
+} from '../../lib/database';
 import type { Income } from '../../types';
 
 const mockGetAllReceipts = getAllReceipts as jest.Mock;
@@ -91,6 +101,24 @@ describe('HistoryScreen', () => {
       expect(screen.getByText('Coffee Shop')).toBeTruthy();
     });
     expect(screen.getByText('Grocery Store')).toBeTruthy();
+  });
+
+  it('lists custom categories as filter chips and filters by item category', async () => {
+    (getCurrentHouseholdId as jest.Mock).mockReturnValue('hh1');
+    mockGetAllReceipts.mockResolvedValue([
+      makeReceipt({
+        id: 'r1',
+        storeName: 'Pet Store',
+        lineItems: [{ id: 'i1', name: 'Kibble', amount: 10, category: 'Pets' }],
+      }),
+      makeReceipt({ id: 'r2', storeName: 'Grocery Store', category: 'Groceries' }),
+    ]);
+    render(<HistoryScreen />);
+    await waitFor(() => screen.getByText('Pets'));
+    fireEvent.press(screen.getByText('Pets'));
+    await waitFor(() => expect(screen.queryByText('Grocery Store')).toBeNull());
+    expect(screen.getByText('Pet Store')).toBeTruthy();
+    (getCurrentHouseholdId as jest.Mock).mockReturnValue(null);
   });
 
   it('typing into the search box filters the visible list via searchReceipts', async () => {
