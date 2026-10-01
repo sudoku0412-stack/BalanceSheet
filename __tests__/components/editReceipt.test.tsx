@@ -18,10 +18,11 @@ import type { Receipt } from '../../types';
 // const since it's wrapped in a function only invoked later at render
 // time.
 const mockSetEditInProgress = jest.fn();
+const mockEditPush = jest.fn();
 
 jest.mock('expo-router', () => ({
   useLocalSearchParams: () => ({ id: 'r1' }),
-  useRouter: () => ({ back: jest.fn(), push: jest.fn(), replace: jest.fn() }),
+  useRouter: () => ({ back: jest.fn(), push: mockEditPush, replace: jest.fn() }),
   useFocusEffect: (cb: () => void) => {
     require('react').useEffect(cb, []);
   },
@@ -59,6 +60,10 @@ jest.mock('../../lib/AuthContext', () => ({
     profile: { firstName: 'Jane', lastName: 'Doe' },
     setEditInProgress: mockSetEditInProgress,
   }),
+}));
+
+jest.mock('../../lib/EntitlementsContext', () => ({
+  useEntitlements: () => ({ isPremium: false, loading: false }),
 }));
 
 jest.mock('../../lib/haptics', () => ({
@@ -120,5 +125,14 @@ describe('EditReceiptScreen (smoke test)', () => {
     });
     fireEvent.changeText(screen.getByDisplayValue('Coffee Shop'), 'Updated Store');
     expect(screen.getByDisplayValue('Updated Store')).toBeTruthy();
+  });
+
+  it('free user: premium currency pill opens the paywall and does not switch currency', async () => {
+    mockGetReceiptById.mockResolvedValue(makeReceipt({}));
+    render(<EditReceiptScreen />);
+    await waitFor(() => screen.getByText('AUD 🔒'));
+    fireEvent.press(screen.getByText('AUD 🔒'));
+    expect(mockEditPush).toHaveBeenCalledWith('/paywall');
+    expect(screen.queryByText('AUD')).toBeNull();
   });
 });

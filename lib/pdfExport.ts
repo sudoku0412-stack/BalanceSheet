@@ -1,5 +1,5 @@
 import { Income, Receipt } from '../types';
-import { CurrencyCode, CURRENCY_SYMBOLS, convertFromUsd } from './currency';
+import { CurrencyCode, CURRENCY_SYMBOLS, convertFromUsd, currencyDecimals, currencyPrefix } from './currency';
 import { computeCashflow } from './cashflowStats';
 
 // expo-file-system is required lazily inside generateReceiptsPdf so
@@ -81,8 +81,8 @@ export const buildHtmlForPreview = (args: {
 // the app instead of always showing raw USD with a hardcoded "$".
 function fmtMoney(n: number, currency: CurrencyCode): string {
   const converted = convertFromUsd(n, currency);
-  const decimals = currency === 'INR' ? 0 : 2;
-  return `${CURRENCY_SYMBOLS[currency]}${converted.toFixed(decimals)}`;
+  const decimals = currencyDecimals(currency);
+  return `${currencyPrefix(currency)}${converted.toFixed(decimals)}`;
 }
 
 function escapeHtml(s: string): string {

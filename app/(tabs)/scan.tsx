@@ -50,7 +50,20 @@ import {
 import { parseReceiptWithCloudflare } from '../../lib/cloudflareReceiptParse';
 import { getGeminiApiKey, getCurrency, getAiParseCountThisMonth, incrementAiParseCount } from '../../lib/secureStorage';
 import { useEntitlements } from '../../lib/EntitlementsContext';
-import { CURRENCIES, CURRENCY_SYMBOLS, CurrencyCode, convertToUsd, formatCurrency } from '../../lib/currency';
+import { CustomCategoryPicker } from '../../components/ui/CustomCategoryPicker';
+import {
+  getCustomCategories,
+  resolveCategoryColor,
+  type CustomCategory,
+} from '../../lib/customCategories';
+import {
+  CURRENCIES,
+  CURRENCY_SYMBOLS,
+  CurrencyCode,
+  convertToUsd,
+  formatCurrency,
+  isPremiumCurrency,
+} from '../../lib/currency';
 import { advance as advanceRecurringDate, computeRecurringEndDate } from '../../lib/recurring';
 import { ParsedReceipt, Category, LineItem, Receipt } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
@@ -785,6 +798,18 @@ export default function ScanScreen() {
   // ─── Per-item "Split with" (Review Receipt + Add Expense) ──────────────
   const { user, profile, setEditInProgress } = useAuth();
   const { isPremium } = useEntitlements();
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  // Re-read on every focus: Settings (another tab) can add/remove
+  // categories while this screen stays mounted.
+  useFocusEffect(
+    useCallback(() => {
+      const hid = getCurrentHouseholdId();
+      if (!hid) return;
+      getCustomCategories(hid)
+        .then(setCustomCategories)
+        .catch(() => {});
+    }, []),
+  );
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
 
   // Gates the household switcher (app/households.tsx) while this screen
@@ -885,7 +910,7 @@ export default function ScanScreen() {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [itemName, setItemName] = useState('');
   const [itemAmount, setItemAmount] = useState('');
-  const [itemCategory, setItemCategory] = useState<Category>('Other');
+  const [itemCategory, setItemCategory] = useState<Category | string>('Other');
   const [itemSplit, setItemSplit] = useState<Set<string>>(new Set());
   // Tracks whether the user actually tapped a split-with avatar this
   // time the modal is open. Household members load async (Firestore),
@@ -910,7 +935,7 @@ export default function ScanScreen() {
     setEditingItemId(item.id);
     setItemName(item.name);
     setItemAmount(item.amount ? String(item.amount) : '');
-    setItemCategory(((item.category as Category) || 'Other') as Category);
+    setItemCategory(item.category || 'Other');
     // An item that already has an explicit (proper-subset) splitWith was
     // deliberately customized before — honor it as "touched" so re-saving
     // without changes doesn't silently widen it back to everyone.
@@ -1997,14 +2022,20 @@ export default function ScanScreen() {
             return (
               <TouchableOpacity
                 key={code}
-                onPress={() => setCurrencyCode(code)}
+                onPress={() => {
+                  if (isPremiumCurrency(code) && !isPremium) {
+                    router.push('/paywall');
+                    return;
+                  }
+                  setCurrencyCode(code);
+                }}
                 activeOpacity={0.7}
                 style={[styles.currencyPill, active && styles.currencyPillActive]}
               >
                 <Text
                   style={[styles.currencyPillText, active && styles.currencyPillTextActive]}
                 >
-                  {code}
+                  {isPremiumCurrency(code) && !isPremium ? `${code} 🔒` : code}
                 </Text>
               </TouchableOpacity>
             );
@@ -2173,8 +2204,12 @@ export default function ScanScreen() {
                   style={[
                     styles.itemCategoryDot,
                     {
-                      backgroundColor:
-                        theme.colors.category[((item.category as Category) || 'Other') as Category],
+                      backgroundColor: resolveCategoryColor(
+                        item.category || 'Other',
+                        theme.colors.category,
+                        customCategories,
+                        theme.colors.accent,
+                      ),
                     },
                   ]}
                 />
@@ -2304,6 +2339,15 @@ export default function ScanScreen() {
                   );
                 })}
               </View>
+              <CustomCategoryPicker
+                householdId={getCurrentHouseholdId()}
+                customs={customCategories}
+                selected={itemCategory}
+                isPremium={isPremium}
+                onSelect={setItemCategory}
+                onCustomsChange={setCustomCategories}
+                onUpgrade={() => router.push('/paywall')}
+              />
 
               {otherMembers.length === 0 && (
                 <TouchableOpacity
