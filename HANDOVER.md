@@ -1,6 +1,6 @@
 # BalanceSheet — Handover Notes (supersedes the previous version of this file)
 
-Repo root: `/Users/kaushiksudesna/Claude/BalanceSheet`. React Native / Expo, expo-router, Firebase (auth/firestore/storage), SQLite local store, EAS build/update/submit, GitHub Actions CI. Current HEAD: `3c3634e` ("Bump to version 1.0.4 (iOS build 12, Android versionCode 13) for next release"). App is marketed as **NestExpenseTracker** — repo/folder names and some internal identifiers still say BalanceSheet/ReceiptScanner on purpose (locked infra identifiers — see "Deliberately NOT renamed" in git history if it matters again).
+Repo root: `/Users/kaushiksudesna/Claude/BalanceSheet`. React Native / Expo, expo-router, Firebase (auth/firestore/storage), SQLite local store, EAS build/update/submit, GitHub Actions CI. App is marketed as **NestExpenseTracker** — repo/folder names and some internal identifiers still say BalanceSheet/ReceiptScanner on purpose (locked infra identifiers — see "Deliberately NOT renamed" in git history if it matters again).
 
 **User preferences — apply from message one:**
 - Caveman-mode terse responses, every session, by default (saved in cross-session memory — see below). Minimize tokens overall: silent progress (no intermediate "still running"/"step N done" pings — only speak up on real failures or final completion), dense turns, batched tool calls.
@@ -9,12 +9,28 @@ Repo root: `/Users/kaushiksudesna/Claude/BalanceSheet`. React Native / Expo, exp
 - **Hard exception, never overridden by user request**: never enter/use API keys, tokens, service-account files, or passwords to actually AUTHENTICATE an action (git push with an embedded token, `eas submit`, App Review/Apple ID login, etc.) — even if the user pastes the secret and asks directly. Config wiring and non-authenticating setup are fine; the credentialed action itself is the user's to run.
 - Also saved in this Claude Code install's cross-session memory (`~/.claude/projects/-Users-kaushiksudesna-Claude/memory/`) — check `MEMORY.md` there fresh each session.
 
-## Immediate next step — pick this up first
+## State as of 2026-10-01 (HEAD `ab1d207`, main)
 
-Version **1.0.4** (iOS build 12, Android versionCode 13) is committed and pushed but **no build has been cut for it yet**:
-1. Android: trigger `gh workflow run android-build.yml -f profile=production`, wait ~15-20 min, `gh run download <run-id>`, send the `.aab` to the user for Play Console closed-testing upload. (This is the exact loop used repeatedly this session — see "Release loop" below.)
-2. iOS: the user does **local Xcode archive → TestFlight** (not CI — EAS iOS cloud credits are a recurring constraint). They need to `git pull`, then Product → Archive → Distribute App → App Store Connect. If CocoaPods errors with an encoding exception, tell them to run `export LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8` first (see "iOS build gotchas" below).
-3. Confirm with the user whether versionCode 12/iOS build 11 (version 1.0.3) ever actually got uploaded anywhere before assuming 1.0.4 is the one going out — this session bumped versions proactively based on "I want to release" requests, not confirmed store uploads.
+**Versions**: `app.config.js` / pbxproj = marketing version **1.0.8**, iOS build **40**, Android `versionCode` **29**. `app.json` is stale (1.0.6 / build 28 / versionCode 29) — it is for human readers only; `app.config.js` is what EAS/CI reads. Bump `app.config.js`, `app.json`, and `ios/*/project.pbxproj` together.
+
+**CI (latest main push `ab1d207`)**: `Release build + submit` and `Android build` both succeeded. `release-build.yml` now builds a local production Android `.aab` on the GitHub runner on every non-docs push to main (no EAS cloud credits, no auto-submit). Download the artifact from the run and upload to Play Console by hand. iOS stays local Xcode archive → TestFlight.
+
+**Tests**: 96 suites / 843 tests pass (`npx jest`), and `npx tsc --noEmit -p .` is clean (three type errors in `incomes.test.tsx`, `onboarding.tsx`, and `cloudSync.ts` were fixed this session). Run both before every commit.
+
+**Open PRs**: #35 and #34 (draft, Cursor agent "missing test coverage" branches: receipt cloud upsert/household isolation/month SQL bounds; cloud snapshot listeners/push tokens/receipt migration). Review before merging.
+
+**Pending / ask the user**: whether 1.0.8 (iOS 40, Android 29) was uploaded to TestFlight / Play Console. This file does not know.
+
+## What changed since the 1.0.4 handover (Sept 23 → Sept 29; ~150 commits)
+
+- **Income feature (Phases A–E)**: earned vs spent cashflow with whose-income, recurring paychecks, source chips, savings rate, pay-stub OCR, savings goals/envelopes synced across the household, Incomes page, Premium goals. Bank CSV import was added then dropped. Spec in `docs/INCOME_FEATURE.md`. Leftover incomes are deleted on household/account teardown.
+- **Branding**: docs rebranded to NestExpenseTracker; Xcode target display name is NestExpenseTracker. Internal target/folder names stay `ReceiptScanner` (a stray rename was reverted in `e9c8d65`).
+- **UI**: refreshed intro slides and light theme, tinted light cards, Reports as a one-pot donut with leftover slice, clearer Home cashflow members and "Add expense" label.
+- **Navigation/auth fixes**: Goals and bank import no longer bounce back to Home; iOS Sign out froze (Google sync bridge) and did not return to sign-in; login fields stayed invisible/untappable after sign-out. All fixed with tests.
+- **Households**: switch is bounded by the same timeout as create/rename; Active badge is explicit state; membership `isDefault` is exclusive across households; household switch race with Firebase token refresh fixed (#32); `backfillHouseholdIdForRows` failures are logged.
+- **Security**: npm dependency vulnerabilities patched via `overrides`.
+- **Tests**: many Cursor-agent "missing test coverage" PRs merged (auth, AuthContext, entitlements, incomes, invites/join/discovery, sign-out, household switch).
+- **Versions**: 1.0.6 → 1.0.7 → 1.0.8; iOS builds 20 → 40.
 
 ## This session: PrimeTestLab QA report (closed-testing report #5241) — all items fixed
 
@@ -87,9 +103,9 @@ Both matter because they look like they'd work and don't:
 - `lib/legalLinks.ts` holds the two URLs (`PRIVACY_POLICY_URL`/`TERMS_OF_SERVICE_URL`) — update there and redeploy (`wrangler pages deploy firebase-hosting --project-name craftloop-legal`) if the domain ever changes again.
 - User needs to `wrangler login` themselves in their own terminal (opens browser OAuth) — can't be done headlessly from this session; only needs doing once per machine.
 
-## Test suite — 586 tests, 4 Jest projects, CI-gated
+## Test suite — 843 tests, 4 Jest projects, CI-gated
 
-Same structure as before (`unit`/`component`/`performance`/`regression` projects in `jest.config.js`) — run `npx tsc --noEmit -p .` then `npx jest` before every commit this session; both stayed clean throughout.
+Same structure as before (`unit`/`component`/`performance`/`regression` projects in `jest.config.js`) — run `npx jest` before every commit. `tsc` is clean too.
 
 **Known flaky, unrelated to code changes**: the `performance` project's scaling-assertion tests (`balances.perf.test.ts`, `dashboardStats.perf.test.ts`, `pdfExport.perf.test.ts` — a different one fails each run, timing-based) occasionally fail on a loaded machine; always rerun that one test file alone before assuming a real regression (happened twice this session, both times passed clean on rerun).
 
@@ -106,7 +122,8 @@ Same structure as before (`unit`/`component`/`performance`/`regression` projects
 
 ## Suggested first steps in a new session
 
-1. Ask the user: did versionCode 13 / iOS build 12 (version 1.0.4) actually get uploaded to Play Console / TestFlight, or is that still pending? This handover was written right after the version bump, before any upload was confirmed.
-2. If a build is needed: follow the "Release loop" section above.
-3. Run `npx jest` before any further code change — fast, keep it passing.
-4. If touching `app/households.tsx`'s create/rename form logic, read the "4-round code-review chain" section above first — the invariants there are non-obvious and this file has already had 4 rounds of bugs found by the same kind of "small" change.
+1. Ask the user whether 1.0.8 (iOS 40 / Android 29) was uploaded to TestFlight / Play Console.
+2. If a build is needed: follow the "Release loop" section (Android `.aab` now also comes from every push to main via `release-build.yml`).
+3. Run `npx jest` and `npx tsc --noEmit -p .` before any code change.
+4. Review draft PRs #34 and #35.
+5. If touching `app/households.tsx` form logic, read the "4-round code-review chain" section first.

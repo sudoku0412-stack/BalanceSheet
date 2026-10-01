@@ -314,7 +314,7 @@ const makeStyles = (t: Theme) => ({
     maxWidth: 300,
   },
   points: {
-    width: '100%',
+    width: '100%' as const,
     maxWidth: 340,
     marginTop: t.spacing.lg,
     gap: 10,

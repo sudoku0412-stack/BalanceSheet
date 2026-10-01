@@ -1957,7 +1957,7 @@ type DeletableRef = { delete: () => Promise<unknown> };
  * succeeded.
  */
 async function deleteDocsInChunks(
-  db: { batch: () => { delete: (ref: DeletableRef) => void; commit: () => Promise<unknown> } },
+  db: { batch: () => { delete(ref: DeletableRef): void; commit: () => Promise<unknown> } },
   docs: ReadonlyArray<{ ref: DeletableRef }>,
 ): Promise<number> {
   const CHUNK = 400;
