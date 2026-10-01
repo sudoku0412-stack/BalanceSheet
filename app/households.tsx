@@ -162,7 +162,7 @@ export default function HouseholdsScreen() {
       await setActiveHousehold(res.householdId);
       if (!isMountedRef.current) return;
       setForm({ mode: 'none' });
-      toast.show({ kind: 'success', message: `${name} created` });
+      toast.show({ kind: 'success', message: t('nameCreated', { name }) });
     } catch (e) {
       if (isMountedRef.current) {
         toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTCreateHousehold') });
@@ -249,15 +249,18 @@ export default function HouseholdsScreen() {
     const otherCount = memberArr.filter((mm) => mm.uid !== user.uid).length;
     const otherMembersWarning =
       otherCount > 0
-        ? ` The other ${otherCount} member${otherCount === 1 ? '' : 's'} will lose access to it.`
+        ? t('otherMembersLoseAccess', { count: otherCount })
         : '';
     if (pending.length > 0) {
       const total = pending.reduce((sum, b) => sum + Math.abs(b.netUsd), 0);
       Alert.alert(
         t('unsettledBalances'),
-        `"${label}" has ${formatCurrency(total, currency)} in unsettled balances. Deleting it will auto-settle ${
-          pending.length === 1 ? 'it' : 'them'
-        } and permanently delete every receipt and settlement in it.${otherMembersWarning} This can't be undone.`,
+        t('unsettledDeleteBody', {
+          count: pending.length,
+          label,
+          amount: formatCurrency(total, currency),
+          warning: otherMembersWarning,
+        }),
         [
           { text: t('cancel'), style: 'cancel' },
           {
@@ -269,8 +272,8 @@ export default function HouseholdsScreen() {
       );
     } else {
       Alert.alert(
-        `Delete "${label}"?`,
-        `This permanently deletes every receipt and settlement in it.${otherMembersWarning} This can't be undone.`,
+        t('deleteHouseholdTitle', { label }),
+        t('deleteHouseholdBody', { warning: otherMembersWarning }),
         [
           { text: t('cancel'), style: 'cancel' },
           { text: t('delete'), style: 'destructive', onPress: () => performDelete(householdId, [], isActive) },

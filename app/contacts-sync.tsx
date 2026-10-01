@@ -171,7 +171,7 @@ export default function ContactsSyncScreen() {
           }
           toast.show({
             kind: 'success',
-            message: `${item.contact.name} wasn't found — invite sent instead`,
+            message: t('wasntFoundInviteSent', { name: item.contact.name }),
           });
           return;
         }
@@ -193,7 +193,7 @@ export default function ContactsSyncScreen() {
         }
         toast.show({
           kind: 'success',
-          message: `${item.displayName || item.contact.name} will join automatically once their app is open`,
+          message: t('willJoinAutomatically', { name: item.displayName || item.contact.name }),
         });
       } else {
         const res = await withTimeout(
@@ -231,7 +231,7 @@ export default function ContactsSyncScreen() {
         }
         toast.show({
           kind: 'success',
-          message: `Invited ${item.displayName || item.contact.name} — they'll join once they open the app`,
+          message: t('invitedWillJoin', { name: item.displayName || item.contact.name }),
         });
       }
     } catch (e) {
@@ -276,7 +276,7 @@ export default function ContactsSyncScreen() {
           }
           toast.show({
             kind: 'success',
-            message: `${res.displayName || contact.name} will join automatically once their app is open`,
+            message: t('willJoinAutomatically', { name: res.displayName || contact.name }),
           });
           return;
         }
@@ -311,7 +311,7 @@ export default function ContactsSyncScreen() {
         }
       }
       setUnmatched((prev) => prev.filter((c) => c.id !== contact.id));
-      toast.show({ kind: 'success', message: `Invite sent to ${contact.name}` });
+      toast.show({ kind: 'success', message: t('inviteSentTo', { name: contact.name }) });
     } catch (e) {
       toast.show({ kind: 'error', message: (e as Error)?.message ?? t('couldnTInviteContact') });
     } finally {
@@ -368,7 +368,7 @@ export default function ContactsSyncScreen() {
           {(matched.length > 0 || unmatched.length > 0) &&
             filteredMatched.length === 0 &&
             filteredUnmatched.length === 0 && (
-              <Text style={styles.emptyText}>No contacts match "{search.trim()}".</Text>
+              <Text style={styles.emptyText}>{t('noContactsMatch', { query: search.trim() })}</Text>
             )}
 
           {filteredMatched.length > 0 && (

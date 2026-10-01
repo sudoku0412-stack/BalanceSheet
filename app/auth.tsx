@@ -215,7 +215,7 @@ function EmailForm({ mode }: { mode: Tab }) {
     try {
       setResetSending(true);
       await sendPasswordReset(email);
-      toast.show({ kind: 'success', message: `Password reset link sent to ${email.trim()}` });
+      toast.show({ kind: 'success', message: t('resetLinkSent', { email: email.trim() }) });
     } catch (e: any) {
       setError(humanizeAuthError(e));
     } finally {

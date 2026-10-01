@@ -198,7 +198,7 @@ export default function SavingsGoalsScreen() {
               style={[styles.input, styles.amountInput]}
               value={target}
               onChangeText={(t) => setTarget(sanitizeAmountInput(t))}
-              placeholder={`Target (${CURRENCY_SYMBOLS[currency]})`}
+              placeholder={t('targetWithSymbol', { symbol: CURRENCY_SYMBOLS[currency] })}
               placeholderTextColor={theme.colors.textMuted}
               keyboardType="decimal-pad"
               testID="goal-target"
@@ -212,8 +212,10 @@ export default function SavingsGoalsScreen() {
               <Card key={goal.id} style={{ gap: 4 }}>
                 <Text style={styles.goalName}>{goal.name}</Text>
                 <Text style={styles.goalMeta}>
-                  {formatCurrency(goal.allocatedUsd, currency)} of{' '}
-                  {formatCurrency(goal.targetUsd, currency)}
+                  {t('amountOfAmount', {
+                    a: formatCurrency(goal.allocatedUsd, currency),
+                    b: formatCurrency(goal.targetUsd, currency),
+                  })}
                   {goal.targetUsd > 0
                     ? ` · ${Math.round((goal.allocatedUsd / goal.targetUsd) * 100)}%`
                     : ''}
@@ -228,7 +230,7 @@ export default function SavingsGoalsScreen() {
                     onChangeText={(t) =>
                       setAllocateDraft((prev) => ({ ...prev, [goal.id]: sanitizeAmountInput(t) }))
                     }
-                    placeholder={`${CURRENCY_SYMBOLS[currency]} amount`}
+                    placeholder={t('symbolAmount', { symbol: CURRENCY_SYMBOLS[currency] })}
                     placeholderTextColor={theme.colors.textMuted}
                     keyboardType="decimal-pad"
                   />

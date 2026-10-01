@@ -196,7 +196,7 @@ export function CategoryTagsPicker({
 
       {customSelected.length > 0 && (
         <Text style={styles.customSelectedHint}>
-          Custom: {customSelected.join(', ')}
+          {t('customPrefix', { tags: customSelected.join(', ') })}
         </Text>
       )}
     </View>

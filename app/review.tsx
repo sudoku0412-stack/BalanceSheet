@@ -65,7 +65,7 @@ export default function ReviewScreen() {
   const approveAll = () => run(() => clearReviewQueue());
 
   const confirmDelete = (r: Receipt) => {
-    Alert.alert(t('deleteExpense2'), `${r.storeName} will be removed.`, [
+    Alert.alert(t('deleteExpense2'), t('removedStore', { name: r.storeName }), [
       { text: t('cancel'), style: 'cancel' },
       {
         text: t('delete'),
@@ -103,7 +103,7 @@ export default function ReviewScreen() {
             onPress={approveAll}
             accessibilityRole="button"
           >
-            <Text style={styles.approveAllText}>Looks good — approve all ({items.length})</Text>
+            <Text style={styles.approveAllText}>{t('approveAllCount', { count: items.length })}</Text>
           </TouchableOpacity>
           {items.map((r) => (
             <View

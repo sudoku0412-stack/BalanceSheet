@@ -20,7 +20,8 @@ import { CurrencyCode, formatCurrency } from '../../lib/currency';
 import { Receipt, Settlement } from '../../types';
 import { onLocalDataChanged } from '../../lib/dataSync';
 
-import { useT } from '../../lib/I18nContext';
+import { useT, useLanguage } from '../../lib/I18nContext';
+import { formatMonthDay } from '../../lib/dateLocale';
 function memberLabel(m: HouseholdMember | undefined): string {
   return m?.displayName?.trim() || m?.email || 'Household member';
 }
@@ -37,6 +38,7 @@ type Row =
  *  screen shows for this person. */
 export default function SharedExpensesScreen() {
   const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const router = useRouter();
   const styles = useSharedExpensesStyles();
@@ -105,19 +107,19 @@ export default function SharedExpensesScreen() {
 
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
-      <ModalHeader title={`Shared with ${label}`} onBack={() => router.back()} />
+      <ModalHeader title={t('sharedWithLabel', { label })} onBack={() => router.back()} />
       {!loading && rows.length === 0 ? (
         <EmptyState
           icon="receipt-outline"
           title={t('noSharedExpenses')}
-          description={`Nothing split with ${label} yet.`}
+          description={t('nothingSplitWith', { label })}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll}>
           {rows.length > 0 && (
             <View style={styles.totalCard}>
               <Text style={styles.totalLabel}>
-                {totalOwesYou ? `${label} owes you` : `You owe ${label}`}
+                {totalOwesYou ? t('labelOwesYou', { label }) : t('youOweLabel', { label })}
               </Text>
               <Text
                 style={[
@@ -149,8 +151,8 @@ export default function SharedExpensesScreen() {
                     <View style={styles.rowInfo}>
                       <Text style={styles.rowStoreName} numberOfLines={1}>{t('settledUp')}</Text>
                       <Text style={styles.rowMeta} numberOfLines={1}>
-                        {format(new Date(row.date), 'MMM d')} ·{' '}
-                        {paidByYou ? `You paid ${label}` : `${label} paid you`}
+                        {formatMonthDay(new Date(row.date), language)} ·{' '}
+                        {paidByYou ? t('youPaidLabel', { label }) : t('labelPaidYou', { label })}
                       </Text>
                     </View>
                     <Text
@@ -178,7 +180,7 @@ export default function SharedExpensesScreen() {
                   <View style={styles.rowInfo}>
                     <Text style={styles.rowStoreName} numberOfLines={1}>{r.storeName}</Text>
                     <Text style={styles.rowMeta} numberOfLines={1}>
-                      {format(new Date(r.date), 'MMM d')} · {oweYou ? `${label} owes you` : `You owe ${label}`}
+                      {formatMonthDay(new Date(r.date), language)} · {oweYou ? t('labelOwesYou', { label }) : t('youOweLabel', { label })}
                     </Text>
                   </View>
                   <Text

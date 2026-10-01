@@ -163,7 +163,7 @@ export default function BalancesScreen() {
     if (amountUsd > maxOwedUsd + 0.005) {
       toast.show({
         kind: 'error',
-        message: `Can't exceed ${formatCurrency(maxOwedUsd, currency)} — use Settle up for the full amount.`,
+        message: t('cantExceed', { amount: formatCurrency(maxOwedUsd, currency) }),
       });
       return;
     }

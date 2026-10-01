@@ -410,7 +410,7 @@ export default function EditIncomeScreen() {
         >
           <Card style={styles.fieldCard}>
             <Text style={styles.fieldLabel}>
-              Amount ({CURRENCY_SYMBOLS[currency]})
+              {t('amountWithSymbol', { symbol: CURRENCY_SYMBOLS[currency] })}
             </Text>
             <TextInput
               style={[styles.input, styles.amountInput]}
@@ -420,7 +420,7 @@ export default function EditIncomeScreen() {
               placeholderTextColor={theme.colors.textMuted}
               keyboardType="decimal-pad"
             />
-            <Text style={styles.currencyHint}>Saved in {currency}</Text>
+            <Text style={styles.currencyHint}>{t('savedInCurrency', { currency })}</Text>
           </Card>
 
           <Card style={styles.fieldCard}>

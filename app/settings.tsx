@@ -80,6 +80,7 @@ import { Category } from '../types';
 
 import { useT, useLanguage } from '../lib/I18nContext';
 import { LANGUAGE_NAMES, type LanguagePreference } from '../lib/i18n';
+import { intlLocale } from '../lib/dateLocale';
 function useSettingsStyles() {
   return useStyles((theme) => ({
     container: { flex: 1, backgroundColor: theme.colors.background },
@@ -394,7 +395,7 @@ export default function SettingsScreen() {
   const t = useT();
   const theme = useTheme();
   const { preference: themePreference, setPreference: setThemePreference } = useThemePreference();
-  const { preference: languagePreference, setPreference: setLanguagePreference } = useLanguage();
+  const { language, preference: languagePreference, setPreference: setLanguagePreference } = useLanguage();
   const styles = useSettingsStyles();
   const router = useRouter();
   const { section } = useLocalSearchParams<{ section?: string }>();
@@ -723,13 +724,13 @@ export default function SettingsScreen() {
       if (Sharing && canShare) {
         await Sharing.shareAsync(path, {
           mimeType: 'text/csv',
-          dialogTitle: 'Export all data',
+          dialogTitle: t('exportAllData'),
           UTI: 'public.comma-separated-values-text',
         });
       } else {
         Alert.alert(
           t('saved'),
-          `Sharing isn't available in this build, but the file was written to ${path}.`,
+          t('sharingUnavailableWithPathShort', { path }),
         );
       }
     } catch (e) {
@@ -841,7 +842,7 @@ export default function SettingsScreen() {
                 ? promoRedemption
                   ? promoRedemption.grantsPro
                     ? t('premiumUnlockedViaPromoCode')
-                    : `Premium via promo code until ${promoRedemption.freeUntil?.toLocaleDateString()}.`
+                    : t('premiumViaPromoUntil', { date: promoRedemption.freeUntil?.toLocaleDateString(intlLocale(language)) ?? '' })
                   : t('youHaveUnlimitedAiScans')
                 : t('unlockUnlimitedAiScansPdf')}
             </Text>
@@ -944,8 +945,7 @@ export default function SettingsScreen() {
           )}
           {lastInvitedEmail && (
             <Text style={styles.inviteHint}>
-              Invite sent to {lastInvitedEmail} — they'll show up here once
-              they sign in with that email and accept.
+              {t('inviteSentHint', { email: lastInvitedEmail })}
             </Text>
           )}
 
@@ -1055,7 +1055,7 @@ export default function SettingsScreen() {
               })}
             </View>
             <Text style={styles.currencyCaption}>
-              Amounts are shown in {currency} at approximate exchange rates.
+              {t('amountsShownIn', { currency })}
             </Text>
           </View>
         </Section>

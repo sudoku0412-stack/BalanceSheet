@@ -362,7 +362,10 @@ export function SplitSection(props: {
           )}
 
           <Text style={styles.splitSummary}>
-            You paid {formatCurrency(totalAmountUsd, currencyCode)} · {formatCurrency(owedToYou, currencyCode)} owed to you
+            {t('youPaidOwed', {
+              paid: formatCurrency(totalAmountUsd, currencyCode),
+              owed: formatCurrency(owedToYou, currencyCode),
+            })}
           </Text>
         </View>
       )}

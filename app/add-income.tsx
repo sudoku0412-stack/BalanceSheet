@@ -302,7 +302,7 @@ export default function AddIncomeScreen() {
         >
           <Card style={styles.fieldCard}>
             <Text style={styles.fieldLabel}>
-              Amount ({CURRENCY_SYMBOLS[currency]})
+              {t('amountWithSymbol', { symbol: CURRENCY_SYMBOLS[currency] })}
             </Text>
             <TextInput
               style={[styles.input, styles.amountInput]}
@@ -312,7 +312,7 @@ export default function AddIncomeScreen() {
               placeholderTextColor={theme.colors.textMuted}
               keyboardType="decimal-pad"
             />
-            <Text style={styles.currencyHint}>Saved in your profile currency ({currency})</Text>
+            <Text style={styles.currencyHint}>{t('savedInProfileCurrency', { currency })}</Text>
           </Card>
 
           <Card style={styles.fieldCard}>

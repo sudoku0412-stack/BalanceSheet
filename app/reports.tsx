@@ -36,7 +36,7 @@ import { useEntitlements } from '../lib/EntitlementsContext';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { CategorySummary, MonthlyStats, Receipt, Category, Income, CashflowStats } from '../types';
 
-import { useT } from '../lib/I18nContext';
+import { useT, type TFn } from '../lib/I18nContext';
 /**
  * Build a human-readable filename for the exported receipt report,
  * e.g. "NestExpenseTracker Expense Report - July 2026.pdf".
@@ -174,7 +174,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
       } else {
         Alert.alert(
           t('saved'),
-          `Sharing isn't available in this build, but the file was written to ${path}. Rebuild the app to enable in-app share.`,
+          t('sharingUnavailableWithPath', { path }),
         );
       }
     },
@@ -202,7 +202,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         path,
         'text/csv',
         'public.comma-separated-values-text',
-        'Export expense report',
+        t('exportExpenseReport'),
       );
     } catch (e) {
       Alert.alert(t('exportFailed'), (e as Error)?.message ?? t('tryAgain'));
@@ -249,7 +249,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         currency,
       });
       if (path) {
-        await shareFile(path, 'application/pdf', 'com.adobe.pdf', 'Export expense report');
+        await shareFile(path, 'application/pdf', 'com.adobe.pdf', t('exportExpenseReport'));
       }
     } catch (e) {
       Alert.alert(t('exportFailed'), (e as Error)?.message ?? t('tryAgain'));
@@ -355,18 +355,24 @@ function sliceColor(
   return resolveCategoryColor(key, theme.colors.category, customs, theme.colors.accent);
 }
 
-function donutCaption(donut: BudgetDonutModel, currency: CurrencyCode): string {
+function donutCaption(donut: BudgetDonutModel, currency: CurrencyCode, t: TFn): string {
   const total = formatCurrency(donut.circleTotal, currency);
-  const pot =
+  const pot = t(
     donut.source === 'budget'
-      ? `One circle, one total: ${total} (your category budgets).`
+      ? 'donutPotBudget'
       : donut.source === 'income'
-        ? `One circle, one total: ${total} (this month's earned).`
-        : `One circle, one total: ${total}.`;
+        ? 'donutPotIncome'
+        : 'donutPotSpent',
+    { total },
+  );
   if (donut.remaining > 0.009) {
-    return `${pot} The colored wedges are what's already been eaten up by spending, and the dashed gray wedge is what's still untouched — ${donut.remainingPct.toFixed(1)}%, or ${formatCurrency(donut.remaining, currency)}.`;
+    return t('donutRemaining', {
+      pot,
+      pct: donut.remainingPct.toFixed(1),
+      amount: formatCurrency(donut.remaining, currency),
+    });
   }
-  return `${pot} Spending has filled the circle.`;
+  return t('donutFilled', { pot });
 }
 
 function SummaryCard({
@@ -398,7 +404,7 @@ function SummaryCard({
                 {donut.remainingPct.toFixed(1)}%
               </Text>
               <Text style={styles.donutCenterSub}>
-                left · {formatCurrency(donut.remaining, currency)}
+                {t('leftAmount', { amount: formatCurrency(donut.remaining, currency) })}
               </Text>
             </>
           ) : (
@@ -424,15 +430,14 @@ function SummaryCard({
         ))}
       </View>
       {donut.circleTotal > 0 ? (
-        <Text style={styles.donutCaption}>{donutCaption(donut, currency)}</Text>
+        <Text style={styles.donutCaption}>{donutCaption(donut, currency, t)}</Text>
       ) : (
         <Text style={styles.donutCaption}>
           {t('addIncomeOrCategoryBudgets')}
         </Text>
       )}
       <Text style={styles.summarySub}>
-        {formatCurrency(stats.totalSpent, currency)} total across {count} expense
-        {count === 1 ? '' : 's'}
+        {t('totalAcrossExpenses', { amount: formatCurrency(stats.totalSpent, currency), count })}
       </Text>
       <View style={styles.cashflowRow}>
         <View style={styles.cashflowCell}>

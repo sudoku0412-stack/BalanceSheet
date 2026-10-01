@@ -13,7 +13,9 @@ import { parseYmdLocal } from '../lib/parser';
 import { Income, Receipt } from '../types';
 import { CATEGORY_ICONS } from '../constants/categories';
 
-import { useT } from '../lib/I18nContext';
+import { useT, useLanguage } from '../lib/I18nContext';
+import { formatShortDate } from '../lib/dateLocale';
+import { frequencyKey } from '../lib/frequencyLabel';
 type ExpenseTemplate = {
   kind: 'expense';
   receipt: Receipt;
@@ -30,12 +32,6 @@ type IncomeTemplate = {
 };
 type Template = ExpenseTemplate | IncomeTemplate;
 
-const FREQUENCY_LABEL: Record<string, string> = {
-  weekly: 'Weekly',
-  biweekly: 'Bi-weekly',
-  monthly: 'Monthly',
-  yearly: 'Yearly',
-};
 
 /** Lists every active recurring-expense TEMPLATE (a receipt with
  *  `recurring` still set — generated occurrences clear that field, see
@@ -44,6 +40,7 @@ const FREQUENCY_LABEL: Record<string, string> = {
  *  each occurrence only after it's already been added. */
 export default function RecurringScreen() {
   const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const router = useRouter();
   const styles = useRecurringStyles();
@@ -94,7 +91,11 @@ export default function RecurringScreen() {
 
   const formatScheduleDate = (ymd: string): string => {
     const d = parseYmdLocal(ymd);
-    return d ? format(d, 'MMM d, yyyy') : ymd;
+    return d ? formatShortDate(d, language) : ymd;
+  };
+  const freqLabel = (f: string): string => {
+    const key = frequencyKey(f);
+    return key ? t(key) : f;
   };
 
   return (
@@ -130,10 +131,9 @@ export default function RecurringScreen() {
                     <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
                       <Text style={styles.name} numberOfLines={1}>{i.sourceName}</Text>
                       <Text style={styles.meta}>
-                        Income · {FREQUENCY_LABEL[frequency] ?? frequency} · Next:{' '}
-                        {formatScheduleDate(nextDueDate)}
+                        {t('incomeFreqNext', { freq: freqLabel(frequency), date: formatScheduleDate(nextDueDate) })}
                       </Text>
-                      <Text style={styles.metaMuted}>Ends {formatScheduleDate(endDate)}</Text>
+                      <Text style={styles.metaMuted}>{t('endsOn', { date: formatScheduleDate(endDate) })}</Text>
                     </View>
                     <Text style={[styles.amount, { color: theme.colors.success }]}>
                       {formatCurrency(i.amountUsd, currency)}
@@ -162,9 +162,9 @@ export default function RecurringScreen() {
                 <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
                   <Text style={styles.name} numberOfLines={1}>{r.storeName}</Text>
                   <Text style={styles.meta}>
-                    {FREQUENCY_LABEL[frequency] ?? frequency} · Next: {formatScheduleDate(nextDueDate)}
+                    {t('freqNext', { freq: freqLabel(frequency), date: formatScheduleDate(nextDueDate) })}
                   </Text>
-                  <Text style={styles.metaMuted}>Ends {formatScheduleDate(endDate)}</Text>
+                  <Text style={styles.metaMuted}>{t('endsOn', { date: formatScheduleDate(endDate) })}</Text>
                 </View>
                 <Text style={styles.amount}>{formatCurrency(r.totalAmount, currency)}</Text>
               </View>

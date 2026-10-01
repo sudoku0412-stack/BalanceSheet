@@ -92,7 +92,7 @@ export default function ResetPasswordScreen() {
           </>
         ) : (
           <>
-            <Text style={styles.subtitle}>Setting a new password for {email}</Text>
+            <Text style={styles.subtitle}>{t('settingNewPasswordFor', { email: email ?? '' })}</Text>
 
             <View style={styles.field}>
               <Text style={styles.fieldLabel}>{t('newPassword')}</Text>

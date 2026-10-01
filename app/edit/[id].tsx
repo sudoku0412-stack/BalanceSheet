@@ -64,6 +64,8 @@ import { DateField } from '../../components/ui/DateField';
 import { sanitizeAmountInput, parseAmountInput } from '../../lib/amountValidation';
 
 import { useT } from '../../lib/I18nContext';
+import { dateFnsLocale } from '../../lib/dateLocale';
+import { getActiveLanguage } from '../../lib/i18n';
 /** Validate the persisted currency code, defaulting to USD when unset
  *  or unrecognized (matches lib/currency.ts's canonical-USD design). */
 function toCurrencyCode(raw: string | null): CurrencyCode {
@@ -83,7 +85,7 @@ function safeFormat(input: unknown, fmt: string): string {
   try {
     const d = new Date(input as string);
     if (isNaN(d.getTime())) return '';
-    return format(d, fmt);
+    return format(d, fmt, { locale: dateFnsLocale(getActiveLanguage()) });
   } catch {
     return '';
   }
@@ -1380,16 +1382,16 @@ function EditReceiptScreen() {
       {/* Added/edited timestamps — pre-existing info, tucked below the
           transaction-date caption rather than removed. */}
       <View style={styles.meta}>
-        {safeFormat(receipt.createdAt, 'MMM d, yyyy · h:mm a') !== '' && (
+        {safeFormat(receipt.createdAt, t('dateTimePattern')) !== '' && (
           <Text style={styles.metaText}>
-            Added {safeFormat(receipt.createdAt, 'MMM d, yyyy · h:mm a')}
+            {t('addedAt', { when: safeFormat(receipt.createdAt, t('dateTimePattern')) })}
           </Text>
         )}
         {receipt.updatedAt &&
           receipt.updatedAt !== receipt.createdAt &&
-          safeFormat(receipt.updatedAt, 'MMM d, yyyy') !== '' && (
+          safeFormat(receipt.updatedAt, t('datePattern')) !== '' && (
             <Text style={styles.metaText}>
-              Edited {safeFormat(receipt.updatedAt, 'MMM d, yyyy')}
+              {t('editedAt', { when: safeFormat(receipt.updatedAt, t('datePattern')) })}
             </Text>
           )}
       </View>
@@ -1439,14 +1441,7 @@ function EditReceiptScreen() {
             <View style={styles.segmented}>
               {(['weekly', 'biweekly', 'monthly', 'yearly'] as const).map((freq) => {
                 const active = recurringFrequency === freq;
-                const label =
-                  freq === 'weekly'
-                    ? 'Weekly'
-                    : freq === 'biweekly'
-                      ? 'Bi-weekly'
-                      : freq === 'monthly'
-                        ? 'Monthly'
-                        : 'Yearly';
+                const label = t(freq);
                 return (
                   <Pressable
                     key={freq}
@@ -1535,7 +1530,7 @@ function EditReceiptScreen() {
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               style={styles.itemRemoveBtn}
               accessibilityRole="button"
-              accessibilityLabel={`Remove ${item.name}`}
+              accessibilityLabel={t('removeName', { name: item.name })}
             >
               <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
             </TouchableOpacity>

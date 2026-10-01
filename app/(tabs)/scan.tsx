@@ -1271,9 +1271,11 @@ export default function ScanScreen() {
       const confirmed = await new Promise<boolean>((resolve) => {
         Alert.alert(
           t('lineItemsDonTMatch'),
-          `${mismatch.hint}\n\nItems total: $${mismatch.sum.toFixed(
-            2,
-          )}\nReceipt subtotal: $${mismatch.subtotal.toFixed(2)}`,
+          t('itemsTotalDetail', {
+            hint: mismatch.hint,
+            sum: `$${mismatch.sum.toFixed(2)}`,
+            subtotal: `$${mismatch.subtotal.toFixed(2)}`,
+          }),
           [
             { text: t('reviewItems'), style: 'cancel', onPress: () => resolve(false) },
             { text: t('saveAnyway'), onPress: () => resolve(true) },
@@ -1463,7 +1465,7 @@ export default function ScanScreen() {
 
       notifySuccess();
       toast.show({
-        message: `Saved to ${primaryCategory}`,
+        message: t('savedToCategory', { category: primaryCategory }),
         kind: 'success',
       });
       resetState();
@@ -1479,7 +1481,7 @@ export default function ScanScreen() {
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.show({ message: `Failed to save: ${msg}`, kind: 'error' });
+      toast.show({ message: t('failedToSave', { msg }), kind: 'error' });
     } finally {
       setSaving(false);
     }
@@ -1573,12 +1575,12 @@ export default function ScanScreen() {
     if (check.ok) return;
     Alert.alert(
       t('lineItemsDonTMatch'),
-      `${check.hint}\n\nItems total: $${check.sum.toFixed(
-        2,
-      )}\nReceipt subtotal: $${check.subtotal.toFixed(
-        2,
-      )}\n\nPlease cross-verify the line items before saving.`,
-      [{ text: 'OK' }],
+      t('itemsTotalDetailVerify', {
+        hint: check.hint,
+        sum: `$${check.sum.toFixed(2)}`,
+        subtotal: `$${check.subtotal.toFixed(2)}`,
+      }),
+      [{ text: t('ok') }],
     );
   };
 
@@ -2132,14 +2134,7 @@ export default function ScanScreen() {
               <View style={styles.segmented}>
                 {(['weekly', 'biweekly', 'monthly', 'yearly'] as const).map((freq) => {
                   const active = recurringFrequency === freq;
-                  const label =
-                    freq === 'weekly'
-                      ? 'Weekly'
-                      : freq === 'biweekly'
-                        ? 'Bi-weekly'
-                        : freq === 'monthly'
-                          ? 'Monthly'
-                          : 'Yearly';
+                  const label = t(freq);
                   return (
                     <Pressable
                       key={freq}
@@ -2193,7 +2188,7 @@ export default function ScanScreen() {
           categorize, and split them same as a manual entry. */}
       <Card style={styles.fieldCard}>
           <Text style={styles.fieldLabel}>
-            Items{items.length ? ` (${items.length})` : ''}
+            {t('items')}{items.length ? ` (${items.length})` : ''}
           </Text>
           {items.map((item) => (
             <View key={item.id} style={styles.itemRow}>
@@ -2230,7 +2225,7 @@ export default function ScanScreen() {
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 style={styles.itemRemoveBtn}
                 accessibilityRole="button"
-                accessibilityLabel={`Remove ${item.name}`}
+                accessibilityLabel={t('removeName', { name: item.name })}
               >
                 <Ionicons name="close-circle" size={18} color={theme.colors.textMuted} />
               </TouchableOpacity>
