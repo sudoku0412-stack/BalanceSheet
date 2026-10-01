@@ -28,6 +28,7 @@ type ReceiptRow = {
   split_json: string | null;
   recurring_json: string | null;
   original_currency: string | null;
+  fx_rate?: number | null;
   paid_by: string | null;
   created_by: string | null;
   is_recurring_occurrence: number | null;
@@ -87,6 +88,7 @@ function mockRowFromSaveParams(params: unknown[]): ReceiptRow {
     updated_at: params[19] as string,
     user_id: params[20] as string,
     household_id: (params[21] as string | null) ?? null,
+    fx_rate: (params[22] as number | null) ?? null,
   };
 }
 
@@ -167,8 +169,8 @@ jest.mock('expo-sqlite', () => ({
         return { lastInsertRowId: 0, changes: 1 };
       }
       if (/UPDATE receipts\s+SET store_name/i.test(sql)) {
-        const id = params[13] as string;
-        const uid = params[14] as string;
+        const id = params[14] as string;
+        const uid = params[15] as string;
         const existing = mockReceipts.get(id);
         if (existing && existing.user_id === uid && mockMatchesHid(existing, sql, params)) {
           mockReceipts.set(id, {
@@ -184,8 +186,9 @@ jest.mock('expo-sqlite', () => ({
             split_json: (params[8] as string | null) ?? null,
             recurring_json: (params[9] as string | null) ?? null,
             original_currency: (params[10] as string | null) ?? null,
-            paid_by: (params[11] as string | null) ?? null,
-            updated_at: params[12] as string,
+            fx_rate: (params[11] as number | null) ?? null,
+            paid_by: (params[12] as string | null) ?? null,
+            updated_at: params[13] as string,
           });
         }
         return { lastInsertRowId: 0, changes: 1 };
@@ -454,6 +457,46 @@ describe('saveReceipt / updateReceipt cloud stamp', () => {
       expect.objectContaining({ id: 'new-r', storeName: 'Fresh' }),
       'hh1',
     );
+  });
+
+  it('persists a frozen fxRate on save and update, and clears it when omitted', async () => {
+    await saveReceipt({
+      id: 'fx-1',
+      storeName: 'Paris Cafe',
+      date: '2026-03-15',
+      totalAmount: 100,
+      category: 'Dining',
+      originalCurrency: 'EUR',
+      fxRate: 0.95,
+      createdAt: '2026-03-15T00:00:00.000Z',
+      updatedAt: '2026-03-15T00:00:00.000Z',
+    });
+    expect(mockReceipts.get('fx-1')!.fx_rate).toBe(0.95);
+
+    await updateReceipt({
+      id: 'fx-1',
+      storeName: 'Paris Cafe',
+      date: '2026-03-15',
+      totalAmount: 100,
+      category: 'Dining',
+      originalCurrency: 'EUR',
+      fxRate: 0.9,
+      createdAt: '2026-03-15T00:00:00.000Z',
+      updatedAt: '2026-03-15T00:00:00.000Z',
+    });
+    expect(mockReceipts.get('fx-1')!.fx_rate).toBe(0.9);
+
+    await updateReceipt({
+      id: 'fx-1',
+      storeName: 'Paris Cafe',
+      date: '2026-03-15',
+      totalAmount: 100,
+      category: 'Dining',
+      originalCurrency: 'EUR',
+      createdAt: '2026-03-15T00:00:00.000Z',
+      updatedAt: '2026-03-15T00:00:00.000Z',
+    });
+    expect(mockReceipts.get('fx-1')!.fx_rate).toBeNull();
   });
 
   it('bumps updatedAt before the cloud shadow-write so listeners do not skip the edit', async () => {

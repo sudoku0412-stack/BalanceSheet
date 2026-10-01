@@ -61,7 +61,8 @@ import {
   CURRENCIES,
   CURRENCY_SYMBOLS,
   CurrencyCode,
-  convertToUsd,
+  convertEntryToUsd,
+  entryFxRate,
   formatCurrency,
   isPremiumCurrency,
 } from '../../lib/currency';
@@ -830,16 +831,20 @@ export default function ScanScreen() {
   // on this screen are entered in THIS currency, not USD — converted
   // to USD-canonical exactly once, at save time (see handleSave).
   const [currencyCode, setCurrencyCode] = useState<CurrencyCode>('USD');
+  const [profileCurrency, setProfileCurrency] = useState<CurrencyCode>('USD');
+  // Premium: a receipt typed in a foreign currency converts at today's live
+  // cross rate, frozen onto the receipt (Receipt['fxRate']) so nothing moves later.
+  const fxForEntry = isPremium ? entryFxRate(currencyCode, profileCurrency) : undefined;
   useEffect(() => {
     let mounted = true;
     (async () => {
       const raw = await getCurrency();
       if (mounted) {
-        setCurrencyCode(
-          (CURRENCIES as readonly string[]).includes(raw ?? '')
-            ? (raw as CurrencyCode)
-            : 'USD',
-        );
+        const resolved: CurrencyCode = (CURRENCIES as readonly string[]).includes(raw ?? '')
+          ? (raw as CurrencyCode)
+          : 'USD';
+        setCurrencyCode(resolved);
+        setProfileCurrency(resolved);
       }
     })();
     return () => {
@@ -1339,7 +1344,7 @@ export default function ScanScreen() {
       // placeholder (see lib/balances.ts).
       const selfUidForSave = user?.uid ?? 'self';
       const normalizeForSave = (pid: string) => (pid === 'self' ? selfUidForSave : pid);
-      const totalAmountUsd = convertToUsd(amountVal, currencyCode);
+      const totalAmountUsd = convertEntryToUsd(amountVal, currencyCode, fxForEntry);
       const split: Receipt['split'] = splitEnabled
         ? {
             enabled: true,
@@ -1375,17 +1380,18 @@ export default function ScanScreen() {
         totalAmount: totalAmountUsd,
         subtotalAmount:
           subtotalVal != null && !isNaN(subtotalVal)
-            ? convertToUsd(subtotalVal, currencyCode)
+            ? convertEntryToUsd(subtotalVal, currencyCode, fxForEntry)
             : undefined,
         taxAmount:
-          taxVal != null && !isNaN(taxVal) ? convertToUsd(taxVal, currencyCode) : undefined,
+          taxVal != null && !isNaN(taxVal) ? convertEntryToUsd(taxVal, currencyCode, fxForEntry) : undefined,
         category: primaryCategory,
         categoryTags: finalTags,
         rawText: parsed?.rawText,
         imageUri: persistentImageUri,
         notes: notes.trim() || undefined,
-        lineItems: items.map((it) => ({ ...it, amount: convertToUsd(it.amount, currencyCode) })),
+        lineItems: items.map((it) => ({ ...it, amount: convertEntryToUsd(it.amount, currencyCode, fxForEntry) })),
         originalCurrency: currencyCode,
+        fxRate: fxForEntry,
         recurring,
         split,
         // Independent of splitEnabled — "paid by" now applies even to a
@@ -2268,7 +2274,7 @@ export default function ScanScreen() {
         onChangeAmount={(key, v) => setSplitAmounts((prev) => ({ ...prev, [key]: v }))}
         splitShares={splitShares}
         onChangeShare={(key, v) => setSplitShares((prev) => ({ ...prev, [key]: v }))}
-        totalAmountUsd={convertToUsd(parseFloat(amount.replace(',', '.')) || 0, currencyCode)}
+        totalAmountUsd={convertEntryToUsd(parseFloat(amount.replace(',', '.')) || 0, currencyCode, fxForEntry)}
         currencyCode={currencyCode}
         lineItems={items}
       />

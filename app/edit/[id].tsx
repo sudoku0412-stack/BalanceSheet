@@ -36,8 +36,9 @@ import { notifySuccess, tapLight, tapMedium } from '../../lib/haptics';
 import { notifyHouseholdOfBudgetStatus, notifyNewSharedExpense } from '../../lib/notifications';
 import {
   formatCurrency,
-  convertFromUsd,
-  convertToUsd,
+  convertEntryToUsd,
+  convertUsdToEntry,
+  entryFxRate,
   CURRENCY_SYMBOLS,
   CURRENCIES,
   CurrencyCode,
@@ -657,6 +658,19 @@ function EditReceiptScreen() {
   // User's selected display currency (lib/secureStorage.getCurrency).
   // Defaults to USD until loaded / if unset.
   const [currencyCode, setCurrencyCode] = useState<CurrencyCode>('USD');
+  const [profileCurrency, setProfileCurrency] = useState<CurrencyCode>('USD');
+  // Rate used to move between the typed currency and canonical USD. A
+  // receipt reopened in the currency it was saved in keeps its frozen rate
+  // (so editing a note never re-prices it); only a newly chosen foreign
+  // currency picks up today's live cross rate (Premium).
+  const fx =
+    currencyCode === (receipt?.originalCurrency ?? profileCurrency)
+      ? receipt?.fxRate
+      : isPremium
+        ? entryFxRate(currencyCode, profileCurrency)
+        : undefined;
+  const toUsd = (amt: number) => convertEntryToUsd(amt, currencyCode, fx);
+  const fromUsd = (usd: number) => convertUsdToEntry(usd, currencyCode, fx);
   // Whether findRecurring (lib/reports.ts) flags this receipt's store
   // as part of a real recurring pattern — drives the "Recurring" pill.
   const [isRecurring, setIsRecurring] = useState(false);
@@ -761,11 +775,12 @@ function EditReceiptScreen() {
       // should still show/edit as USD even if the profile is now CAD.
       // Legacy receipts with nothing recorded fall back to profile.
       const loadCurrency = r.originalCurrency ?? profileCurrency;
+      setProfileCurrency(profileCurrency);
       setCurrencyCode(loadCurrency);
       setReceipt(r);
       setStoreName(r.storeName);
       setDate(safeFormat(r.date, 'yyyy-MM-dd'));
-      setAmount(safeAmount(convertFromUsd(r.totalAmount, loadCurrency)));
+      setAmount(safeAmount(convertUsdToEntry(r.totalAmount, loadCurrency, r.originalCurrency ? r.fxRate : undefined)));
       setCategory(r.category);
       setCategoryTags(r.categoryTags ?? [r.category]);
       setNotes(r.notes ?? '');
@@ -1022,8 +1037,9 @@ function EditReceiptScreen() {
         // display currency — convert to USD-canonical before persisting
         // (matches how it's loaded/edited above; see totalAmountVal's
         // comment for the bug this fixes).
-        totalAmount: convertToUsd(amountVal, currencyCode),
+        totalAmount: toUsd(amountVal),
         originalCurrency: currencyCode,
+        fxRate: fx,
         category: primary,
         categoryTags: categoryTags.length ? categoryTags : [primary],
         notes: notes.trim() || undefined,
@@ -1056,7 +1072,7 @@ function EditReceiptScreen() {
           void notifyNewSharedExpense({
             participantUids: otherParticipantUids,
             payerLabel,
-            amountLabel: formatCurrency(convertToUsd(amountVal, currencyCode), currencyCode),
+            amountLabel: formatCurrency(toUsd(amountVal), currencyCode),
             storeName: storeName.trim(),
           });
         }
@@ -1118,7 +1134,7 @@ function EditReceiptScreen() {
   // "entered a CAD amount, got double-converted" (the raw typed number
   // was being treated as already-USD, then formatCurrency multiplied
   // it by the CAD rate AGAIN when displaying it elsewhere).
-  const totalAmountVal = convertToUsd(parseFloat(amount.replace(',', '.')) || 0, currencyCode);
+  const totalAmountVal = toUsd(parseFloat(amount.replace(',', '.')) || 0);
   const otherMembers = (householdMembers ?? []).filter((m) => !m.isYou);
 
   // Haptic feedback lives in SplitSection itself (single source, since
@@ -1153,7 +1169,7 @@ function EditReceiptScreen() {
     // item.amount is USD-canonical (same as the receipt total) — show
     // it converted to the selected display currency, matching the
     // top-level Amount field's treatment.
-    setItemAmount(item.amount ? String(convertFromUsd(item.amount, currencyCode)) : '');
+    setItemAmount(item.amount ? String(fromUsd(item.amount)) : '');
     setItemCategory(item.category || 'Other');
     // An item that already has an explicit (proper-subset) splitWith was
     // deliberately customized before — honor it as "touched" so re-saving
@@ -1213,7 +1229,7 @@ function EditReceiptScreen() {
     const newItem: LineItem = {
       id: editingItemId ?? uuidv4(),
       name: trimmedName,
-      amount: convertToUsd(amt, currencyCode),
+      amount: toUsd(amt),
       category: itemCategory,
       // Same 'self' -> real-uid substitution as the receipt-level split
       // above (handleSave) — otherwise a different household member
@@ -1237,7 +1253,7 @@ function EditReceiptScreen() {
         : [...prev, newItem],
     );
     if (deltaUsd !== 0) {
-      const deltaDisplay = convertFromUsd(deltaUsd, currencyCode);
+      const deltaDisplay = fromUsd(deltaUsd);
       setAmount((prev) => Math.max(0, (parseAmountInput(prev) ?? 0) + deltaDisplay).toFixed(2));
     }
     setItemModalVisible(false);
@@ -1247,7 +1263,7 @@ function EditReceiptScreen() {
     const removed = items.find((it) => it.id === itemId);
     setItems((prev) => prev.filter((it) => it.id !== itemId));
     if (removed) {
-      const deltaDisplay = convertFromUsd(removed.amount, currencyCode);
+      const deltaDisplay = fromUsd(removed.amount);
       setAmount((prev) => Math.max(0, (parseAmountInput(prev) ?? 0) - deltaDisplay).toFixed(2));
     }
   };

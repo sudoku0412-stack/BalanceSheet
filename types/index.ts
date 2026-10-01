@@ -76,6 +76,12 @@ export interface Receipt {
    *  rather than snapping to whatever the profile currency is NOW.
    *  Absent on legacy receipts — treat as the profile currency. */
   originalCurrency?: CurrencyCode;
+  /** Effective rate (units of `originalCurrency` per canonical USD) fixed at
+   *  entry time when a foreign-currency receipt used Premium live rates, so
+   *  re-opening it shows exactly what was typed and later rate moves never
+   *  change it. Absent = the fixed table's rate. Local to this device, like
+   *  `originalCurrency`. */
+  fxRate?: number;
   lineItems?: LineItem[];
   /** Splitwise-style split state. Absent/enabled=false means the expense
    *  isn't split. Participant ids are 'self' (the signed-in user, always

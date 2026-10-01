@@ -17,7 +17,14 @@ import {
   refreshLiveRates,
   sanitizeRates,
 } from '../lib/exchangeRates';
-import { convertFromUsd, convertToUsd, hasLiveRates } from '../lib/currency';
+import {
+  convertEntryToUsd,
+  convertFromUsd,
+  convertToUsd,
+  convertUsdToEntry,
+  entryFxRate,
+  hasLiveRates,
+} from '../lib/currency';
 
 const mockFetch = jest.fn();
 const okResponse = (rates: unknown, result = 'success') => ({
@@ -63,10 +70,9 @@ describe('refreshLiveRates', () => {
     await expect(refreshLiveRates(now)).resolves.toBe(true);
     expect(mockFetch).toHaveBeenCalledWith(RATES_URL, expect.anything());
     expect(hasLiveRates()).toBe(true);
-    expect(convertFromUsd(10, 'EUR')).toBeCloseTo(9, 6);
-    expect(convertToUsd(14, 'CAD')).toBeCloseTo(10, 6);
-    // currencies the feed omitted keep the fixed rate
-    expect(convertFromUsd(1, 'GBP')).toBeCloseTo(0.79, 6);
+    // stored-amount conversion NEVER uses live rates (no drift)
+    expect(convertFromUsd(10, 'EUR')).toBeCloseTo(9.2, 6);
+    expect(convertToUsd(13.8, 'CAD')).toBeCloseTo(10, 6);
     expect(JSON.parse(store.get('bs.fx.liveRates')!).rates).toEqual({ EUR: 0.9, CAD: 1.4 });
   });
 
@@ -74,7 +80,8 @@ describe('refreshLiveRates', () => {
     store.set('bs.fx.liveRates', JSON.stringify({ fetchedAt: now - 1000, rates: { EUR: 0.95 } }));
     await expect(refreshLiveRates(now)).resolves.toBe(true);
     expect(mockFetch).not.toHaveBeenCalled();
-    expect(convertFromUsd(10, 'EUR')).toBeCloseTo(9.5, 6);
+    expect(hasLiveRates()).toBe(true);
+    expect(entryFxRate('EUR', 'USD')).toBeCloseTo(0.95, 6);
   });
 
   it('refreshes a stale cache', async () => {
@@ -82,14 +89,14 @@ describe('refreshLiveRates', () => {
     mockFetch.mockResolvedValue(okResponse({ EUR: 0.9 }));
     await refreshLiveRates(now);
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(convertFromUsd(10, 'EUR')).toBeCloseTo(9, 6);
+    expect(entryFxRate('EUR', 'USD')).toBeCloseTo(0.9, 6);
   });
 
   it('keeps the stale cache when the refresh fails', async () => {
     store.set('bs.fx.liveRates', JSON.stringify({ fetchedAt: now - RATES_TTL_MS - 1, rates: { EUR: 0.95 } }));
     mockFetch.mockRejectedValue(new Error('offline'));
     await expect(refreshLiveRates(now)).resolves.toBe(true);
-    expect(convertFromUsd(10, 'EUR')).toBeCloseTo(9.5, 6);
+    expect(entryFxRate('EUR', 'USD')).toBeCloseTo(0.95, 6);
   });
 
   it('falls back to fixed rates when there is no cache and the fetch fails or is unusable', async () => {
@@ -100,14 +107,14 @@ describe('refreshLiveRates', () => {
     mockFetch.mockResolvedValue(okResponse({ EUR: 500 }));
     await expect(refreshLiveRates(now)).resolves.toBe(false);
     expect(hasLiveRates()).toBe(false);
-    expect(convertFromUsd(10, 'EUR')).toBeCloseTo(9.2, 6);
+    expect(entryFxRate('EUR', 'USD')).toBeUndefined();
   });
 
   it('ignores a corrupt cache', async () => {
     store.set('bs.fx.liveRates', '{nope');
     mockFetch.mockResolvedValue(okResponse({ EUR: 0.9 }));
     await expect(refreshLiveRates(now)).resolves.toBe(true);
-    expect(convertFromUsd(10, 'EUR')).toBeCloseTo(9, 6);
+    expect(entryFxRate('EUR', 'USD')).toBeCloseTo(0.9, 6);
   });
 });
 
@@ -117,6 +124,54 @@ describe('clearLiveRates', () => {
     await refreshLiveRates();
     clearLiveRates();
     expect(hasLiveRates()).toBe(false);
-    expect(convertFromUsd(10, 'EUR')).toBeCloseTo(9.2, 6);
+    expect(entryFxRate('EUR', 'USD')).toBeUndefined();
+  });
+});
+
+describe('entry-time live cross rates (no drift)', () => {
+  beforeEach(() => {
+    mockFetch.mockResolvedValue(okResponse({ EUR: 0.9, CAD: 1.4 }));
+  });
+
+  it('is undefined for the profile currency, before rates load, or for an unknown pair', async () => {
+    expect(entryFxRate('EUR', 'CAD')).toBeUndefined(); // nothing loaded yet
+    await refreshLiveRates();
+    expect(entryFxRate('CAD', 'CAD')).toBeUndefined();
+    expect(entryFxRate('JPY', 'CAD')).toBeUndefined(); // feed had no JPY
+  });
+
+  it('a EUR receipt in a CAD profile displays as the live cross value, frozen', async () => {
+    await refreshLiveRates();
+    const fx = entryFxRate('EUR', 'CAD');
+    expect(fx).toBeDefined();
+    const usd = convertEntryToUsd(100, 'EUR', fx);
+    // shown in CAD through the FIXED table = 100 EUR * live CAD / live EUR
+    expect(convertFromUsd(usd, 'CAD')).toBeCloseTo((100 * 1.4) / 0.9, 6);
+    // re-opening in EUR returns exactly what was typed
+    expect(convertUsdToEntry(usd, 'EUR', fx)).toBeCloseTo(100, 6);
+  });
+
+  it('a USD receipt in a CAD profile uses USD live = 1', async () => {
+    await refreshLiveRates();
+    const fx = entryFxRate('USD', 'CAD');
+    const usd = convertEntryToUsd(100, 'USD', fx);
+    expect(convertFromUsd(usd, 'CAD')).toBeCloseTo(140, 6);
+    expect(convertUsdToEntry(usd, 'USD', fx)).toBeCloseTo(100, 6);
+  });
+
+  it('later rate moves cannot change an already-stored amount', async () => {
+    await refreshLiveRates();
+    const fx = entryFxRate('EUR', 'CAD');
+    const usd = convertEntryToUsd(100, 'EUR', fx);
+    const shownBefore = convertFromUsd(usd, 'CAD');
+    mockFetch.mockResolvedValue(okResponse({ EUR: 0.8, CAD: 1.5 }));
+    await refreshLiveRates(Date.now() + 2 * RATES_TTL_MS);
+    expect(convertFromUsd(usd, 'CAD')).toBe(shownBefore);
+    expect(convertUsdToEntry(usd, 'EUR', fx)).toBeCloseTo(100, 6);
+  });
+
+  it('without a frozen fx, conversion uses the fixed table (non-Premium / same currency)', () => {
+    expect(convertEntryToUsd(92, 'EUR')).toBeCloseTo(100, 6);
+    expect(convertUsdToEntry(100, 'EUR')).toBeCloseTo(92, 6);
   });
 });

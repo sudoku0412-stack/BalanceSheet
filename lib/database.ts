@@ -298,6 +298,10 @@ export async function initDatabase(): Promise<void> {
     // Currency this receipt was actually entered in. See
     // Receipt['originalCurrency'] in types/index.ts.
     `ALTER TABLE receipts             ADD COLUMN original_currency TEXT`,
+    // Effective rate (units of original_currency per canonical USD) used when
+    // a foreign-currency receipt was entered with Premium live rates. Local
+    // only, like original_currency. See Receipt['fxRate'].
+    `ALTER TABLE receipts             ADD COLUMN fx_rate REAL`,
     // Optional verified phone number (E.164), added anytime from Settings.
     // See Profile['phone']/['phoneVerified'] in lib/profile.ts.
     `ALTER TABLE profiles             ADD COLUMN phone            TEXT`,
@@ -737,8 +741,8 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
           split_json, recurring_json, original_currency, paid_by, created_by,
-          is_recurring_occurrence, created_at, updated_at, user_id, household_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          is_recurring_occurrence, created_at, updated_at, user_id, household_id, fx_rate)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         receipt.id,
         receipt.storeName,
@@ -762,6 +766,7 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
         receipt.updatedAt,
         uid,
         hid,
+        receipt.fxRate ?? null,
       ],
     );
 
@@ -799,7 +804,7 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
       `UPDATE receipts
        SET store_name=?, date=?, total_amount=?, subtotal_amount=?, tax_amount=?,
            category=?, category_tags=?, notes=?, split_json=?, recurring_json=?,
-           original_currency=?, paid_by=?, updated_at=?
+           original_currency=?, fx_rate=?, paid_by=?, updated_at=?
        WHERE id=? AND user_id=? AND (household_id IS NULL OR household_id=? OR ? IS NULL)`,
       [
         receipt.storeName,
@@ -813,6 +818,7 @@ export async function updateReceipt(receipt: Receipt): Promise<void> {
         serializeSplit(receipt.split),
         serializeRecurring(receipt.recurring),
         receipt.originalCurrency ?? null,
+        receipt.fxRate ?? null,
         receipt.paidBy ?? uid,
         now,
         receipt.id,
@@ -1106,6 +1112,7 @@ interface RawRow {
   split_json: string | null;
   recurring_json: string | null;
   original_currency: string | null;
+  fx_rate: number | null;
   paid_by: string | null;
   created_by: string | null;
   is_recurring_occurrence: number | null;
@@ -1130,6 +1137,7 @@ function rowToReceipt(row: RawRow): Receipt {
     photoUrl: row.photo_url ?? undefined,
     notes: row.notes ?? undefined,
     originalCurrency: (row.original_currency as Receipt['originalCurrency']) ?? undefined,
+    fxRate: row.fx_rate ?? undefined,
     split: parseSplit(row.split_json),
     recurring: parseRecurring(row.recurring_json),
     paidBy: row.paid_by ?? undefined,

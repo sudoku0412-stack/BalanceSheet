@@ -100,8 +100,13 @@ const RATES_FROM_USD: Record<CurrencyCode, number> = {
   AED: 3.67,
 };
 
-/** Premium live rates (lib/exchangeRates.ts), when loaded. Overrides the
- *  fixed table per currency; null means "use the fixed rates". */
+/**
+ * Premium live rates (lib/exchangeRates.ts), when loaded. They are NEVER
+ * used to display stored amounts: every stored figure is USD-canonical and
+ * shown through the fixed table, so a rate refresh cannot change anything
+ * already saved. Live rates apply only at entry time, to convert a receipt
+ * typed in a currency other than the profile currency (see entryFxRate).
+ */
 let liveRates: Partial<Record<CurrencyCode, number>> | null = null;
 
 export function setLiveRates(rates: Partial<Record<CurrencyCode, number>> | null): void {
@@ -117,16 +122,48 @@ export function fixedRateFromUsd(code: CurrencyCode): number {
   return RATES_FROM_USD[code];
 }
 
-function rateFor(code: CurrencyCode): number {
-  return liveRates?.[code] ?? RATES_FROM_USD[code];
+/** Live units-per-USD for a currency, or undefined when not loaded. */
+function liveRateFor(code: CurrencyCode): number | undefined {
+  if (code === 'USD') return 1;
+  return liveRates?.[code];
 }
 
 export function convertFromUsd(amountUsd: number, to: CurrencyCode): number {
-  return amountUsd * rateFor(to);
+  return amountUsd * RATES_FROM_USD[to];
 }
 
 export function convertToUsd(amount: number, from: CurrencyCode): number {
-  return amount / rateFor(from);
+  return amount / RATES_FROM_USD[from];
+}
+
+/**
+ * Effective rate (units of `entry` currency per canonical USD) for a
+ * receipt typed in `entry` while the profile currency is `profile`, using
+ * today's live cross rate — or undefined when the fixed table applies
+ * (same currency, live rates not loaded for both currencies, not Premium).
+ *
+ * Choosing fx = fixed(profile) * live(entry) / live(profile) makes the
+ * stored USD value display, in the profile currency, as exactly
+ * amount * live(profile) / live(entry): the live cross-converted figure,
+ * frozen at entry. Re-opening the receipt multiplies back by the same fx,
+ * so the typed amount round-trips unchanged.
+ */
+export function entryFxRate(entry: CurrencyCode, profile: CurrencyCode): number | undefined {
+  if (entry === profile) return undefined;
+  const liveEntry = liveRateFor(entry);
+  const liveProfile = liveRateFor(profile);
+  if (liveEntry === undefined || liveProfile === undefined) return undefined;
+  return (RATES_FROM_USD[profile] * liveEntry) / liveProfile;
+}
+
+/** Entry-currency amount → canonical USD, honoring a frozen `fx` if any. */
+export function convertEntryToUsd(amount: number, entry: CurrencyCode, fx?: number): number {
+  return amount / (fx ?? RATES_FROM_USD[entry]);
+}
+
+/** Canonical USD → entry-currency amount, honoring a frozen `fx` if any. */
+export function convertUsdToEntry(amountUsd: number, entry: CurrencyCode, fx?: number): number {
+  return amountUsd * (fx ?? RATES_FROM_USD[entry]);
 }
 
 export function formatCurrency(amountUsd: number, currency: CurrencyCode): string {
