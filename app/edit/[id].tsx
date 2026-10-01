@@ -40,12 +40,20 @@ import {
   CURRENCY_SYMBOLS,
   CURRENCIES,
   CurrencyCode,
+  isPremiumCurrency,
 } from '../../lib/currency';
 import { getCurrency } from '../../lib/secureStorage';
 import { advance as advanceRecurringDate, computeRecurringEndDate } from '../../lib/recurring';
 import { Receipt, Category, LineItem } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES } from '../../constants/categories';
+import { CustomCategoryPicker } from '../../components/ui/CustomCategoryPicker';
+import {
+  getCustomCategories,
+  resolveCategoryColor,
+  type CustomCategory,
+} from '../../lib/customCategories';
+import { useEntitlements } from '../../lib/EntitlementsContext';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { CategoryTagsPicker } from '../../components/ui/CategoryTagsPicker';
@@ -615,6 +623,15 @@ function EditReceiptScreen() {
   }));
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { isPremium } = useEntitlements();
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
+  useEffect(() => {
+    const hid = getCurrentHouseholdId();
+    if (!hid) return;
+    getCustomCategories(hid)
+      .then(setCustomCategories)
+      .catch(() => {});
+  }, []);
 
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [loading, setLoading] = useState(true);
@@ -706,7 +723,7 @@ function EditReceiptScreen() {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [itemName, setItemName] = useState('');
   const [itemAmount, setItemAmount] = useState('');
-  const [itemCategory, setItemCategory] = useState<Category>('Other');
+  const [itemCategory, setItemCategory] = useState<Category | string>('Other');
   const [itemSplit, setItemSplit] = useState<Set<string>>(new Set());
   // Tracks whether the user actually tapped a split-with avatar this
   // time the modal is open. Household members load async (Firestore),
@@ -1131,7 +1148,7 @@ function EditReceiptScreen() {
     // it converted to the selected display currency, matching the
     // top-level Amount field's treatment.
     setItemAmount(item.amount ? String(convertFromUsd(item.amount, currencyCode)) : '');
-    setItemCategory(((item.category as Category) || 'Other') as Category);
+    setItemCategory(item.category || 'Other');
     // An item that already has an explicit (proper-subset) splitWith was
     // deliberately customized before — honor it as "touched" so re-saving
     // without changes doesn't silently widen it back to everyone.
@@ -1326,12 +1343,18 @@ function EditReceiptScreen() {
           return (
             <TouchableOpacity
               key={code}
-              onPress={() => setCurrencyCode(code)}
+              onPress={() => {
+                if (isPremiumCurrency(code) && !isPremium) {
+                  router.push('/paywall');
+                  return;
+                }
+                setCurrencyCode(code);
+              }}
               activeOpacity={0.7}
               style={[styles.currencyPill, active && styles.currencyPillActive]}
             >
               <Text style={[styles.currencyPillText, active && styles.currencyPillTextActive]}>
-                {code}
+                {isPremiumCurrency(code) && !isPremium ? `${code} 🔒` : code}
               </Text>
             </TouchableOpacity>
           );
@@ -1486,8 +1509,12 @@ function EditReceiptScreen() {
                 style={[
                   styles.itemCategoryDot,
                   {
-                    backgroundColor:
-                      theme.colors.category[((item.category as Category) || 'Other') as Category],
+                    backgroundColor: resolveCategoryColor(
+                      item.category || 'Other',
+                      theme.colors.category,
+                      customCategories,
+                      theme.colors.accent,
+                    ),
                   },
                 ]}
               />
@@ -1583,6 +1610,15 @@ function EditReceiptScreen() {
                   );
                 })}
               </View>
+              <CustomCategoryPicker
+                householdId={getCurrentHouseholdId()}
+                customs={customCategories}
+                selected={itemCategory}
+                isPremium={isPremium}
+                onSelect={setItemCategory}
+                onCustomsChange={setCustomCategories}
+                onUpgrade={() => router.push('/paywall')}
+              />
 
               {otherMembers.length === 0 && (
                 <TouchableOpacity

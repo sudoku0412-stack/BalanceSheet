@@ -17,6 +17,7 @@ const mockSetActiveHousehold = jest.fn(async () => {});
 const mockToastShow = jest.fn();
 
 const mockSettingsPush = jest.fn();
+let mockIsPremium = false;
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ back: jest.fn(), push: mockSettingsPush, replace: jest.fn() }),
@@ -53,7 +54,7 @@ jest.mock('../../components/ui/Toast', () => ({
 jest.mock('../../lib/EntitlementsContext', () => ({
   useEntitlements: () => ({
     loading: false,
-    isPremium: false,
+    isPremium: mockIsPremium,
     offerings: null,
     refreshOfferings: jest.fn(),
     purchasePackage: jest.fn(),
@@ -78,6 +79,13 @@ jest.mock('../../lib/secureStorage', () => ({
   setBudgetAlertsEnabled: jest.fn(async () => {}),
   setCategoryBudget: jest.fn(async () => {}),
   setCurrency: jest.fn(async () => {}),
+}));
+
+jest.mock('../../lib/customCategories', () => ({
+  MAX_CUSTOM_CATEGORY_NAME: 24,
+  getCustomCategories: jest.fn(async () => [{ name: 'Pets', color: '#D6336C' }]),
+  addCustomCategory: jest.fn(),
+  removeCustomCategory: jest.fn(async () => []),
 }));
 
 jest.mock('../../lib/notifications', () => ({
@@ -105,7 +113,8 @@ jest.mock('uuid', () => ({
 import SettingsScreen from '../../app/settings';
 import { getHouseholdMembers, inviteUserToHousehold, leaveHousehold } from '../../lib/cloudSync';
 import { getAllReceipts } from '../../lib/database';
-import { setBudgetAlertsEnabled } from '../../lib/secureStorage';
+import { setBudgetAlertsEnabled, setCurrency } from '../../lib/secureStorage';
+import { removeCustomCategory } from '../../lib/customCategories';
 import { requestNotificationPermission } from '../../lib/notifications';
 
 const mockGetHouseholdMembers = getHouseholdMembers as jest.Mock;
@@ -118,6 +127,7 @@ const mockRequestNotificationPermission = requestNotificationPermission as jest.
 describe('SettingsScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIsPremium = false;
     mockGetHouseholdMembers.mockResolvedValue([]);
     mockInviteUserToHousehold.mockResolvedValue({ ok: true });
     mockLeaveHousehold.mockResolvedValue({ ok: true, nextActiveHouseholdId: 'hh-solo' });
@@ -145,6 +155,45 @@ describe('SettingsScreen', () => {
     expect(mockSettingsPush).toHaveBeenCalledWith('/incomes');
     fireEvent.press(screen.getByText('Savings goals · Premium'));
     expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
+  });
+
+  it('free user: premium currency pill opens the paywall instead of switching', async () => {
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByText('AUD 🔒'));
+    fireEvent.press(screen.getByText('AUD 🔒'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
+    expect(setCurrency).not.toHaveBeenCalled();
+    // free currencies still switch normally
+    fireEvent.press(screen.getByText('EUR'));
+    expect(setCurrency).toHaveBeenCalledWith('EUR');
+  });
+
+  it('premium user: premium currency pill switches currency', async () => {
+    mockIsPremium = true;
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByText('JPY'));
+    expect(screen.queryByText('JPY 🔒')).toBeNull();
+    fireEvent.press(screen.getByText('JPY'));
+    expect(setCurrency).toHaveBeenCalledWith('JPY');
+    expect(mockSettingsPush).not.toHaveBeenCalledWith('/paywall');
+  });
+
+  it('free user: custom categories & budgets row is locked and opens the paywall', async () => {
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('custom-categories-locked'));
+    expect(screen.queryByTestId('custom-budget-row-Pets')).toBeNull();
+    fireEvent.press(screen.getByTestId('custom-categories-locked'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
+  });
+
+  it('premium user: shows custom category budget rows and can remove one', async () => {
+    mockIsPremium = true;
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('custom-budget-row-Pets'));
+    expect(screen.queryByTestId('custom-categories-locked')).toBeNull();
+    fireEvent.press(screen.getByTestId('custom-remove-Pets'));
+    await waitFor(() => expect(removeCustomCategory).toHaveBeenCalledWith('hh1', 'Pets'));
+    await waitFor(() => expect(screen.queryByTestId('custom-budget-row-Pets')).toBeNull());
   });
 
   it('sending an email invite calls inviteUserToHousehold and shows a success toast', async () => {

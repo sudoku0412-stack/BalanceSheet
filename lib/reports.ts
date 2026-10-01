@@ -1,6 +1,6 @@
 import { Category, Receipt } from '../types';
 import { isInCalendarRange } from './calendarDate';
-import { CurrencyCode, convertFromUsd } from './currency';
+import { CurrencyCode, convertFromUsd, currencyDecimals } from './currency';
 
 /**
  * Pure analytics over a list of receipts. None of these functions
@@ -679,7 +679,7 @@ export function receiptsToCsv(receipts: Receipt[], currency: CurrencyCode = 'USD
   // Every stored amount is USD-canonical — convert once here so the
   // export matches whatever currency the app is showing, instead of
   // always dumping raw USD regardless of the user's selection.
-  const money = (n: number) => convertFromUsd(n, currency).toFixed(currency === 'INR' ? 0 : 2);
+  const money = (n: number) => convertFromUsd(n, currency).toFixed(currencyDecimals(currency));
   const header = [
     'Date',
     'Store',

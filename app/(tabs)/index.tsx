@@ -14,6 +14,11 @@ import {
 } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 import { checkBudgetsAndNotify } from '../../lib/notifications';
+import {
+  getCustomCategories,
+  resolveCategoryColor,
+  type CustomCategory,
+} from '../../lib/customCategories';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { CashflowStats, Receipt, MonthlyStats, SavingsGoal } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
@@ -579,6 +584,7 @@ export default function DashboardScreen() {
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [stats, setStats] = useState<MonthlyStats>({
     totalSpent: 0,
     receiptCount: 0,
@@ -613,7 +619,7 @@ export default function DashboardScreen() {
     const householdId = getCurrentHouseholdId();
     const year = viewedMonth.getFullYear();
     const month = viewedMonth.getMonth() + 1;
-    const [data, incomes, prevData, budgetMap, currencyCode, memberList, goals, toReview] = await Promise.all([
+    const [data, incomes, prevData, budgetMap, currencyCode, memberList, goals, toReview, customs] = await Promise.all([
       getReceiptsByMonth(year, month),
       getIncomesByMonth(year, month),
       getReceiptsByMonth(prevMonth.getFullYear(), prevMonth.getMonth() + 1),
@@ -626,6 +632,9 @@ export default function DashboardScreen() {
       Promise.resolve()
         .then(() => getReviewQueueCount())
         .catch(() => 0),
+      householdId
+        ? getCustomCategories(householdId).catch(() => [] as CustomCategory[])
+        : Promise.resolve([] as CustomCategory[]),
     ]);
     setReceipts(data);
     setStats(computeStats(data));
@@ -636,6 +645,7 @@ export default function DashboardScreen() {
     setMembers(memberList ?? []);
     setSavingsGoals(goals);
     setReviewCount(toReview);
+    setCustomCategories(customs);
   }, [monthOffset, user?.uid]);
 
   useFocusEffect(
@@ -989,10 +999,12 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.compBar}>
               {stats.categories.map((c) => {
-                const isStandard = (ALL_CATEGORIES as readonly string[]).includes(c.category);
-                const color = isStandard
-                  ? theme.colors.category[c.category as keyof typeof theme.colors.category]
-                  : theme.colors.accent;
+                const color = resolveCategoryColor(
+                  c.category,
+                  theme.colors.category,
+                  customCategories,
+                  theme.colors.accent,
+                );
                 return (
                   <View
                     key={c.category}
@@ -1006,10 +1018,12 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.compLegend}>
               {stats.categories.slice(0, 4).map((c) => {
-                const isStandard = (ALL_CATEGORIES as readonly string[]).includes(c.category);
-                const color = isStandard
-                  ? theme.colors.category[c.category as keyof typeof theme.colors.category]
-                  : theme.colors.accent;
+                const color = resolveCategoryColor(
+                  c.category,
+                  theme.colors.category,
+                  customCategories,
+                  theme.colors.accent,
+                );
                 return (
                   <View key={c.category} style={styles.compLegendItem}>
                     <View style={[styles.compDot, { backgroundColor: color }]} />
@@ -1135,7 +1149,12 @@ export default function DashboardScreen() {
                 const catColor =
                   b.category === RECURRING_BUDGET_KEY
                     ? theme.colors.accent
-                    : theme.colors.category[b.category as keyof typeof theme.colors.category];
+                    : resolveCategoryColor(
+                        b.category,
+                        theme.colors.category,
+                        customCategories,
+                        theme.colors.accent,
+                      );
                 const ratio = b.limit > 0 ? Math.min(b.spent / b.limit, 1) : 0;
                 return (
                   <View key={b.category} style={styles.budgetChip}>

@@ -55,12 +55,21 @@ import { RECURRING_BUDGET_KEY } from '../lib/recurring';
 import { suggestEmailCompletions } from '../lib/emailSuggestions';
 import { withTimeout } from '../lib/withTimeout';
 import { LegalLinksRow } from '../components/ui/LegalLinksRow';
+import { Ionicons } from '@expo/vector-icons';
+import { CustomCategoryPicker } from '../components/ui/CustomCategoryPicker';
+import {
+  getCustomCategories,
+  removeCustomCategory,
+  type CustomCategory,
+} from '../lib/customCategories';
 import {
   CURRENCIES,
   CURRENCY_SYMBOLS,
   convertFromUsd,
   convertToUsd,
+  currencyDecimals,
   formatCurrency,
+  isPremiumCurrency,
   type CurrencyCode,
 } from '../lib/currency';
 import { Category } from '../types';
@@ -411,6 +420,7 @@ export default function SettingsScreen() {
   // setBudgetAlertsEnabled) — the same store the dashboard reads from.
   const [categoryBudgetsUsd, setCategoryBudgetsUsd] = useState<Record<string, number>>({});
   const [budgetInputs, setBudgetInputs] = useState<Record<string, string>>({});
+  const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
   const [budgetAlertsEnabled, setBudgetAlertsEnabledState] = useState(false);
   const [exportingAll, setExportingAll] = useState(false);
   const [currency, setCurrencyState] = useState<CurrencyCode>('USD');
@@ -557,12 +567,14 @@ export default function SettingsScreen() {
       (async () => {
         const householdId = getCurrentHouseholdId();
         if (!householdId) return;
-        const [budgets, alertsEnabled, storedCurrency] = await Promise.all([
+        const [budgets, alertsEnabled, storedCurrency, customs] = await Promise.all([
           getCategoryBudgets(householdId),
           getBudgetAlertsEnabled(householdId),
           getCurrency(),
+          getCustomCategories(householdId).catch(() => [] as CustomCategory[]),
         ]);
         if (!mounted) return;
+        setCustomCategories(customs);
         const nextCurrency: CurrencyCode =
           storedCurrency && (CURRENCIES as string[]).includes(storedCurrency)
             ? (storedCurrency as CurrencyCode)
@@ -588,6 +600,10 @@ export default function SettingsScreen() {
 
   const selectCurrency = (code: CurrencyCode) => {
     if (code === currency) return;
+    if (isPremiumCurrency(code) && !isPremium) {
+      router.push('/paywall');
+      return;
+    }
     setCurrencyState(code);
     persistCurrency(code);
     // Re-render every budget input converted into the newly selected
@@ -990,7 +1006,7 @@ export default function SettingsScreen() {
                         active && styles.currencyPillTextActive,
                       ]}
                     >
-                      {code}
+                      {isPremiumCurrency(code) && !isPremium ? `${code} 🔒` : code}
                     </Text>
                   </Pressable>
                 );
@@ -1029,6 +1045,58 @@ export default function SettingsScreen() {
               </View>
             </View>
           ))}
+          {isPremium ? (
+            <>
+              {customCategories.map((c) => (
+                <View key={c.name} style={styles.budgetRow} testID={`custom-budget-row-${c.name}`}>
+                  <View style={[styles.categoryDot, { backgroundColor: c.color }]} />
+                  <Text style={styles.categoryName} numberOfLines={1}>
+                    {c.name}
+                  </Text>
+                  <View style={styles.budgetInputBox}>
+                    <Text style={styles.budgetCurrencyPrefix}>{CURRENCY_SYMBOLS[currency]}</Text>
+                    <TextInput
+                      value={budgetInputs[c.name] ?? ''}
+                      onChangeText={(v) => updateCategoryBudget(c.name, v)}
+                      placeholder="0"
+                      placeholderTextColor={theme.colors.textMuted}
+                      keyboardType="numeric"
+                      style={styles.budgetInput}
+                    />
+                  </View>
+                  <Pressable
+                    testID={`custom-remove-${c.name}`}
+                    onPress={async () => {
+                      const hid = getCurrentHouseholdId();
+                      if (hid) setCustomCategories(await removeCustomCategory(hid, c.name));
+                    }}
+                    hitSlop={8}
+                    accessibilityLabel={`Remove ${c.name}`}
+                  >
+                    <Ionicons name="close-circle-outline" size={20} color={theme.colors.textMuted} />
+                  </Pressable>
+                </View>
+              ))}
+              <CustomCategoryPicker
+                householdId={getCurrentHouseholdId()}
+                customs={[]}
+                selected=""
+                isPremium
+                onSelect={() => {}}
+                onCustomsChange={setCustomCategories}
+                onUpgrade={() => {}}
+              />
+            </>
+          ) : (
+            <Pressable
+              testID="custom-categories-locked"
+              onPress={() => router.push('/paywall')}
+              style={styles.leaveHouseholdBtn}
+              hitSlop={4}
+            >
+              <Text style={styles.leaveHouseholdText}>Custom categories & budgets · Premium</Text>
+            </Pressable>
+          )}
           {/* Not a receipt category — a separate axis covering ALL
               recurring expenses regardless of their own category, so a
               "how much am I auto-committed to every month" limit can be
@@ -1124,7 +1192,7 @@ export default function SettingsScreen() {
  * untouched by updateCategoryBudget. */
 function formatBudgetInput(amount: number, currency: CurrencyCode): string {
   if (amount === 0) return '';
-  const decimals = currency === 'INR' ? 0 : 2;
+  const decimals = currencyDecimals(currency);
   return amount.toFixed(decimals);
 }
 
