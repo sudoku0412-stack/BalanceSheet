@@ -113,7 +113,12 @@ jest.mock('uuid', () => ({
 import SettingsScreen from '../../app/settings';
 import { getHouseholdMembers, inviteUserToHousehold, leaveHousehold } from '../../lib/cloudSync';
 import { getAllReceipts } from '../../lib/database';
-import { setBudgetAlertsEnabled, setCurrency } from '../../lib/secureStorage';
+import {
+  getCategoryBudgets,
+  setBudgetAlertsEnabled,
+  setCategoryBudget,
+  setCurrency,
+} from '../../lib/secureStorage';
 import { removeCustomCategory } from '../../lib/customCategories';
 import { requestNotificationPermission } from '../../lib/notifications';
 
@@ -194,6 +199,15 @@ describe('SettingsScreen', () => {
     fireEvent.press(screen.getByTestId('custom-remove-Pets'));
     await waitFor(() => expect(removeCustomCategory).toHaveBeenCalledWith('hh1', 'Pets'));
     await waitFor(() => expect(screen.queryByTestId('custom-budget-row-Pets')).toBeNull());
+  });
+
+  it('premium user: removing a custom category also zeroes its budget', async () => {
+    mockIsPremium = true;
+    (getCategoryBudgets as jest.Mock).mockResolvedValueOnce({ Pets: 25 });
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('custom-budget-row-Pets'));
+    fireEvent.press(screen.getByTestId('custom-remove-Pets'));
+    await waitFor(() => expect(setCategoryBudget).toHaveBeenCalledWith('hh1', 'Pets', 0));
   });
 
   it('sending an email invite calls inviteUserToHousehold and shows a success toast', async () => {

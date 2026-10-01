@@ -1068,7 +1068,17 @@ export default function SettingsScreen() {
                     testID={`custom-remove-${c.name}`}
                     onPress={async () => {
                       const hid = getCurrentHouseholdId();
-                      if (hid) setCustomCategories(await removeCustomCategory(hid, c.name));
+                      if (!hid) return;
+                      setCustomCategories(await removeCustomCategory(hid, c.name));
+                      // Drop its budget too — with the row gone the user
+                      // could never clear a leftover limit otherwise.
+                      if (categoryBudgetsUsd[c.name] > 0) {
+                        const nextBudgets = { ...categoryBudgetsUsd, [c.name]: 0 };
+                        setCategoryBudgetsUsd(nextBudgets);
+                        setBudgetInputs((prev) => ({ ...prev, [c.name]: '' }));
+                        setCategoryBudget(hid, c.name, 0);
+                        pushBudgetsToCloud(nextBudgets, budgetAlertsEnabled);
+                      }
                     }}
                     hitSlop={8}
                     accessibilityLabel={`Remove ${c.name}`}

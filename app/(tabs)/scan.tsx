@@ -799,13 +799,17 @@ export default function ScanScreen() {
   const { user, profile, setEditInProgress } = useAuth();
   const { isPremium } = useEntitlements();
   const [customCategories, setCustomCategories] = useState<CustomCategory[]>([]);
-  useEffect(() => {
-    const hid = getCurrentHouseholdId();
-    if (!hid) return;
-    getCustomCategories(hid)
-      .then(setCustomCategories)
-      .catch(() => {});
-  }, []);
+  // Re-read on every focus: Settings (another tab) can add/remove
+  // categories while this screen stays mounted.
+  useFocusEffect(
+    useCallback(() => {
+      const hid = getCurrentHouseholdId();
+      if (!hid) return;
+      getCustomCategories(hid)
+        .then(setCustomCategories)
+        .catch(() => {});
+    }, []),
+  );
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
 
   // Gates the household switcher (app/households.tsx) while this screen

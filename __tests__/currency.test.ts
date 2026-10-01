@@ -77,5 +77,7 @@ describe('premium currencies', () => {
     for (const c of ['USD', 'AUD', 'CHF', 'AED'] as const) expect(currencyDecimals(c)).toBe(2);
     expect(formatCurrency(10, 'JPY')).toBe('¥1500');
     expect(formatCurrency(10, 'AUD')).toBe('A$15.20');
+    expect(formatCurrency(10, 'CHF')).toBe('CHF 8.80');
+    expect(formatCurrency(10, 'SEK')).toBe('kr 105.00');
   });
 });

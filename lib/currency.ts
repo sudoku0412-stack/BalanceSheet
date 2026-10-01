@@ -60,13 +60,20 @@ export const CURRENCY_SYMBOLS: Record<CurrencyCode, string> = {
   JPY: '¥',
   KRW: '₩',
   CNY: 'CN¥',
-  CHF: 'CHF ',
-  SEK: 'kr ',
+  CHF: 'CHF',
+  SEK: 'kr',
   MXN: 'MX$',
   BRL: 'R$',
   ZAR: 'R',
-  AED: 'AED ',
+  AED: 'AED',
 };
+
+/** Symbol as it prefixes an amount: alphabetic symbols (CHF, kr, AED, R)
+ *  get a trailing space ("CHF 13.20"); punctuation ones (€, A$) do not. */
+export function currencyPrefix(code: CurrencyCode): string {
+  const sym = CURRENCY_SYMBOLS[code];
+  return /[A-Za-z]$/.test(sym) ? `${sym} ` : sym;
+}
 
 /**
  * Fixed demo exchange rates (USD is canonical, matching the design spec's
@@ -105,5 +112,5 @@ export function convertToUsd(amount: number, from: CurrencyCode): number {
 export function formatCurrency(amountUsd: number, currency: CurrencyCode): string {
   const converted = convertFromUsd(amountUsd, currency);
   const decimals = currencyDecimals(currency);
-  return `${CURRENCY_SYMBOLS[currency]}${converted.toFixed(decimals)}`;
+  return `${currencyPrefix(currency)}${converted.toFixed(decimals)}`;
 }
