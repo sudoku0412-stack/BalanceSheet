@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 import { useStyles, useTheme } from '../../constants/theme';
@@ -7,7 +8,7 @@ import { tapLight } from '../../lib/haptics';
 
 import { useT } from '../../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email?.trim() || 'Member';
+  return m.displayName?.trim() || m.email?.trim() || tr('memberFallback');
 }
 
 function initialFor(label: string): string {

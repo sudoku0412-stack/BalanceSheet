@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -64,6 +65,7 @@ import { DateField } from '../../components/ui/DateField';
 import { sanitizeAmountInput, parseAmountInput } from '../../lib/amountValidation';
 
 import { useT } from '../../lib/I18nContext';
+import { categoryLabel } from '../../lib/categoryLabel';
 import { dateFnsLocale } from '../../lib/dateLocale';
 import { getActiveLanguage } from '../../lib/i18n';
 /** Validate the persisted currency code, defaulting to USD when unset
@@ -99,7 +101,7 @@ function safeAmount(n: number | null | undefined, digits = 2): string {
 }
 
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email?.trim() || 'Member';
+  return m.displayName?.trim() || m.email?.trim() || tr('memberFallback');
 }
 
 function initialFor(label: string): string {
@@ -1252,13 +1254,13 @@ function EditReceiptScreen() {
 
   // "Split with N people" / "You only" summary shown on each item row.
   const splitSummaryLabel = (item: LineItem): string => {
-    if (otherMembers.length === 0) return 'You only';
+    if (otherMembers.length === 0) return tr('youOnly');
     const resolvedCount =
       item.splitWith && item.splitWith.length
         ? item.splitWith.length
         : participantIds.length;
-    if (resolvedCount <= 1) return 'You only';
-    return `Split with ${resolvedCount} people`;
+    if (resolvedCount <= 1) return tr('youOnly');
+    return tr('splitWithPeople', { count: resolvedCount });
   };
 
   return (
@@ -1410,7 +1412,7 @@ function EditReceiptScreen() {
               { backgroundColor: theme.colors.category[category] },
             ]}
           />
-          <Text style={styles.categoryRowLabel}>{category}</Text>
+          <Text style={styles.categoryRowLabel}>{categoryLabel(category)}</Text>
           {isRecurring && (
             <View style={styles.recurringBadge}>
               <Text style={styles.recurringBadgeText}>{t('recurring2')}</Text>
@@ -1601,7 +1603,7 @@ function EditReceiptScreen() {
                           { color: active ? '#fff' : color },
                         ]}
                       >
-                        {cat}
+                        {categoryLabel(cat)}
                       </Text>
                     </TouchableOpacity>
                   );

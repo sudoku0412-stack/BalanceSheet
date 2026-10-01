@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
@@ -71,6 +72,7 @@ import { ALL_CATEGORIES } from '../../constants/categories';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { useToast } from '../../components/ui/Toast';
+import { categoryLabel } from '../../lib/categoryLabel';
 import { SplitSection, SplitMethod } from '../../components/ui/SplitSection';
 import { PaidBySection } from '../../components/ui/PaidBySection';
 import { DateField } from '../../components/ui/DateField';
@@ -82,7 +84,7 @@ import { useT } from '../../lib/I18nContext';
 // (Add Expense / manual entry only) — mirrors the label/initial logic
 // already used for the receipt-level split picker in app/edit/[id].tsx.
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email?.trim() || 'Member';
+  return m.displayName?.trim() || m.email?.trim() || tr('memberFallback');
 }
 function initialFor(label: string): string {
   const trimmed = label.trim();
@@ -1021,13 +1023,13 @@ export default function ScanScreen() {
 
   // "Split with 2 people" / "You only" summary shown on each item row.
   const splitSummaryLabel = (item: LineItem): string => {
-    if (otherMembers.length === 0) return 'You only';
+    if (otherMembers.length === 0) return tr('youOnly');
     const resolvedCount =
       item.splitWith && item.splitWith.length
         ? item.splitWith.length
         : participantIds.length;
-    if (resolvedCount <= 1) return 'You only';
-    return `Split with ${resolvedCount} people`;
+    if (resolvedCount <= 1) return tr('youOnly');
+    return tr('splitWithPeople', { count: resolvedCount });
   };
 
   const runOCR = async (uri: string) => {
@@ -2090,7 +2092,7 @@ export default function ScanScreen() {
                     { color: active ? '#fff' : color },
                   ]}
                 >
-                  {cat}
+                  {categoryLabel(cat)}
                 </Text>
               </TouchableOpacity>
             );
@@ -2330,7 +2332,7 @@ export default function ScanScreen() {
                           { color: active ? '#fff' : color },
                         ]}
                       >
-                        {cat}
+                        {categoryLabel(cat)}
                       </Text>
                     </TouchableOpacity>
                   );

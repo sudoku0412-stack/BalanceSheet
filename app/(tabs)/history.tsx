@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ import { INCOME_CATEGORY_ICONS, incomeCategoryLabel } from '../../constants/inco
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ReceiptListSkeleton } from '../../components/ui/Skeleton';
 import { useToast } from '../../components/ui/Toast';
+import { categoryLabel } from '../../lib/categoryLabel';
 import { receiptMatchesCategory } from '../../lib/receiptFilter';
 import { isInCalendarMonth } from '../../lib/calendarDate';
 import { findRecurring } from '../../lib/reports';
@@ -40,7 +42,9 @@ import { onLocalDataChanged } from '../../lib/dataSync';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { useAuth } from '../../lib/AuthContext';
 
-import { useT } from '../../lib/I18nContext';
+import { useT, useLanguage } from '../../lib/I18nContext';
+import { relativeDayLabel } from '../../lib/dateLocale';
+import type { Language } from '../../lib/i18n';
 const FILTER_ALL = 'All' as const;
 type CategoryFilter = typeof FILTER_ALL | Category | string;
 type KindFilter = 'all' | 'income' | 'expenses';
@@ -51,11 +55,8 @@ type FeedItem =
 
 /** "Today" / "Yesterday" / "Jul 27" — the date-group label used to
  *  section the expense list, per the design spec's grouped-list layout. */
-function dateGroupLabel(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (isToday(d)) return 'Today';
-  if (isYesterday(d)) return 'Yesterday';
-  return format(d, 'MMM d');
+function dateGroupLabel(dateStr: string, language: Language): string {
+  return relativeDayLabel(new Date(dateStr), language);
 }
 
 /** Groups an already date-sorted (DESC) feed into consecutive
@@ -84,10 +85,10 @@ function groupIncomesByMember(
     .map(({ title, data }) => ({ title, data }));
 }
 
-function groupByDate(items: FeedItem[]): { title: string; data: FeedItem[] }[] {
+function groupByDate(items: FeedItem[], language: Language): { title: string; data: FeedItem[] }[] {
   const sections: { title: string; data: FeedItem[] }[] = [];
   for (const item of items) {
-    const label = dateGroupLabel(item.date);
+    const label = dateGroupLabel(item.date, language);
     const current = sections[sections.length - 1];
     if (current && current.title === label) {
       current.data.push(item);
@@ -107,14 +108,15 @@ function memberDisplayName(
   members: HouseholdMember[],
   currentUid: string | undefined,
 ): string {
-  if (currentUid && uid === currentUid) return 'You';
+  if (currentUid && uid === currentUid) return tr('you');
   const m = members.find((x) => x.uid === uid);
-  if (m?.isYou) return 'You';
+  if (m?.isYou) return tr('you');
   return m?.displayName?.trim() || m?.email?.trim() || truncateUid(uid);
 }
 
 export default function HistoryScreen() {
   const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const router = useRouter();
   const toast = useToast();
@@ -529,7 +531,7 @@ export default function HistoryScreen() {
     groupByMember;
   const sections = groupByMember
     ? groupIncomesByMember(feed, members, user?.uid)
-    : groupByDate(feed);
+    : groupByDate(feed, language);
 
   // Real recurring-charge detection (lib/reports.findRecurring) run against
   // the full receipt set, independent of the active search/filter — a
@@ -544,9 +546,9 @@ export default function HistoryScreen() {
   }, [receipts]);
 
   const kindChips: { key: KindFilter; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'income', label: 'Income' },
-    { key: 'expenses', label: 'Expenses' },
+    { key: 'all', label: t('all') },
+    { key: 'income', label: t('income') },
+    { key: 'expenses', label: t('expenses') },
   ];
 
   return (
@@ -629,7 +631,7 @@ export default function HistoryScreen() {
                 style={[styles.chip, active && styles.chipActive]}
               >
                 <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-                  {item}
+                  {item === FILTER_ALL ? t('all') : categoryLabel(item)}
                 </Text>
               </TouchableOpacity>
             );
@@ -804,7 +806,7 @@ export default function HistoryScreen() {
                             {r.storeName}
                           </Text>
                           <Text style={styles.rowMeta}>
-                            {r.category}
+                            {categoryLabel(r.category)}
                             {isRecurring ? t('recurring') : ''}
                           </Text>
                         </View>

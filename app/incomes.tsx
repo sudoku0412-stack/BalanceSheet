@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -33,12 +34,11 @@ import { getCurrency } from '../lib/secureStorage';
 import { useToast } from '../components/ui/Toast';
 import { Income } from '../types';
 
-import { useT } from '../lib/I18nContext';
-function dateGroupLabel(dateStr: string): string {
-  const d = new Date(dateStr);
-  if (isToday(d)) return 'Today';
-  if (isYesterday(d)) return 'Yesterday';
-  return format(d, 'MMM d, yyyy');
+import { useT, useLanguage } from '../lib/I18nContext';
+import { relativeDayLabel } from '../lib/dateLocale';
+import type { Language } from '../lib/i18n';
+function dateGroupLabel(dateStr: string, language: Language): string {
+  return relativeDayLabel(new Date(dateStr), language, true);
 }
 
 function memberName(
@@ -46,14 +46,15 @@ function memberName(
   members: HouseholdMember[],
   currentUid: string | undefined,
 ): string {
-  if (currentUid && uid === currentUid) return 'You';
+  if (currentUid && uid === currentUid) return tr('you');
   const m = members.find((x) => x.uid === uid);
-  if (m?.isYou) return 'You';
+  if (m?.isYou) return tr('you');
   return m?.displayName?.trim() || m?.email?.trim() || (uid.length > 8 ? `${uid.slice(0, 6)}…` : uid);
 }
 
 export default function IncomesScreen() {
   const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const toast = useToast();
   const { user } = useAuth();
@@ -189,13 +190,13 @@ export default function IncomesScreen() {
   const sections = useMemo(() => {
     const groups: { title: string; data: Income[] }[] = [];
     for (const row of visible) {
-      const title = dateGroupLabel(row.date);
+      const title = dateGroupLabel(row.date, language);
       const last = groups[groups.length - 1];
       if (last && last.title === title) last.data.push(row);
       else groups.push({ title, data: [row] });
     }
     return groups;
-  }, [visible]);
+  }, [visible, language]);
 
   const totalUsd = visible.reduce((s, i) => s + (i.amountUsd || 0), 0);
 
@@ -231,7 +232,7 @@ export default function IncomesScreen() {
           {
             icon: 'add',
             onPress: () => router.push('/add-income' as never),
-            accessibilityLabel: 'Add income',
+            accessibilityLabel: t('addIncome'),
           },
         ]}
       />

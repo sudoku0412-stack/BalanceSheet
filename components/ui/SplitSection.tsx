@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React from 'react';
 import { Platform, Pressable, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,7 +12,7 @@ import { LineItem } from '../../types';
 
 import { useT } from '../../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email?.trim() || 'Member';
+  return m.displayName?.trim() || m.email?.trim() || tr('memberFallback');
 }
 
 function initialFor(label: string): string {

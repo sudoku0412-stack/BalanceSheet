@@ -10,7 +10,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useStyles, useTheme } from '../../constants/theme';
 
-import { useT } from '../../lib/I18nContext';
+import { useT, useLanguage } from '../../lib/I18nContext';
+import { formatMonthYear } from '../../lib/dateLocale';
 /**
  * Pure-JS calendar date picker. No native modules — works on any
  * existing OTA install. Renders a centered modal card with a
@@ -39,6 +40,7 @@ export function DatePickerModal({
   onSelect: (d: Date) => void;
 }) {
   const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const styles = useStyles((t) => ({
     backdrop: {
@@ -220,7 +222,7 @@ export function DatePickerModal({
               />
             </TouchableOpacity>
             <Text style={styles.monthLabel}>
-              {format(browseMonth, 'MMMM yyyy')}
+              {formatMonthYear(browseMonth, language)}
             </Text>
             <TouchableOpacity
               onPress={() => setBrowseMonth(new Date(year, month + 1, 1))}

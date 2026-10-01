@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React, { useState } from 'react';
 import { Pressable, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,12 +12,20 @@ import {
 } from '../../lib/customCategories';
 
 import { useT } from '../../lib/I18nContext';
-const ERROR_TEXT: Record<Extract<AddCustomCategoryResult, { ok: false }>['reason'], string> = {
-  empty: 'Enter a name.',
-  tooLong: `Keep it under ${MAX_CUSTOM_CATEGORY_NAME} characters.`,
-  duplicate: 'That category already exists.',
-  limit: 'Custom category limit reached.',
-};
+function errorText(
+  reason: Extract<AddCustomCategoryResult, { ok: false }>['reason'],
+): string {
+  switch (reason) {
+    case 'empty':
+      return tr('catErrEmpty');
+    case 'tooLong':
+      return tr('catErrTooLong', { max: MAX_CUSTOM_CATEGORY_NAME });
+    case 'duplicate':
+      return tr('catErrDuplicate');
+    default:
+      return tr('catErrLimit');
+  }
+}
 
 /**
  * Premium custom categories inside a category chip area: the user's own
@@ -78,7 +87,7 @@ export function CustomCategoryPicker({
     if (!householdId) return;
     const result = await addCustomCategory(householdId, name);
     if (!result.ok) {
-      setError(ERROR_TEXT[result.reason]);
+      setError(errorText(result.reason));
       return;
     }
     void syncCustomCategoriesToCloud(householdId, { add: [result.added] });

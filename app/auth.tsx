@@ -209,7 +209,7 @@ function EmailForm({ mode }: { mode: Tab }) {
   const submitReset = async () => {
     setError(null);
     if (!email.trim()) {
-      setError('Enter your email above first, then tap "Forgot password?".');
+      setError(t('enterEmailFirst'));
       return;
     }
     try {
@@ -226,15 +226,15 @@ function EmailForm({ mode }: { mode: Tab }) {
   const submit = async () => {
     setError(null);
     if (mode === 'signup' && !fullName.trim()) {
-      setError('Full name is required.');
+      setError(t('fullNameRequired'));
       return;
     }
     if (!email.trim() || !password) {
-      setError('Email and password are required.');
+      setError(t('emailPasswordRequired'));
       return;
     }
     if (mode === 'signup' && password !== confirmPassword) {
-      setError('Passwords do not match.');
+      setError(t('passwordsDoNotMatch'));
       return;
     }
     try {

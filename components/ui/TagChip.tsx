@@ -1,3 +1,5 @@
+import { categoryLabel } from '../../lib/categoryLabel';
+import { useLanguage } from '../../lib/I18nContext';
 import React from 'react';
 import { Pressable, Text, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -88,7 +90,7 @@ export function TagChip({
         ]}
         numberOfLines={1}
       >
-        {tag}
+        {categoryLabel(tag)}
       </Text>
     </View>
   );

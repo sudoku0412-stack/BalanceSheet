@@ -34,7 +34,8 @@ import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { CATEGORY_ICONS, ALL_CATEGORIES } from '../../constants/categories';
 
 import { useT, useLanguage, type TFn } from '../../lib/I18nContext';
-import { formatMonthDay, formatMonthYear } from '../../lib/dateLocale';
+import { categoryLabel } from '../../lib/categoryLabel';
+import { formatMonthYear, relativeDayLabel } from '../../lib/dateLocale';
 import type { Language } from '../../lib/i18n';
 /**
  * Single-arc radial progress ring, reusing the same react-native-svg
@@ -104,10 +105,8 @@ function firstNameOf(displayName: string | null | undefined, profile: Profile | 
   return full ? full.split(/\s+/)[0] : null;
 }
 
-function dateLabel(date: Date, t: TFn, language: Language): string {
-  if (isToday(date)) return t('today');
-  if (isYesterday(date)) return t('yesterday');
-  return formatMonthDay(date, language);
+function dateLabel(date: Date, language: Language): string {
+  return relativeDayLabel(date, language);
 }
 
 type BudgetStatus = 'onTrack' | 'watch' | 'over';
@@ -1033,7 +1032,7 @@ export default function DashboardScreen() {
                   <View key={c.category} style={styles.compLegendItem}>
                     <View style={[styles.compDot, { backgroundColor: color }]} />
                     <Text style={styles.compLegendText}>
-                      {c.category} {Math.round(c.percentage)}%
+                      {categoryLabel(c.category)} {Math.round(c.percentage)}%
                     </Text>
                   </View>
                 );
@@ -1183,7 +1182,7 @@ export default function DashboardScreen() {
                       </View>
                     </View>
                     <Text style={styles.budgetChipName} numberOfLines={1}>
-                      {b.category}
+                      {categoryLabel(b.category)}
                     </Text>
                     <Text style={styles.budgetChipAmt}>
                       {t('amountOfAmount', {
@@ -1228,7 +1227,7 @@ export default function DashboardScreen() {
                           {r.storeName}
                         </Text>
                         <Text style={styles.rowMeta}>
-                          {r.category} · {dateLabel(new Date(r.date), t, language)}
+                          {categoryLabel(r.category)} · {dateLabel(new Date(r.date), language)}
                         </Text>
                       </View>
                     </View>

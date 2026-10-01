@@ -5,7 +5,8 @@ import { useStyles, useTheme } from '../../constants/theme';
 import { parseYmdLocal } from '../../lib/parser';
 import { Button } from './Button';
 
-import { useT } from '../../lib/I18nContext';
+import { useT, useLanguage } from '../../lib/I18nContext';
+import { formatShortDate } from '../../lib/dateLocale';
 /**
  * @react-native-community/datetimepicker is a native module — the
  * currently installed binary on a device may predate this feature and
@@ -46,6 +47,7 @@ export function DateField({
   style?: ViewStyle;
 }) {
   const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const styles = useDateFieldStyles();
   const [showPicker, setShowPicker] = useState(false);
@@ -98,7 +100,7 @@ export function DateField({
     <>
       <Pressable style={[styles.input, style]} onPress={openPicker}>
         <Text style={displayDate ? styles.valueText : styles.placeholderText}>
-          {displayDate ? format(displayDate, 'MMM d, yyyy') : placeholder ?? t('selectDate')}
+          {displayDate ? formatShortDate(displayDate, language) : placeholder ?? t('selectDate')}
         </Text>
       </Pressable>
 

@@ -36,13 +36,16 @@ import { useEntitlements } from '../lib/EntitlementsContext';
 import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { CategorySummary, MonthlyStats, Receipt, Category, Income, CashflowStats } from '../types';
 
-import { useT, type TFn } from '../lib/I18nContext';
+import { useT, useLanguage, type TFn } from '../lib/I18nContext';
+import { dateFnsLocale, formatMonthYear } from '../lib/dateLocale';
+import { getActiveLanguage } from '../lib/i18n';
+import { categoryLabel } from '../lib/categoryLabel';
 /**
  * Build a human-readable filename for the exported receipt report,
  * e.g. "NestExpenseTracker Expense Report - July 2026.pdf".
  */
 function buildExportFilename(month: Date, ext: 'pdf' | 'csv'): string {
-  return `NestExpenseTracker Expense Report - ${format(month, 'MMMM yyyy')}.${ext}`;
+  return `NestExpenseTracker Expense Report - ${format(month, 'MMMM yyyy', { locale: dateFnsLocale(getActiveLanguage()) })}.${ext}`;
 }
 
 export default function ReportsScreenWrapped() {
@@ -68,6 +71,7 @@ export function ReportsScreenEmbedded() {
 
 function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const styles = useReportsStyles();
   const { isPremium } = useEntitlements();
@@ -269,7 +273,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
         >
           <Ionicons name="chevron-back" size={20} color={theme.colors.textPrimary} />
         </Pressable>
-        <Text style={styles.subhead}>{format(now, 'MMMM yyyy')}</Text>
+        <Text style={styles.subhead}>{formatMonthYear(now, language)}</Text>
         <Pressable
           onPress={() => setMonthOffset((v) => v + 1)}
           disabled={isSameMonth(now, new Date())}
@@ -423,7 +427,7 @@ function SummaryCard({
               ]}
             />
             <Text style={styles.legendLabel} numberOfLines={1}>
-              {slice.label}
+              {slice.remaining ? t('remainingUnspent') : categoryLabel(slice.key)}
             </Text>
             <Text style={styles.legendPct}>{slice.percentage.toFixed(1)}%</Text>
           </View>

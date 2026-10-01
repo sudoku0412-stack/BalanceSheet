@@ -13,11 +13,11 @@ import { useStyles, useTheme, Theme } from '../constants/theme';
 import { useEntitlements } from '../lib/EntitlementsContext';
 
 import { useT } from '../lib/I18nContext';
-const FEATURES = [
-  { icon: 'sparkles' as const, label: 'Unlimited AI receipt scanning' },
-  { icon: 'document-text' as const, label: 'Export reports as PDF' },
-  { icon: 'people' as const, label: 'Create or join multiple households' },
-  { icon: 'flag' as const, label: 'Savings goals and envelopes' },
+const FEATURES: { icon: 'sparkles' | 'document-text' | 'people' | 'flag'; labelKey: 'payFeature1' | 'payFeature2' | 'payFeature3' | 'payFeature4' }[] = [
+  { icon: 'sparkles' as const, labelKey: 'payFeature1' },
+  { icon: 'document-text' as const, labelKey: 'payFeature2' },
+  { icon: 'people' as const, labelKey: 'payFeature3' },
+  { icon: 'flag' as const, labelKey: 'payFeature4' },
 ];
 
 /**
@@ -126,11 +126,11 @@ export default function PaywallScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <View style={styles.featureCard}>
           {FEATURES.map((f) => (
-            <View key={f.label} style={styles.featureRow}>
+            <View key={f.labelKey} style={styles.featureRow}>
               <View style={styles.featureIconWrap}>
                 <Ionicons name={f.icon} size={18} color={theme.colors.accent} />
               </View>
-              <Text style={styles.featureLabel}>{f.label}</Text>
+              <Text style={styles.featureLabel}>{t(f.labelKey)}</Text>
             </View>
           ))}
         </View>

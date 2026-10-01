@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -360,7 +361,7 @@ export default function HouseholdsScreen() {
               setForm((f) => (f.mode === 'create' ? { mode: 'none' } : { mode: 'create', value: '', saving: false }));
             },
             disabled: formBusy,
-            accessibilityLabel: 'Create household',
+            accessibilityLabel: t('createHousehold'),
           },
         ]}
       />
@@ -396,7 +397,7 @@ export default function HouseholdsScreen() {
           {memberships.map((m) => {
             const isActive = m.householdId === activeHouseholdId;
             const isRenaming = form.mode === 'rename' && form.hid === m.householdId;
-            const label = m.name || 'Unnamed household';
+            const label = m.name || tr('unnamedHousehold');
             const nameItDisabled = formBusy || deletingHid === m.householdId;
             const card = (
               <View style={[styles.card, isActive && styles.cardActive]}>

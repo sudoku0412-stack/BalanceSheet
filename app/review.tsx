@@ -18,12 +18,15 @@ import { CurrencyCode, formatCurrency } from '../lib/currency';
 import { parseYmdLocal } from '../lib/parser';
 import { Receipt } from '../types';
 
-import { useT } from '../lib/I18nContext';
+import { useT, useLanguage } from '../lib/I18nContext';
+import { formatShortDate } from '../lib/dateLocale';
+import { categoryLabel } from '../lib/categoryLabel';
 /** Review inbox: expenses the app added on its own (recurring
  *  occurrences) wait here until the user confirms, edits, or deletes
  *  them — so an auto-added charge never silently skews the month. */
 export default function ReviewScreen() {
   const t = useT();
+  const { language } = useLanguage();
   const theme = useTheme();
   const router = useRouter();
   const styles = useReviewStyles();
@@ -77,7 +80,7 @@ export default function ReviewScreen() {
 
   const formatDate = (ymd: string): string => {
     const d = parseYmdLocal(ymd);
-    return d ? format(d, 'MMM d, yyyy') : ymd;
+    return d ? formatShortDate(d, language) : ymd;
   };
 
   return (
@@ -123,7 +126,7 @@ export default function ReviewScreen() {
                 <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
                   <Text style={styles.name} numberOfLines={1}>{r.storeName}</Text>
                   <Text style={styles.meta}>
-                    {r.category} · {formatDate(r.date)}
+                    {categoryLabel(r.category)} · {formatDate(r.date)}
                   </Text>
                 </View>
                 <Text style={styles.amount}>{formatCurrency(r.totalAmount, currency)}</Text>

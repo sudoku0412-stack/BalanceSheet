@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
@@ -40,7 +41,7 @@ import { Income, IncomeCategory } from '../types';
 
 import { useT } from '../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email?.trim() || 'Member';
+  return m.displayName?.trim() || m.email?.trim() || tr('memberFallback');
 }
 
 function initialFor(label: string): string {

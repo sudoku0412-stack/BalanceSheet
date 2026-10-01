@@ -55,7 +55,7 @@ export default function EditProfileScreen() {
     if (!user?.uid) return;
     const errors = validateProfileDraft({ firstName, lastName });
     if (!isProfileValidationClean(errors)) {
-      setNameError(errors.firstName ?? errors.lastName ?? 'Check the name fields.');
+      setNameError(errors.firstName ?? errors.lastName ?? t('checkNameFields'));
       return;
     }
     setNameError(null);
@@ -66,7 +66,7 @@ export default function EditProfileScreen() {
     if (trimmedPhone) {
       e164 = normalizePhoneE164(trimmedPhone);
       if (!e164) {
-        setPhoneError('Enter a valid phone number, e.g. +1 416 555 1234.');
+        setPhoneError(t('enterValidPhone'));
         return;
       }
     }

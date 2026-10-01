@@ -36,7 +36,7 @@ export default function ResetPasswordScreen() {
   useEffect(() => {
     (async () => {
       if (!oobCode) {
-        setCodeError('This reset link is missing its code — open it directly from the email.');
+        setCodeError(t('resetLinkMissingCode'));
         setChecking(false);
         return;
       }
@@ -54,11 +54,11 @@ export default function ResetPasswordScreen() {
   const submit = async () => {
     setFormError(null);
     if (password.length < 8) {
-      setFormError('Password must be at least 8 characters.');
+      setFormError(t('passwordMin8'));
       return;
     }
     if (password !== confirmPassword) {
-      setFormError('Passwords do not match.');
+      setFormError(t('passwordsDoNotMatch'));
       return;
     }
     try {

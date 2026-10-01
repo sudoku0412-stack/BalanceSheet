@@ -26,6 +26,7 @@ const LANGUAGE_OPTIONS: LanguagePreference[] = ['system', 'en', 'fr'];
 const REQUEST_TIMEOUT_MS = 15000;
 import { Button } from '../components/ui/Button';
 import { useToast } from '../components/ui/Toast';
+import { categoryLabel } from '../lib/categoryLabel';
 import { ALL_CATEGORIES } from '../constants/categories';
 import { useAuth } from '../lib/AuthContext';
 import { useEntitlements } from '../lib/EntitlementsContext';
@@ -1072,7 +1073,7 @@ export default function SettingsScreen() {
                 style={[styles.categoryDot, { backgroundColor: theme.colors.category[cat] }]}
               />
               <Text style={styles.categoryName} numberOfLines={1}>
-                {cat}
+                {categoryLabel(cat)}
               </Text>
               <View style={styles.budgetInputBox}>
                 <Text style={styles.budgetCurrencyPrefix}>{CURRENCY_SYMBOLS[currency]}</Text>

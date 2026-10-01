@@ -1,3 +1,4 @@
+import { tr } from '../../lib/i18n';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -23,7 +24,7 @@ import { onLocalDataChanged } from '../../lib/dataSync';
 import { useT, useLanguage } from '../../lib/I18nContext';
 import { formatMonthDay } from '../../lib/dateLocale';
 function memberLabel(m: HouseholdMember | undefined): string {
-  return m?.displayName?.trim() || m?.email || 'Household member';
+  return m?.displayName?.trim() || m?.email || tr('householdMember');
 }
 
 type Row =

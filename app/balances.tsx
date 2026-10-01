@@ -1,3 +1,4 @@
+import { tr } from '../lib/i18n';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, AppState, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -20,7 +21,7 @@ import { onLocalDataChanged } from '../lib/dataSync';
 
 import { useT } from '../lib/I18nContext';
 function memberLabel(m: HouseholdMember): string {
-  return m.displayName?.trim() || m.email || 'Household member';
+  return m.displayName?.trim() || m.email || tr('householdMember');
 }
 
 function initialFor(label: string): string {
@@ -117,8 +118,8 @@ export default function BalancesScreen() {
     const fromUid = theyOweYou ? memberUid : (getCurrentUser()?.uid ?? '');
     const toUid = theyOweYou ? (getCurrentUser()?.uid ?? '') : memberUid;
     const message = theyOweYou
-      ? `Mark ${formatCurrency(amountUsd, currency)} from ${label} as received? This only clears the balance between you two — it doesn't change any expense totals.`
-      : `Mark ${formatCurrency(amountUsd, currency)} as paid to ${label}? This only clears the balance between you two — it doesn't change any expense totals.`;
+      ? t('markReceivedConfirm', { amount: formatCurrency(amountUsd, currency), label })
+      : t('markPaidConfirm', { amount: formatCurrency(amountUsd, currency), label });
     Alert.alert(t('settleUp'), message, [
       { text: t('cancel'), style: 'cancel' },
       { text: t('settleUp2'), onPress: () => settleUp(memberUid, fromUid, toUid, amountUsd) },
@@ -193,7 +194,7 @@ export default function BalancesScreen() {
         <ScrollView contentContainerStyle={styles.scroll}>
           {withHistory.map((b) => {
             const m = memberByUid.get(b.memberUid);
-            const label = m ? memberLabel(m) : 'Household member';
+            const label = m ? memberLabel(m) : tr('householdMember');
             const isSettled = Math.abs(b.netUsd) <= 0.005;
             const theyOweYou = b.netUsd > 0;
             const statusColor = isSettled
