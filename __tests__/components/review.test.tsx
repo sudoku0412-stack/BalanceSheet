@@ -97,6 +97,25 @@ describe('ReviewScreen', () => {
     await waitFor(() => expect(screen.getByText('All caught up')).toBeTruthy());
   });
 
+  it('shows an error state, not "All caught up", when loading fails', async () => {
+    mockGetQueue.mockRejectedValue(new Error('db'));
+    render(<ReviewScreen />);
+    await waitFor(() => expect(screen.getByText("Couldn't load review items")).toBeTruthy());
+    expect(screen.queryByText('All caught up')).toBeNull();
+  });
+
+  it('alerts instead of throwing when approving fails', async () => {
+    const alertSpy = jest.spyOn(Alert, 'alert').mockImplementation(() => undefined);
+    mockGetQueue.mockResolvedValue([makeReceipt({ id: 'r1' })]);
+    mockRemove.mockRejectedValueOnce(new Error('db'));
+    render(<ReviewScreen />);
+    await waitFor(() => screen.getByTestId('review-approve-r1'));
+    fireEvent.press(screen.getByTestId('review-approve-r1'));
+    await waitFor(() => expect(alertSpy).toHaveBeenCalledWith('Something went wrong', 'Please try again.'));
+    expect(screen.getByTestId('review-row-r1')).toBeTruthy();
+    alertSpy.mockRestore();
+  });
+
   it('Edit opens the receipt editor', async () => {
     mockGetQueue.mockResolvedValue([makeReceipt({ id: 'r1' })]);
     render(<ReviewScreen />);

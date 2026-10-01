@@ -918,11 +918,13 @@ function parseTags(raw: string | null, fallbackCategory: string): string[] {
 export async function deleteReceipt(id: string): Promise<void> {
   const uid = requireUserId('deleteReceipt');
   const hid = currentHouseholdId;
-  await db.runAsync(
+  const res = await db.runAsync(
     `DELETE FROM receipts WHERE id=? AND user_id=? AND (household_id IS NULL OR household_id=? OR ? IS NULL)`,
     [id, uid, hid, hid],
   );
-  await db.runAsync(`DELETE FROM review_queue WHERE receipt_id=?`, [id]);
+  if (res.changes > 0) {
+    await db.runAsync(`DELETE FROM review_queue WHERE receipt_id=?`, [id]);
+  }
   if (hid) {
     void syncReceiptDeletionToCloud(id, hid);
   }

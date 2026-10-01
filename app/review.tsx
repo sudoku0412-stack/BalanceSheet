@@ -28,29 +28,39 @@ export default function ReviewScreen() {
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<Receipt[]>([]);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const load = useCallback(async () => {
     const [rows, rawCurrency] = await Promise.all([getReviewQueueReceipts(), getCurrency()]);
     setItems(rows);
+    setLoadFailed(false);
     if (rawCurrency) setCurrency(rawCurrency as CurrencyCode);
     setLoading(false);
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      load().catch(() => setLoading(false));
+      load().catch(() => {
+        setLoadFailed(true);
+        setLoading(false);
+      });
     }, [load]),
   );
 
-  const approve = async (id: string) => {
-    await removeFromReviewQueue(id);
-    await load();
+  // Every mutation goes through here so a DB failure shows an alert
+  // instead of an unhandled promise rejection and a stale list.
+  const run = async (action: () => Promise<void>) => {
+    try {
+      await action();
+      await load();
+    } catch {
+      Alert.alert('Something went wrong', 'Please try again.');
+    }
   };
 
-  const approveAll = async () => {
-    await clearReviewQueue();
-    await load();
-  };
+  const approve = (id: string) => run(() => removeFromReviewQueue(id));
+
+  const approveAll = () => run(() => clearReviewQueue());
 
   const confirmDelete = (r: Receipt) => {
     Alert.alert('Delete expense?', `${r.storeName} will be removed.`, [
@@ -58,10 +68,7 @@ export default function ReviewScreen() {
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: async () => {
-          await deleteReceipt(r.id);
-          await load();
-        },
+        onPress: () => run(() => deleteReceipt(r.id)),
       },
     ]);
   };
@@ -74,7 +81,13 @@ export default function ReviewScreen() {
   return (
     <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
       <ModalHeader title="Review" onBack={() => router.back()} />
-      {!loading && items.length === 0 ? (
+      {!loading && loadFailed ? (
+        <EmptyState
+          icon="alert-circle-outline"
+          title="Couldn't load review items"
+          description="Pull back and reopen this screen to try again."
+        />
+      ) : !loading && items.length === 0 ? (
         <EmptyState
           icon="checkmark-done-outline"
           title="All caught up"
