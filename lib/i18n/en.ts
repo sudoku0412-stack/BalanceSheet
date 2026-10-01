@@ -570,4 +570,5 @@ export const en = {
   pdfFooterReceipts_one: '{count} receipt',
   pdfFooterReceipts_other: '{count} receipts',
   pdfTotalSuffix: '{amount} total',
+  amountsShownInLive: 'Amounts are shown in {currency} using daily exchange rates.',
 } as const;

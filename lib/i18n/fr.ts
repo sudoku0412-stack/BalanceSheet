@@ -572,4 +572,5 @@ export const fr: Record<keyof typeof en, string> = {
   pdfFooterReceipts_one: '{count} reçu',
   pdfFooterReceipts_other: '{count} reçus',
   pdfTotalSuffix: '{amount} au total',
+  amountsShownInLive: 'Les montants sont affichés en {currency} selon les taux de change quotidiens.',
 };

@@ -76,10 +76,9 @@ export function currencyPrefix(code: CurrencyCode): string {
 }
 
 /**
- * Fixed demo exchange rates (USD is canonical, matching the design spec's
- * "store canonical value in USD internally" rule). Prototype-level, per
- * the design handoff README — approximate, NOT live; swap for a live FX
- * rate API in production.
+ * Fixed approximate exchange rates (USD is canonical, matching the design
+ * spec's "store canonical value in USD internally" rule). Not live: Premium
+ * users get refreshed rates layered on top via setLiveRates().
  */
 const RATES_FROM_USD: Record<CurrencyCode, number> = {
   USD: 1,
@@ -101,12 +100,33 @@ const RATES_FROM_USD: Record<CurrencyCode, number> = {
   AED: 3.67,
 };
 
+/** Premium live rates (lib/exchangeRates.ts), when loaded. Overrides the
+ *  fixed table per currency; null means "use the fixed rates". */
+let liveRates: Partial<Record<CurrencyCode, number>> | null = null;
+
+export function setLiveRates(rates: Partial<Record<CurrencyCode, number>> | null): void {
+  liveRates = rates;
+}
+
+export function hasLiveRates(): boolean {
+  return liveRates !== null;
+}
+
+/** The fixed approximate rates, for validating live data against. */
+export function fixedRateFromUsd(code: CurrencyCode): number {
+  return RATES_FROM_USD[code];
+}
+
+function rateFor(code: CurrencyCode): number {
+  return liveRates?.[code] ?? RATES_FROM_USD[code];
+}
+
 export function convertFromUsd(amountUsd: number, to: CurrencyCode): number {
-  return amountUsd * RATES_FROM_USD[to];
+  return amountUsd * rateFor(to);
 }
 
 export function convertToUsd(amount: number, from: CurrencyCode): number {
-  return amount / RATES_FROM_USD[from];
+  return amount / rateFor(from);
 }
 
 export function formatCurrency(amountUsd: number, currency: CurrencyCode): string {
