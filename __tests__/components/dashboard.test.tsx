@@ -73,6 +73,7 @@ jest.mock('../../lib/database', () => ({
   getReceiptsByMonth: jest.fn(),
   getIncomesByMonth: jest.fn(async () => []),
   getAllSavingsGoals: jest.fn(async () => []),
+  getReviewQueueCount: jest.fn(async () => 0),
 }));
 
 jest.mock('../../lib/secureStorage', () => ({
@@ -93,13 +94,19 @@ jest.mock('uuid', () => ({
 
 import { router } from 'expo-router';
 import DashboardScreen from '../../app/(tabs)/index';
-import { getReceiptsByMonth, getIncomesByMonth, getAllSavingsGoals } from '../../lib/database';
+import {
+  getReceiptsByMonth,
+  getIncomesByMonth,
+  getAllSavingsGoals,
+  getReviewQueueCount,
+} from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 import { getHouseholdMembers } from '../../lib/cloudSync';
 
 const mockGetReceiptsByMonth = getReceiptsByMonth as jest.Mock;
 const mockGetIncomesByMonth = getIncomesByMonth as jest.Mock;
 const mockGetAllSavingsGoals = getAllSavingsGoals as jest.Mock;
+const mockGetReviewQueueCount = getReviewQueueCount as jest.Mock;
 const mockGetCategoryBudgets = getCategoryBudgets as jest.Mock;
 const mockGetCurrency = getCurrency as jest.Mock;
 const mockGetHouseholdMembers = getHouseholdMembers as jest.Mock;
@@ -122,6 +129,7 @@ describe('DashboardScreen', () => {
     mockGetCurrency.mockResolvedValue('USD');
     mockGetIncomesByMonth.mockResolvedValue([]);
     mockGetAllSavingsGoals.mockResolvedValue([]);
+    mockGetReviewQueueCount.mockResolvedValue(0);
     mockGetHouseholdMembers.mockResolvedValue([]);
     mockEntitlements.isPremium = true;
     // First call = current month, second call (inside load()) = previous
@@ -143,6 +151,24 @@ describe('DashboardScreen', () => {
       expect(screen.getAllByText('$50.00').length).toBeGreaterThan(0);
     });
     expect(screen.getByText('2 expenses this month')).toBeTruthy();
+  });
+
+  it('shows a review banner linking to /review when expenses await review', async () => {
+    mockGetReviewQueueCount.mockResolvedValue(3);
+    render(<DashboardScreen />);
+    await waitFor(() => {
+      expect(screen.getByText('3 recurring expenses to review')).toBeTruthy();
+    });
+    fireEvent.press(screen.getByTestId('review-banner'));
+    expect(router.push).toHaveBeenCalledWith('/review');
+  });
+
+  it('hides the review banner when nothing awaits review', async () => {
+    render(<DashboardScreen />);
+    await waitFor(() => {
+      expect(mockGetReviewQueueCount).toHaveBeenCalled();
+    });
+    expect(screen.queryByTestId('review-banner')).toBeNull();
   });
 
   it('renders a recent-expenses row per receipt with its category', async () => {

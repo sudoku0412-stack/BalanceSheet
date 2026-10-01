@@ -1,6 +1,13 @@
 import { addMonths, addWeeks, addYears, format, parseISO } from 'date-fns';
 import { v4 as uuidv4 } from 'uuid';
-import { getAllIncomes, getAllReceipts, saveIncome, saveReceipt, updateReceipt } from './database';
+import {
+  addToReviewQueue,
+  getAllIncomes,
+  getAllReceipts,
+  saveIncome,
+  saveReceipt,
+  updateReceipt,
+} from './database';
 import { parseYmdLocal } from './parser';
 import { Income, Receipt } from '../types';
 
@@ -126,6 +133,13 @@ export async function processRecurringReceipts(): Promise<number> {
         updatedAt: new Date().toISOString(),
       };
       await saveReceipt(occurrence);
+      // Surface it in the review inbox. Best-effort: a queue failure must
+      // not abort materializing the remaining occurrences.
+      try {
+        await addToReviewQueue(occurrence.id);
+      } catch {
+        // ignore
+      }
       created += 1;
       nextDueDate = advance(nextDueDate, frequency);
       advanced = true;

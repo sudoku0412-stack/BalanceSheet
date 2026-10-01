@@ -265,6 +265,12 @@ function RootStack() {
         }}
       />
       <Stack.Screen
+        name="review"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="households"
         options={{
           headerShown: false,
