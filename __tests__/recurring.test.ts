@@ -3,6 +3,7 @@ const mockSaveReceipt = jest.fn();
 const mockUpdateReceipt = jest.fn();
 const mockGetAllIncomes = jest.fn();
 const mockSaveIncome = jest.fn();
+const mockAddToReviewQueue = jest.fn();
 
 jest.mock('../lib/database', () => ({
   getAllReceipts: (...args: unknown[]) => mockGetAllReceipts(...args),
@@ -10,6 +11,7 @@ jest.mock('../lib/database', () => ({
   updateReceipt: (...args: unknown[]) => mockUpdateReceipt(...args),
   getAllIncomes: (...args: unknown[]) => mockGetAllIncomes(...args),
   saveIncome: (...args: unknown[]) => mockSaveIncome(...args),
+  addToReviewQueue: (...args: unknown[]) => mockAddToReviewQueue(...args),
 }));
 
 import {
@@ -166,6 +168,30 @@ describe('processRecurringReceipts', () => {
     expect(mockSaveReceipt).toHaveBeenCalledTimes(2);
     const calls = mockSaveReceipt.mock.calls.map((c) => (c[0] as Receipt).date);
     expect(calls).toEqual(['2025-11-01', '2025-12-01']);
+  });
+
+  it('queues every generated occurrence for review', async () => {
+    mockGetAllReceipts.mockResolvedValue([
+      template({
+        recurring: { frequency: 'monthly', nextDueDate: '2025-11-01', endDate: '2025-12-15' },
+      }),
+    ]);
+    await processRecurringReceipts();
+    const savedIds = mockSaveReceipt.mock.calls.map((c) => (c[0] as Receipt).id);
+    expect(savedIds).toHaveLength(2);
+    expect(mockAddToReviewQueue.mock.calls.map((c) => c[0])).toEqual(savedIds);
+  });
+
+  it('keeps materializing occurrences when queueing for review fails', async () => {
+    mockAddToReviewQueue.mockRejectedValue(new Error('queue down'));
+    mockGetAllReceipts.mockResolvedValue([
+      template({
+        recurring: { frequency: 'monthly', nextDueDate: '2025-11-01', endDate: '2025-12-15' },
+      }),
+    ]);
+    const created = await processRecurringReceipts();
+    expect(created).toBe(2);
+    expect(mockSaveReceipt).toHaveBeenCalledTimes(2);
   });
 
   it('caps generated occurrences at 60 per template per call', async () => {

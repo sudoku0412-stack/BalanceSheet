@@ -255,6 +255,18 @@ export async function initDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_savings_goals_user ON savings_goals(user_id);
   `);
 
+  // Review inbox. Receipts auto-created by the recurring processor land
+  // here until the user confirms them. Local-only (not cloud-synced):
+  // approving is a per-device convenience, and the receipt itself is
+  // already a normal, synced row. Stale ids (receipt deleted elsewhere)
+  // are harmless — every read joins against receipts.
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS review_queue (
+      receipt_id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL
+    );
+  `);
+
   // Migrations for columns added after initial release. ALTER TABLE has no
   // IF NOT EXISTS, so each ADD COLUMN is wrapped to swallow duplicate-column
   // errors on already-migrated databases.
@@ -906,10 +918,13 @@ function parseTags(raw: string | null, fallbackCategory: string): string[] {
 export async function deleteReceipt(id: string): Promise<void> {
   const uid = requireUserId('deleteReceipt');
   const hid = currentHouseholdId;
-  await db.runAsync(
+  const res = await db.runAsync(
     `DELETE FROM receipts WHERE id=? AND user_id=? AND (household_id IS NULL OR household_id=? OR ? IS NULL)`,
     [id, uid, hid, hid],
   );
+  if (res.changes > 0) {
+    await db.runAsync(`DELETE FROM review_queue WHERE receipt_id=?`, [id]);
+  }
   if (hid) {
     void syncReceiptDeletionToCloud(id, hid);
   }
@@ -937,6 +952,57 @@ export async function getAllReceipts(): Promise<Receipt[]> {
     hid ? [uid, hid] : [uid],
   );
   return await attachLineItems(rows);
+}
+
+/** Queue a receipt for the review inbox (idempotent). */
+export async function addToReviewQueue(receiptId: string): Promise<void> {
+  requireUserId('addToReviewQueue');
+  await db.runAsync(
+    `INSERT OR IGNORE INTO review_queue (receipt_id, created_at) VALUES (?, ?)`,
+    [receiptId, new Date().toISOString()],
+  );
+}
+
+/** Receipts waiting for review in the active household, newest first. */
+export async function getReviewQueueReceipts(): Promise<Receipt[]> {
+  const uid = requireUserId('getReviewQueueReceipts');
+  const hid = currentHouseholdId;
+  const rows = await db.getAllAsync<RawRow>(
+    `SELECT * FROM receipts
+     WHERE user_id=? AND id IN (SELECT receipt_id FROM review_queue)${householdFilterSql(hid)}
+     ORDER BY date DESC`,
+    hid ? [uid, hid] : [uid],
+  );
+  return await attachLineItems(rows);
+}
+
+export async function getReviewQueueCount(): Promise<number> {
+  const uid = requireUserId('getReviewQueueCount');
+  const hid = currentHouseholdId;
+  const row = await db.getFirstAsync<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM receipts
+     WHERE user_id=? AND id IN (SELECT receipt_id FROM review_queue)${householdFilterSql(hid)}`,
+    hid ? [uid, hid] : [uid],
+  );
+  return row?.n ?? 0;
+}
+
+/** Mark one receipt as reviewed. */
+export async function removeFromReviewQueue(receiptId: string): Promise<void> {
+  requireUserId('removeFromReviewQueue');
+  await db.runAsync(`DELETE FROM review_queue WHERE receipt_id=?`, [receiptId]);
+}
+
+/** Mark every queued receipt in the active household as reviewed. */
+export async function clearReviewQueue(): Promise<void> {
+  const uid = requireUserId('clearReviewQueue');
+  const hid = currentHouseholdId;
+  await db.runAsync(
+    `DELETE FROM review_queue WHERE receipt_id IN (
+       SELECT id FROM receipts WHERE user_id=?${householdFilterSql(hid)}
+     )`,
+    hid ? [uid, hid] : [uid],
+  );
 }
 
 export async function getReceiptById(id: string): Promise<Receipt | null> {

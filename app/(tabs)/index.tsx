@@ -10,6 +10,7 @@ import {
   getCurrentHouseholdId,
   getIncomesByMonth,
   getReceiptsByMonth,
+  getReviewQueueCount,
 } from '../../lib/database';
 import { getCategoryBudgets, getCurrency } from '../../lib/secureStorage';
 import { checkBudgetsAndNotify } from '../../lib/notifications';
@@ -148,6 +149,22 @@ export default function DashboardScreen() {
       flexShrink: 1,
       color: '#fff',
       fontSize: t.font.md,
+      fontFamily: t.fonts.display.bold,
+    },
+
+    reviewBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      backgroundColor: t.colors.surface,
+      borderRadius: 16,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    reviewBannerText: {
+      flex: 1,
+      color: t.colors.textPrimary,
+      fontSize: t.font.sm,
       fontFamily: t.fonts.display.bold,
     },
 
@@ -561,6 +578,7 @@ export default function DashboardScreen() {
 
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [reviewCount, setReviewCount] = useState(0);
   const [stats, setStats] = useState<MonthlyStats>({
     totalSpent: 0,
     receiptCount: 0,
@@ -595,7 +613,7 @@ export default function DashboardScreen() {
     const householdId = getCurrentHouseholdId();
     const year = viewedMonth.getFullYear();
     const month = viewedMonth.getMonth() + 1;
-    const [data, incomes, prevData, budgetMap, currencyCode, memberList, goals] = await Promise.all([
+    const [data, incomes, prevData, budgetMap, currencyCode, memberList, goals, toReview] = await Promise.all([
       getReceiptsByMonth(year, month),
       getIncomesByMonth(year, month),
       getReceiptsByMonth(prevMonth.getFullYear(), prevMonth.getMonth() + 1),
@@ -605,6 +623,9 @@ export default function DashboardScreen() {
         ? getHouseholdMembers({ householdId, currentUid: user.uid })
         : Promise.resolve(null),
       getAllSavingsGoals().catch(() => []),
+      Promise.resolve()
+        .then(() => getReviewQueueCount())
+        .catch(() => 0),
     ]);
     setReceipts(data);
     setStats(computeStats(data));
@@ -614,6 +635,7 @@ export default function DashboardScreen() {
     setCurrency((currencyCode as CurrencyCode | null) ?? 'USD');
     setMembers(memberList ?? []);
     setSavingsGoals(goals);
+    setReviewCount(toReview);
   }, [monthOffset, user?.uid]);
 
   useFocusEffect(
@@ -1002,6 +1024,22 @@ export default function DashboardScreen() {
         )}
 
         {/* Quick actions */}
+        {reviewCount > 0 && (
+          <TouchableOpacity
+            testID="review-banner"
+            style={styles.reviewBanner}
+            onPress={() => router.push('/review' as never)}
+            accessibilityRole="button"
+          >
+            <Ionicons name="checkmark-done-outline" size={20} color={theme.colors.accent} />
+            <Text style={styles.reviewBannerText}>
+              {reviewCount === 1
+                ? '1 recurring expense to review'
+                : `${reviewCount} recurring expenses to review`}
+            </Text>
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textMuted} />
+          </TouchableOpacity>
+        )}
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.sky }]}
