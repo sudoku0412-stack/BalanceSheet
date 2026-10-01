@@ -3,6 +3,10 @@ import { render, fireEvent, waitFor, screen } from '@testing-library/react-nativ
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 
+jest.mock('../../lib/cloudSync', () => ({
+  syncCustomCategoriesToCloud: jest.fn(async () => {}),
+}));
+
 jest.mock('../../lib/customCategories', () => ({
   MAX_CUSTOM_CATEGORY_NAME: 24,
   addCustomCategory: jest.fn(),
@@ -10,6 +14,7 @@ jest.mock('../../lib/customCategories', () => ({
 
 import { CustomCategoryPicker } from '../../components/ui/CustomCategoryPicker';
 import { addCustomCategory } from '../../lib/customCategories';
+import { syncCustomCategoriesToCloud } from '../../lib/cloudSync';
 
 const mockAdd = addCustomCategory as jest.Mock;
 
@@ -61,6 +66,7 @@ describe('CustomCategoryPicker', () => {
     await waitFor(() => expect(mockAdd).toHaveBeenCalledWith('h1', 'Hobbies'));
     await waitFor(() => expect(p.onSelect).toHaveBeenCalledWith('Hobbies'));
     expect(p.onCustomsChange).toHaveBeenCalledWith([{ name: 'Pets', color: '#D6336C' }, added]);
+    expect(syncCustomCategoriesToCloud).toHaveBeenCalledWith('h1', { add: [added] });
     await waitFor(() => expect(screen.queryByTestId('custom-category-input')).toBeNull());
   });
 
@@ -72,6 +78,7 @@ describe('CustomCategoryPicker', () => {
     fireEvent.press(screen.getByTestId('custom-category-save'));
     await waitFor(() => expect(screen.getByText('That category already exists.')).toBeTruthy());
     expect(p.onSelect).not.toHaveBeenCalled();
+    expect(syncCustomCategoriesToCloud).not.toHaveBeenCalled();
     expect(screen.getByTestId('custom-category-input')).toBeTruthy();
   });
 

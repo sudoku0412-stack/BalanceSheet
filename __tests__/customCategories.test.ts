@@ -15,8 +15,11 @@ import {
   MAX_CUSTOM_CATEGORIES,
   MAX_CUSTOM_CATEGORY_NAME,
   addCustomCategory,
+  applyCustomCategories,
   clearCustomCategoriesForHousehold,
   getCustomCategories,
+  getCustomCategoriesSynced,
+  setCustomCategoriesSynced,
   removeCustomCategory,
   resolveCategoryColor,
 } from '../lib/customCategories';
@@ -96,5 +99,46 @@ describe('resolveCategoryColor', () => {
     expect(resolveCategoryColor('Groceries', builtIn, customs, '#fff')).toBe('#111');
     expect(resolveCategoryColor('Pets', builtIn, customs, '#fff')).toBe('#222');
     expect(resolveCategoryColor('Deleted', builtIn, customs, '#fff')).toBe('#fff');
+  });
+});
+
+describe('applyCustomCategories (cloud copy)', () => {
+  it('replaces the local list, dropping malformed, duplicate (any case) and over-limit entries', async () => {
+    await addCustomCategory('h1', 'Local only');
+    const incoming: unknown[] = [
+      { name: 'Pets', color: '#111' },
+      { name: 'pets', color: '#222' },
+      { name: 5 },
+      'junk',
+      { name: 'Hobbies', color: '#333' },
+    ];
+    const next = await applyCustomCategories('h1', incoming);
+    expect(next).toEqual([
+      { name: 'Pets', color: '#111' },
+      { name: 'Hobbies', color: '#333' },
+    ]);
+    expect(await getCustomCategories('h1')).toEqual(next);
+  });
+
+  it('caps at MAX_CUSTOM_CATEGORIES', async () => {
+    const many = Array.from({ length: MAX_CUSTOM_CATEGORIES + 5 }, (_, i) => ({
+      name: `C${i}`,
+      color: '#000',
+    }));
+    expect(await applyCustomCategories('h1', many)).toHaveLength(MAX_CUSTOM_CATEGORIES);
+  });
+
+  it('an empty cloud list clears local categories', async () => {
+    await addCustomCategory('h1', 'Pets');
+    expect(await applyCustomCategories('h1', [])).toEqual([]);
+  });
+});
+
+describe('synced flag', () => {
+  it('defaults false, persists, and is per household', async () => {
+    expect(await getCustomCategoriesSynced('h1')).toBe(false);
+    await setCustomCategoriesSynced('h1');
+    expect(await getCustomCategoriesSynced('h1')).toBe(true);
+    expect(await getCustomCategoriesSynced('h2')).toBe(false);
   });
 });

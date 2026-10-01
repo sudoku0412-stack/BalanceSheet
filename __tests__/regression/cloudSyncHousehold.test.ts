@@ -7,6 +7,7 @@
 type Stored = Record<string, unknown>;
 
 const mockStore = new Map<string, Stored>();
+let lastSnapshotHandler: ((snap: unknown) => Promise<void>) | undefined;
 let autoId = 0;
 
 function isOp(value: unknown): value is { __op: string; v?: unknown; n?: number } {
@@ -79,7 +80,10 @@ function makeRef(path: string): DocRef {
       mockStore.delete(path);
     }),
     collection: (name: string) => makeCollection(`${path}/${name}`),
-    onSnapshot: jest.fn(),
+    onSnapshot: jest.fn((cb: (snap: unknown) => Promise<void>) => {
+      lastSnapshotHandler = cb;
+      return jest.fn();
+    }),
   };
 }
 
@@ -174,6 +178,12 @@ jest.mock('../../lib/secureStorage', () => ({
   setCloudMigrationDone: jest.fn(),
 }));
 
+const mockApplyCustomCategories = jest.fn();
+
+jest.mock('../../lib/customCategories', () => ({
+  applyCustomCategories: (...args: unknown[]) => mockApplyCustomCategories(...args),
+}));
+
 jest.mock('../../lib/dataSync', () => ({
   notifyLocalDataChanged: jest.fn(),
 }));
@@ -198,6 +208,8 @@ import {
   renameHousehold,
   setEmailIndex,
   setPhoneIndex,
+  subscribeToHouseholdBudgets,
+  syncCustomCategoriesToCloud,
   type PendingInvite,
 } from '../../lib/cloudSync';
 
@@ -222,6 +234,7 @@ function pendingInvite(overrides: Partial<PendingInvite> = {}): PendingInvite {
 
 beforeEach(() => {
   mockStore.clear();
+  lastSnapshotHandler = undefined;
   autoId = 0;
   jest.clearAllMocks();
   mockApplyBudgetsSnapshot.mockResolvedValue(undefined);
@@ -699,5 +712,58 @@ describe('household lifecycle', () => {
       email: 'u1@example.com',
       householdId: 'new-hh',
     });
+  });
+});
+
+describe('custom category sync', () => {
+  const pets = { name: 'Pets', color: '#D6336C' };
+  const hobbies = { name: 'Hobbies', color: '#0CA678' };
+
+  it('syncCustomCategoriesToCloud adds then removes on the household doc', async () => {
+    seed('households/hh1', { memberUids: ['u1'] });
+    await syncCustomCategoriesToCloud('hh1', { add: [pets, hobbies] });
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([pets, hobbies]);
+    await syncCustomCategoriesToCloud('hh1', { remove: [pets] });
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([hobbies]);
+    expect(mockStore.get('households/hh1')?.memberUids).toEqual(['u1']);
+  });
+
+  it('is a no-op for an empty change or missing household id', async () => {
+    seed('households/hh1', { memberUids: ['u1'] });
+    await syncCustomCategoriesToCloud('hh1', {});
+    await syncCustomCategoriesToCloud('', { add: [pets] });
+    expect(mockStore.get('households/hh1')?.customCategories).toBeUndefined();
+  });
+
+  type SnapHandler = (snap: unknown) => Promise<void>;
+  const snap = (data: Stored, opts: { pending?: boolean; exists?: boolean } = {}) => ({
+    exists: opts.exists ?? true,
+    metadata: { hasPendingWrites: opts.pending ?? false },
+    data: () => data,
+  });
+
+  it('listener applies household custom categories even when no budgets are set', async () => {
+    subscribeToHouseholdBudgets('hh1');
+    await lastSnapshotHandler!(snap({ customCategories: [pets] }));
+    expect(mockApplyCustomCategories).toHaveBeenCalledWith('hh1', [pets]);
+    expect(mockApplyBudgetsSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('listener applies budgets and custom categories together', async () => {
+    subscribeToHouseholdBudgets('hh1');
+    const budgets = { byCategory: { Pets: 20 }, alertsEnabled: true };
+    await lastSnapshotHandler!(snap({ budgets, customCategories: [pets, hobbies] }));
+    expect(mockApplyBudgetsSnapshot).toHaveBeenCalledWith('hh1', budgets);
+    expect(mockApplyCustomCategories).toHaveBeenCalledWith('hh1', [pets, hobbies]);
+  });
+
+  it('listener ignores own pending writes, missing docs, and docs with neither field', async () => {
+    subscribeToHouseholdBudgets('hh1');
+    const h = lastSnapshotHandler as SnapHandler;
+    await h(snap({ customCategories: [pets] }, { pending: true }));
+    await h(snap({}, { exists: false }));
+    await h(snap({ memberUids: ['u1'] }));
+    expect(mockApplyCustomCategories).not.toHaveBeenCalled();
+    expect(mockApplyBudgetsSnapshot).not.toHaveBeenCalled();
   });
 });

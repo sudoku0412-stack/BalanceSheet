@@ -110,3 +110,35 @@ export function resolveCategoryColor(
 ): string {
   return builtIn[name] ?? customs.find((c) => c.name === name)?.color ?? fallback;
 }
+
+/** Replaces this device's list with the household's cloud copy (the
+ *  source of truth once synced). Drops malformed entries, duplicate
+ *  names, and anything past the limit. */
+export async function applyCustomCategories(
+  householdId: string,
+  incoming: unknown[],
+): Promise<CustomCategory[]> {
+  const seen = new Set<string>();
+  const next: CustomCategory[] = [];
+  for (const c of incoming) {
+    if (!isCustomCategory(c)) continue;
+    const key = c.name.toLowerCase();
+    if (seen.has(key) || next.length >= MAX_CUSTOM_CATEGORIES) continue;
+    seen.add(key);
+    next.push({ name: c.name, color: c.color });
+  }
+  await save(householdId, next);
+  return next;
+}
+
+const syncedKey = (householdId: string) => `${KEY}.synced.${householdId}`;
+
+/** True once this device's pre-sync categories were pushed to the cloud
+ *  (one-time migration for categories created before sync existed). */
+export async function getCustomCategoriesSynced(householdId: string): Promise<boolean> {
+  return (await SecureStore.getItemAsync(syncedKey(householdId))) === '1';
+}
+
+export async function setCustomCategoriesSynced(householdId: string): Promise<void> {
+  await SecureStore.setItemAsync(syncedKey(householdId), '1');
+}

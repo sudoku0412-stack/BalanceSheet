@@ -47,6 +47,7 @@ import {
   isCloudSyncAvailable,
   leaveHousehold,
   syncBudgetsToCloud,
+  syncCustomCategoriesToCloud,
   syncPushTokenToCloud,
   type HouseholdMember,
 } from '../lib/cloudSync';
@@ -59,7 +60,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { CustomCategoryPicker } from '../components/ui/CustomCategoryPicker';
 import {
   getCustomCategories,
+  getCustomCategoriesSynced,
   removeCustomCategory,
+  setCustomCategoriesSynced,
   type CustomCategory,
 } from '../lib/customCategories';
 import {
@@ -575,6 +578,15 @@ export default function SettingsScreen() {
         ]);
         if (!mounted) return;
         setCustomCategories(customs);
+        // One-time push of categories created before cloud sync existed.
+        try {
+          if (customs.length > 0 && !(await getCustomCategoriesSynced(householdId))) {
+            await syncCustomCategoriesToCloud(householdId, { add: customs });
+            await setCustomCategoriesSynced(householdId);
+          }
+        } catch {
+          // best-effort; retried on the next focus
+        }
         const nextCurrency: CurrencyCode =
           storedCurrency && (CURRENCIES as string[]).includes(storedCurrency)
             ? (storedCurrency as CurrencyCode)
@@ -1070,6 +1082,7 @@ export default function SettingsScreen() {
                       const hid = getCurrentHouseholdId();
                       if (!hid) return;
                       setCustomCategories(await removeCustomCategory(hid, c.name));
+                      void syncCustomCategoriesToCloud(hid, { remove: [c] });
                       // Drop its budget too — with the row gone the user
                       // could never clear a leftover limit otherwise.
                       if (categoryBudgetsUsd[c.name] > 0) {

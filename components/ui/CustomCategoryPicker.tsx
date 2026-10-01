@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Pressable, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useStyles, useTheme } from '../../constants/theme';
+import { syncCustomCategoriesToCloud } from '../../lib/cloudSync';
 import {
   addCustomCategory,
   MAX_CUSTOM_CATEGORY_NAME,
@@ -78,6 +79,7 @@ export function CustomCategoryPicker({
       setError(ERROR_TEXT[result.reason]);
       return;
     }
+    void syncCustomCategoriesToCloud(householdId, { add: [result.added] });
     onCustomsChange(result.categories);
     onSelect(result.added.name);
     setName('');

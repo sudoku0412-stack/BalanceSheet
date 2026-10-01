@@ -1,4 +1,5 @@
 import { Receipt, Settlement, Income, SavingsGoal } from '../types';
+import { applyCustomCategories, type CustomCategory } from './customCategories';
 import {
   applyBudgetsSnapshot,
   BudgetsSnapshot,
@@ -891,6 +892,37 @@ export function subscribeToHouseholdSavingsGoals(
 // member changing a budget pushes it here, and every other member
 // (new or long-standing) picks it up on their next snapshot.
 
+/** Mirrors Premium custom categories onto the household doc so every
+ *  member sees the same names and colors. Uses arrayUnion / arrayRemove
+ *  (not a whole-list overwrite) so two members editing at once don't
+ *  clobber each other. Budgets for these categories already sync through
+ *  syncBudgetsToCloud. */
+export async function syncCustomCategoriesToCloud(
+  householdId: string,
+  change: { add?: CustomCategory[]; remove?: CustomCategory[] },
+): Promise<void> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return;
+  try {
+    const ref = firestore().collection('households').doc(householdId);
+    if (change.add && change.add.length > 0) {
+      await ref.set(
+        { customCategories: firestore.FieldValue.arrayUnion(...change.add) },
+        { merge: true },
+      );
+    }
+    if (change.remove && change.remove.length > 0) {
+      await ref.set(
+        { customCategories: firestore.FieldValue.arrayRemove(...change.remove) },
+        { merge: true },
+      );
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncCustomCategoriesToCloud failed:', (e as Error)?.message);
+  }
+}
+
 export async function syncBudgetsToCloud(
   householdId: string,
   budgets: BudgetsSnapshot,
@@ -926,10 +958,15 @@ export function subscribeToHouseholdBudgets(
       async (snapshot) => {
         if (!snapshot || !snapshot.exists) return;
         if (snapshot.metadata.hasPendingWrites) return;
-        const budgets = snapshot.data()?.budgets as BudgetsSnapshot | undefined;
-        if (!budgets) return;
+        const data = snapshot.data();
+        const budgets = data?.budgets as BudgetsSnapshot | undefined;
+        const customCategories = data?.customCategories as unknown;
+        if (!budgets && !Array.isArray(customCategories)) return;
         try {
-          await applyBudgetsSnapshot(householdId, budgets);
+          if (budgets) await applyBudgetsSnapshot(householdId, budgets);
+          if (Array.isArray(customCategories)) {
+            await applyCustomCategories(householdId, customCategories);
+          }
           notifyLocalDataChanged();
         } catch (e) {
           // eslint-disable-next-line no-console
