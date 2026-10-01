@@ -30,7 +30,7 @@ at the bottom).
 1. Go to **<https://play.google.com/console/signup>**
 2. Pay the **one-time $25 fee**
 3. Verify identity (Google may ask for a government ID — takes 1–2 business days)
-4. Set up your **developer profile**: name, email, website (use `https://github.com/kaushik-majumder/BalanceSheet` if you don't have one)
+4. Set up your **developer profile**: name, email, website (use `https://github.com/sudoku0412-stack/NestExpenseTracker` if you don't have one)
 
 Start this in parallel with the rest — the verification wait blocks everything else.
 
@@ -135,7 +135,7 @@ PRIVACY
 • Your receipts are stored on your device first, then mirrored to a private Firestore database accessible only to your household members.
 • AI categorization sends the OCR text (not the photo) to Google Gemini or a Cloudflare Worker for parsing.
 • Photos are stored in Firebase Storage under your household's namespace; only members of your household can read them.
-• Full privacy policy: https://kaushik-majumder.github.io/BalanceSheet/privacy-policy.html
+• Full privacy policy: https://sudoku0412-stack.github.io/NestExpenseTracker/privacy-policy.html
 • Delete your account from Settings → Account → Delete account; this wipes all your cloud data.
 
 Built with React Native + Expo + Firebase + Gemini. Open source on GitHub.
@@ -173,10 +173,10 @@ Still **Everyone**. Receipt-tracking has no objectionable content.
 
 The privacy policy HTML is ready at `docs/privacy-policy.html`. Host it for free on GitHub Pages:
 
-1. Go to **<https://github.com/kaushik-majumder/BalanceSheet/settings/pages>**
+1. Go to **<https://github.com/sudoku0412-stack/NestExpenseTracker/settings/pages>**
 2. Source: **Deploy from a branch** → Branch `main`, folder `/docs`
 3. Save → wait ~30 seconds
-4. Verify it loads at `https://kaushik-majumder.github.io/BalanceSheet/privacy-policy.html`
+4. Verify it loads at `https://sudoku0412-stack.github.io/NestExpenseTracker/privacy-policy.html`
 5. ⚠️ **Update the privacy policy text first** — the current HTML may have stale "no data leaves device" claims (mirror the corrections from the Data Safety table above)
 
 Paste this URL into Play Console → App content → Privacy policy.
