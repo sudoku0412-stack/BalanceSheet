@@ -1,4 +1,9 @@
-import { calendarDateKey, isInCalendarMonth, isInCalendarRange } from '../lib/calendarDate';
+import {
+  calendarDateKey,
+  calendarMonthSqlParams,
+  isInCalendarMonth,
+  isInCalendarRange,
+} from '../lib/calendarDate';
 import { filterReceiptsInRange } from '../lib/reports';
 import { Receipt } from '../types';
 
@@ -23,6 +28,14 @@ describe('calendar dates', () => {
     const iso = new Date(2026, 2, 1, 0, 0, 0, 0).toISOString();
     expect(calendarDateKey(iso)).toBe('2026-03-01');
     expect(isInCalendarMonth(iso, 2026, 3)).toBe(true);
+  });
+
+  it('binds date-only start/end plus local-midnight ISO bounds for SQL month filters', () => {
+    const params = calendarMonthSqlParams(2026, 3);
+    expect(params[0]).toBe('2026-03-01');
+    expect(params[1]).toBe('2026-03-31');
+    expect(params[2]).toBe(new Date(2026, 2, 1, 0, 0, 0, 0).toISOString());
+    expect(params[3]).toBe(new Date(2026, 2, 31, 23, 59, 59, 999).toISOString());
   });
 
   it('includes date-only day-1 receipts in the same month as date-only income', () => {
