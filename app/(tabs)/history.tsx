@@ -28,6 +28,7 @@ import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { Income, Receipt, Category } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
 import { ALL_CATEGORIES, CATEGORY_ICONS } from '../../constants/categories';
+import { getCustomCategories, type CustomCategory } from '../../lib/customCategories';
 import { INCOME_CATEGORY_ICONS, incomeCategoryLabel } from '../../constants/incomeCategories';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ReceiptListSkeleton } from '../../components/ui/Skeleton';
@@ -40,7 +41,7 @@ import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
 import { useAuth } from '../../lib/AuthContext';
 
 const FILTER_ALL = 'All' as const;
-type CategoryFilter = typeof FILTER_ALL | Category;
+type CategoryFilter = typeof FILTER_ALL | Category | string;
 type KindFilter = 'all' | 'income' | 'expenses';
 
 type FeedItem =
@@ -290,6 +291,7 @@ export default function HistoryScreen() {
   const [query, setQuery] = useState('');
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [activeFilter, setActiveFilter] = useState<CategoryFilter>(FILTER_ALL);
+  const [customs, setCustoms] = useState<CustomCategory[]>([]);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const swipeableRefs = useRef<Record<string, Swipeable | null>>({});
@@ -346,6 +348,8 @@ export default function HistoryScreen() {
     setReceipts(receiptData);
     setIncomes(incomeData);
     setCurrency((currencyCode as CurrencyCode | null) ?? 'USD');
+    const hid = getCurrentHouseholdId();
+    setCustoms(hid ? await getCustomCategories(hid).catch(() => [] as CustomCategory[]) : []);
     await loadMembers();
   }, [loadMembers]);
 
@@ -614,7 +618,7 @@ export default function HistoryScreen() {
           style={styles.filterScrollContainer}
           contentContainerStyle={styles.filterScroll}
         >
-          {([FILTER_ALL, ...ALL_CATEGORIES] as CategoryFilter[]).map((item) => {
+          {([FILTER_ALL, ...ALL_CATEGORIES, ...customs.map((c) => c.name)] as CategoryFilter[]).map((item) => {
             const active = activeFilter === item;
             return (
               <TouchableOpacity

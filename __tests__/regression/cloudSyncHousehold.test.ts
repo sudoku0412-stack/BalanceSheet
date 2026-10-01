@@ -7,6 +7,7 @@
 type Stored = Record<string, unknown>;
 
 const mockStore = new Map<string, Stored>();
+let lastSnapshotHandler: ((snap: unknown) => Promise<void>) | undefined;
 let autoId = 0;
 
 function isOp(value: unknown): value is { __op: string; v?: unknown; n?: number } {
@@ -79,7 +80,10 @@ function makeRef(path: string): DocRef {
       mockStore.delete(path);
     }),
     collection: (name: string) => makeCollection(`${path}/${name}`),
-    onSnapshot: jest.fn(),
+    onSnapshot: jest.fn((cb: (snap: unknown) => Promise<void>) => {
+      lastSnapshotHandler = cb;
+      return jest.fn();
+    }),
   };
 }
 
@@ -174,6 +178,16 @@ jest.mock('../../lib/secureStorage', () => ({
   setCloudMigrationDone: jest.fn(),
 }));
 
+const mockApplyCustomCategories = jest.fn();
+const mockClearPending = jest.fn(async () => undefined);
+const mockGetPending = jest.fn(async () => ({ add: [] as unknown[], remove: [] as string[] }));
+
+jest.mock('../../lib/customCategories', () => ({
+  applyCustomCategories: (...args: unknown[]) => mockApplyCustomCategories(...args),
+  clearPendingCustomCategoryChanges: (...args: unknown[]) => (mockClearPending as jest.Mock)(...args),
+  getPendingCustomCategoryChanges: (...args: unknown[]) => (mockGetPending as jest.Mock)(...args),
+}));
+
 jest.mock('../../lib/dataSync', () => ({
   notifyLocalDataChanged: jest.fn(),
 }));
@@ -198,6 +212,9 @@ import {
   renameHousehold,
   setEmailIndex,
   setPhoneIndex,
+  subscribeToHouseholdBudgets,
+  syncCustomCategoriesToCloud,
+  flushPendingCustomCategories,
   type PendingInvite,
 } from '../../lib/cloudSync';
 
@@ -222,8 +239,10 @@ function pendingInvite(overrides: Partial<PendingInvite> = {}): PendingInvite {
 
 beforeEach(() => {
   mockStore.clear();
+  lastSnapshotHandler = undefined;
   autoId = 0;
   jest.clearAllMocks();
+  mockGetPending.mockResolvedValue({ add: [], remove: [] });
   mockApplyBudgetsSnapshot.mockResolvedValue(undefined);
   mockGetCloudMigrationDone.mockResolvedValue(false);
   jest.useFakeTimers();
@@ -699,5 +718,101 @@ describe('household lifecycle', () => {
       email: 'u1@example.com',
       householdId: 'new-hh',
     });
+  });
+});
+
+describe('custom category sync', () => {
+  const pets = { name: 'Pets', color: '#D6336C' };
+  const hobbies = { name: 'Hobbies', color: '#0CA678' };
+
+  it('syncCustomCategoriesToCloud adds then removes on the household doc', async () => {
+    seed('households/hh1', { memberUids: ['u1'] });
+    await syncCustomCategoriesToCloud('hh1', { add: [pets, hobbies] });
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([pets, hobbies]);
+    await syncCustomCategoriesToCloud('hh1', { remove: [pets] });
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([hobbies]);
+    expect(mockStore.get('households/hh1')?.memberUids).toEqual(['u1']);
+  });
+
+  it('removal matches by name, clearing copies that differ only in color', async () => {
+    seed('households/hh1', {
+      memberUids: ['u1'],
+      customCategories: [pets, { name: 'Pets', color: '#000000' }, hobbies],
+    });
+    await expect(syncCustomCategoriesToCloud('hh1', { remove: [pets] })).resolves.toBe(true);
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([hobbies]);
+  });
+
+  it('acknowledges pending changes only after a successful write', async () => {
+    seed('households/hh1', { memberUids: ['u1'], customCategories: [pets] });
+    await syncCustomCategoriesToCloud('hh1', { add: [hobbies] });
+    expect(mockClearPending).toHaveBeenCalledWith('hh1', { add: ['Hobbies'], remove: undefined });
+    mockClearPending.mockClear();
+    await syncCustomCategoriesToCloud('hh1', { remove: [pets] });
+    expect(mockClearPending).toHaveBeenCalledWith('hh1', { add: undefined, remove: ['Pets'] });
+    mockClearPending.mockClear();
+    await syncCustomCategoriesToCloud('', { add: [pets] });
+    expect(mockClearPending).not.toHaveBeenCalled();
+  });
+
+  it('flushPendingCustomCategories re-sends unacknowledged adds and removes', async () => {
+    seed('households/hh1', { memberUids: ['u1'], customCategories: [pets] });
+    mockGetPending.mockResolvedValue({ add: [hobbies], remove: ['Pets'] });
+    await flushPendingCustomCategories('hh1');
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([hobbies]);
+    expect(mockClearPending).toHaveBeenCalledTimes(2);
+  });
+
+  it('starting the listener flushes pending changes', async () => {
+    seed('households/hh1', { memberUids: ['u1'], customCategories: [] });
+    mockGetPending.mockResolvedValue({ add: [pets], remove: [] });
+    subscribeToHouseholdBudgets('hh1');
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    expect(mockStore.get('households/hh1')?.customCategories).toEqual([pets]);
+  });
+
+  it('resolves false without a household id and true on success', async () => {
+    seed('households/hh1', { memberUids: ['u1'] });
+    await expect(syncCustomCategoriesToCloud('', { add: [pets] })).resolves.toBe(false);
+    await expect(syncCustomCategoriesToCloud('hh1', { add: [pets] })).resolves.toBe(true);
+  });
+
+  it('is a no-op for an empty change or missing household id', async () => {
+    seed('households/hh1', { memberUids: ['u1'] });
+    await syncCustomCategoriesToCloud('hh1', {});
+    await syncCustomCategoriesToCloud('', { add: [pets] });
+    expect(mockStore.get('households/hh1')?.customCategories).toBeUndefined();
+  });
+
+  type SnapHandler = (snap: unknown) => Promise<void>;
+  const snap = (data: Stored, opts: { pending?: boolean; exists?: boolean } = {}) => ({
+    exists: opts.exists ?? true,
+    metadata: { hasPendingWrites: opts.pending ?? false },
+    data: () => data,
+  });
+
+  it('listener applies household custom categories even when no budgets are set', async () => {
+    subscribeToHouseholdBudgets('hh1');
+    await lastSnapshotHandler!(snap({ customCategories: [pets] }));
+    expect(mockApplyCustomCategories).toHaveBeenCalledWith('hh1', [pets]);
+    expect(mockApplyBudgetsSnapshot).not.toHaveBeenCalled();
+  });
+
+  it('listener applies budgets and custom categories together', async () => {
+    subscribeToHouseholdBudgets('hh1');
+    const budgets = { byCategory: { Pets: 20 }, alertsEnabled: true };
+    await lastSnapshotHandler!(snap({ budgets, customCategories: [pets, hobbies] }));
+    expect(mockApplyBudgetsSnapshot).toHaveBeenCalledWith('hh1', budgets);
+    expect(mockApplyCustomCategories).toHaveBeenCalledWith('hh1', [pets, hobbies]);
+  });
+
+  it('listener ignores own pending writes, missing docs, and docs with neither field', async () => {
+    subscribeToHouseholdBudgets('hh1');
+    const h = lastSnapshotHandler as SnapHandler;
+    await h(snap({ customCategories: [pets] }, { pending: true }));
+    await h(snap({}, { exists: false }));
+    await h(snap({ memberUids: ['u1'] }));
+    expect(mockApplyCustomCategories).not.toHaveBeenCalled();
+    expect(mockApplyBudgetsSnapshot).not.toHaveBeenCalled();
   });
 });

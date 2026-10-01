@@ -193,6 +193,8 @@ export async function clearBudgetsForHousehold(householdId: string): Promise<voi
     SecureStore.deleteItemAsync(`${Keys.budgetAlertsEnabled}.${householdId}`),
     // Premium custom categories (lib/customCategories.ts) live under this key.
     SecureStore.deleteItemAsync(`bs.customCategories.${householdId}`),
+    SecureStore.deleteItemAsync(`bs.customCategories.synced.${householdId}`),
+    SecureStore.deleteItemAsync(`bs.customCategories.pending.${householdId}`),
   ]);
 }
 

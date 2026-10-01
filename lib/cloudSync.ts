@@ -1,5 +1,11 @@
 import { Receipt, Settlement, Income, SavingsGoal } from '../types';
 import {
+  applyCustomCategories,
+  clearPendingCustomCategoryChanges,
+  getPendingCustomCategoryChanges,
+  type CustomCategory,
+} from './customCategories';
+import {
   applyBudgetsSnapshot,
   BudgetsSnapshot,
   getCloudMigrationDone,
@@ -891,6 +897,78 @@ export function subscribeToHouseholdSavingsGoals(
 // member changing a budget pushes it here, and every other member
 // (new or long-standing) picks it up on their next snapshot.
 
+/** Mirrors Premium custom categories onto the household doc so every
+ *  member sees the same names and colors. Uses arrayUnion / arrayRemove
+ *  (not a whole-list overwrite) so two members editing at once don't
+ *  clobber each other. Budgets for these categories already sync through
+ *  syncBudgetsToCloud. Removal matches by NAME (not exact object), so a
+ *  category two members created separately with different colors is
+ *  fully removed instead of resurfacing from the other copy. Resolves
+ *  true only when the write(s) succeeded. */
+export async function syncCustomCategoriesToCloud(
+  householdId: string,
+  change: { add?: CustomCategory[]; remove?: CustomCategory[] },
+): Promise<boolean> {
+  const firestore = loadFirestore();
+  if (!firestore || !householdId) return false;
+  try {
+    const ref = firestore().collection('households').doc(householdId);
+    if (change.add && change.add.length > 0) {
+      await ref.set(
+        { customCategories: firestore.FieldValue.arrayUnion(...change.add) },
+        { merge: true },
+      );
+    }
+    if (change.remove && change.remove.length > 0) {
+      const names = new Set(change.remove.map((c) => c.name));
+      const current = (await ref.get()).data()?.customCategories as unknown;
+      if (Array.isArray(current)) {
+        await ref.set(
+          {
+            customCategories: current.filter(
+              (c) => !(c && typeof c === 'object' && names.has((c as CustomCategory).name)),
+            ),
+          },
+          { merge: true },
+        );
+      }
+    }
+    // Acknowledged: stop shielding these names from cloud snapshots.
+    try {
+      await clearPendingCustomCategoryChanges(householdId, {
+        add: change.add?.map((c) => c.name),
+        remove: change.remove?.map((c) => c.name),
+      });
+    } catch {
+      // harmless: the entry is dropped on the next snapshot that reflects it
+    }
+    return true;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[cloudSync] syncCustomCategoriesToCloud failed:', (e as Error)?.message);
+    return false;
+  }
+}
+
+/** Re-sends custom category changes that never got acknowledged (offline
+ *  at the time, or the app closed mid-write). Called when the household
+ *  listener starts. */
+export async function flushPendingCustomCategories(householdId: string): Promise<void> {
+  try {
+    const pending = await getPendingCustomCategoryChanges(householdId);
+    if (pending.add.length > 0) {
+      await syncCustomCategoriesToCloud(householdId, { add: pending.add });
+    }
+    if (pending.remove.length > 0) {
+      await syncCustomCategoriesToCloud(householdId, {
+        remove: pending.remove.map((name) => ({ name, color: '' })),
+      });
+    }
+  } catch {
+    // retried on the next listener start
+  }
+}
+
 export async function syncBudgetsToCloud(
   householdId: string,
   budgets: BudgetsSnapshot,
@@ -922,14 +1000,20 @@ export function subscribeToHouseholdBudgets(
   try {
     const db = firestore();
     const ref = db.collection('households').doc(householdId);
+    void flushPendingCustomCategories(householdId);
     const unsub = ref.onSnapshot(
       async (snapshot) => {
         if (!snapshot || !snapshot.exists) return;
         if (snapshot.metadata.hasPendingWrites) return;
-        const budgets = snapshot.data()?.budgets as BudgetsSnapshot | undefined;
-        if (!budgets) return;
+        const data = snapshot.data();
+        const budgets = data?.budgets as BudgetsSnapshot | undefined;
+        const customCategories = data?.customCategories as unknown;
+        if (!budgets && !Array.isArray(customCategories)) return;
         try {
-          await applyBudgetsSnapshot(householdId, budgets);
+          if (budgets) await applyBudgetsSnapshot(householdId, budgets);
+          if (Array.isArray(customCategories)) {
+            await applyCustomCategories(householdId, customCategories);
+          }
           notifyLocalDataChanged();
         } catch (e) {
           // eslint-disable-next-line no-console

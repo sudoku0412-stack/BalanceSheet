@@ -23,7 +23,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { Skeleton } from '../components/ui/Skeleton';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { Button } from '../components/ui/Button';
-import { ALL_CATEGORIES } from '../constants/categories';
+import { getCustomCategories, resolveCategoryColor, type CustomCategory } from '../lib/customCategories';
 import { getAllReceipts, getAllIncomes, getCurrentHouseholdId } from '../lib/database';
 import { computeStats } from '../lib/dashboardStats';
 import { isInCalendarMonth } from '../lib/calendarDate';
@@ -74,19 +74,24 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   const [loading, setLoading] = useState(true);
   const [currency, setCurrency] = useState<CurrencyCode>('USD');
   const [budgetTotal, setBudgetTotal] = useState(0);
+  const [customs, setCustoms] = useState<CustomCategory[]>([]);
 
   useFocusEffect(
     useCallback(() => {
       let mounted = true;
       (async () => {
         const hid = getCurrentHouseholdId();
-        const [all, allIncomes, code, budgets] = await Promise.all([
+        const [all, allIncomes, code, budgets, customList] = await Promise.all([
           getAllReceipts(),
           getAllIncomes(),
           getCurrency(),
           hid ? getCategoryBudgets(hid) : Promise.resolve({} as Record<string, number>),
+          hid
+            ? getCustomCategories(hid).catch(() => [] as CustomCategory[])
+            : Promise.resolve([] as CustomCategory[]),
         ]);
         if (!mounted) return;
+        setCustoms(customList);
         setReceipts(all);
         setIncomes(allIncomes);
         if (code) setCurrency(code as CurrencyCode);
@@ -299,6 +304,7 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
             donut={donut}
             currency={currency}
             theme={theme}
+            customs={customs}
           />
 
           {/* Empty state */}
@@ -337,10 +343,14 @@ function ReportsScreen({ embedded = false }: { embedded?: boolean } = {}) {
   );
 }
 
-function sliceColor(key: string, remaining: boolean | undefined, theme: Theme): string {
+function sliceColor(
+  key: string,
+  remaining: boolean | undefined,
+  theme: Theme,
+  customs: CustomCategory[],
+): string {
   if (remaining) return theme.colors.chartRemaining;
-  const standard = (ALL_CATEGORIES as readonly string[]).includes(key);
-  return standard ? theme.colors.category[key as Category] : theme.colors.accent;
+  return resolveCategoryColor(key, theme.colors.category, customs, theme.colors.accent);
 }
 
 function donutCaption(donut: BudgetDonutModel, currency: CurrencyCode): string {
@@ -363,19 +373,21 @@ function SummaryCard({
   donut,
   currency,
   theme,
+  customs,
 }: {
   stats: MonthlyStats;
   cashflow: CashflowStats;
   donut: BudgetDonutModel;
   currency: CurrencyCode;
   theme: Theme;
+  customs: CustomCategory[];
 }) {
   const styles = useReportsStyles();
   const count = stats.receiptCount;
   return (
     <View style={styles.summaryCard}>
       <View style={styles.donutWrap} accessibilityLabel="Monthly budget donut">
-        <BudgetDonut donut={donut} theme={theme} size={220} />
+        <BudgetDonut donut={donut} theme={theme} size={220} customs={customs} />
         <View style={styles.donutCenter} pointerEvents="none">
           {donut.circleTotal > 0 ? (
             <>
@@ -397,7 +409,7 @@ function SummaryCard({
             <View
               style={[
                 styles.legendDot,
-                { backgroundColor: sliceColor(slice.key, slice.remaining, theme) },
+                { backgroundColor: sliceColor(slice.key, slice.remaining, theme, customs) },
                 slice.remaining ? styles.legendDotRemaining : null,
               ]}
             />
@@ -481,10 +493,12 @@ function BudgetDonut({
   donut,
   theme,
   size = 220,
+  customs,
 }: {
   donut: BudgetDonutModel;
   theme: Theme;
   size?: number;
+  customs: CustomCategory[];
 }) {
   const strokeWidth = Math.round(size * 0.22);
   const r = (size - strokeWidth) / 2;
@@ -532,7 +546,7 @@ function BudgetDonut({
               cx={center}
               cy={center}
               r={r}
-              stroke={sliceColor(slice.key, false, theme)}
+              stroke={sliceColor(slice.key, false, theme, customs)}
               strokeWidth={strokeWidth}
               strokeDasharray={`${dash} ${circumference - dash}`}
               strokeDashoffset={dashOffset}
