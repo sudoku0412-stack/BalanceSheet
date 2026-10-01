@@ -204,3 +204,45 @@ describe('pending local changes survive cloud snapshots (race fix)', () => {
     expect(await getPendingCustomCategoryChanges('h1')).toEqual({ add: [], remove: [] });
   });
 });
+
+describe('concurrent add and cloud snapshot (race fix)', () => {
+  const cloud = [{ name: 'Hobbies', color: '#333' }];
+
+  it('add then snapshot: new category and remote one both survive', async () => {
+    const [added, applied] = await Promise.all([
+      addCustomCategory('h1', 'Pets'),
+      applyCustomCategories('h1', cloud),
+    ]);
+    expect(added.ok).toBe(true);
+    // the snapshot ran after the add, so it re-applied the pending 'Pets'
+    expect(applied.map((c) => c.name).sort()).toEqual(['Hobbies', 'Pets']);
+    expect((await getCustomCategories('h1')).map((c) => c.name).sort()).toEqual(['Hobbies', 'Pets']);
+  });
+
+  it('snapshot then add: both survive', async () => {
+    await Promise.all([
+      applyCustomCategories('h1', cloud),
+      addCustomCategory('h1', 'Pets'),
+    ]);
+    expect((await getCustomCategories('h1')).map((c) => c.name).sort()).toEqual(['Hobbies', 'Pets']);
+  });
+
+  it('snapshot interleaved between two adds never drops either', async () => {
+    await Promise.all([
+      addCustomCategory('h1', 'One'),
+      applyCustomCategories('h1', cloud),
+      addCustomCategory('h1', 'Two'),
+      applyCustomCategories('h1', cloud),
+    ]);
+    expect((await getCustomCategories('h1')).map((c) => c.name).sort()).toEqual([
+      'Hobbies',
+      'One',
+      'Two',
+    ]);
+  });
+
+  it('a failing mutation does not wedge the lock', async () => {
+    await expect(addCustomCategory('h1', '   ')).resolves.toEqual({ ok: false, reason: 'empty' });
+    await expect(addCustomCategory('h1', 'Pets')).resolves.toMatchObject({ ok: true });
+  });
+});
