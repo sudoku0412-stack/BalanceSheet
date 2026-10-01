@@ -66,7 +66,7 @@ PRIVACY
 • Photos are stored in Firebase Storage under your household's namespace; only household members can read them.
 • No third-party analytics, no advertising SDKs, no behavioral tracking.
 • Delete your account from Settings → Account → Delete account; this wipes all your cloud data.
-• Full privacy policy: https://kaushik-majumder.github.io/BalanceSheet/privacy-policy.html
+• Full privacy policy: https://sudoku0412-stack.github.io/NestExpenseTracker/privacy-policy.html
 
 Built with React Native + Expo + Firebase + Google Gemini. Open source on GitHub.
 ```
@@ -86,13 +86,13 @@ Built with React Native + Expo + Firebase + Google Gemini. Open source on GitHub
 ## Website
 
 ```
-https://github.com/kaushik-majumder/BalanceSheet
+https://github.com/sudoku0412-stack/NestExpenseTracker
 ```
 
 ## Privacy policy URL
 
 ```
-https://kaushik-majumder.github.io/BalanceSheet/privacy-policy.html
+https://sudoku0412-stack.github.io/NestExpenseTracker/privacy-policy.html
 ```
 *(active once GitHub Pages is enabled on the repo — see HOSTING_PRIVACY_POLICY.md)*
 

@@ -4,7 +4,7 @@ The Play Store requires a public URL for your privacy policy. GitHub Pages is th
 
 ## Steps
 
-1. Go to **https://github.com/kaushik-majumder/BalanceSheet/settings/pages**
+1. Go to **https://github.com/sudoku0412-stack/NestExpenseTracker/settings/pages**
 2. Under **Source**, select **Deploy from a branch**
 3. Branch: **`main`**, folder: **`/docs`**
 4. Click **Save**
@@ -13,7 +13,7 @@ The Play Store requires a public URL for your privacy policy. GitHub Pages is th
 Your privacy policy will then be live at:
 
 ```
-https://kaushik-majumder.github.io/BalanceSheet/privacy-policy.html
+https://sudoku0412-stack.github.io/NestExpenseTracker/privacy-policy.html
 ```
 
 That's the URL you paste into the Play Console under **Store presence → Main store listing → Privacy policy**.
