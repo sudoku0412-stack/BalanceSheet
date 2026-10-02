@@ -1488,7 +1488,7 @@ export default function ScanScreen() {
 
       notifySuccess();
       toast.show({
-        message: t('savedToCategory', { category: primaryCategory }),
+        message: t('savedToCategory', { category: categoryLabel(primaryCategory) }),
         kind: 'success',
       });
       resetState();
