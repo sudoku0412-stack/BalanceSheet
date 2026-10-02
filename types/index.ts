@@ -250,3 +250,31 @@ export interface SavingsGoal {
   createdAt: string;
   updatedAt: string;
 }
+
+export type InvestmentKind = 'stocks' | 'etf' | 'crypto' | 'retirement' | 'savings' | 'other';
+
+/** A holding the user tracks by hand (brokerage, TFSA/RRSP/401k, crypto…).
+ *  Personal and local-only — never shared with the household. */
+export interface InvestmentAccount {
+  id: string;
+  name: string;
+  kind: InvestmentKind;
+  /** Net money put in (deposits minus withdrawals), USD-canonical. */
+  contributedUsd: number;
+  /** Latest value the user entered, USD-canonical. */
+  valueUsd: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A dated record of an account's value and cumulative contributions. */
+export interface InvestmentSnapshot {
+  id: string;
+  accountId: string;
+  /** YYYY-MM-DD */
+  date: string;
+  valueUsd: number;
+  contributedUsd: number;
+  createdAt: string;
+}

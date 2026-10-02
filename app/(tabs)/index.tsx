@@ -1082,6 +1082,16 @@ export default function DashboardScreen() {
             <Ionicons name="flag-outline" size={20} color={theme.colors.textPrimary} />
             <Text style={styles.actionBtnText}>{isPremium ? t('goals') : t('goalsPro')}</Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            testID="home-investments"
+            style={[styles.actionBtn, { backgroundColor: theme.colors.cardTint.mint }]}
+            onPress={() => router.push(isPremium ? '/investments' : '/paywall')}
+          >
+            <Ionicons name="trending-up-outline" size={20} color={theme.colors.textPrimary} />
+            <Text style={styles.actionBtnText}>
+              {isPremium ? t('investmentsTitle') : t('investmentsPro')}
+            </Text>
+          </TouchableOpacity>
         </View>
   
         {isPremium && savingsGoals.length > 0 && (

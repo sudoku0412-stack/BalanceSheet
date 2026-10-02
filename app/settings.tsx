@@ -1199,6 +1199,16 @@ export default function SettingsScreen() {
               {isPremium ? t('savingsGoals') : t('savingsGoalsPremium')}
             </Text>
           </Pressable>
+          <Pressable
+            testID="settings-investments"
+            onPress={() => router.push(isPremium ? '/investments' : '/paywall')}
+            style={styles.leaveHouseholdBtn}
+            hitSlop={4}
+          >
+            <Text style={styles.leaveHouseholdText}>
+              {isPremium ? t('investmentsTitle') : t('investmentsPro')}
+            </Text>
+          </Pressable>
           <View style={styles.alertRow}>
             {/* Now the single on/off switch for every push notification
                 this app sends — budget alerts, a new shared expense,
