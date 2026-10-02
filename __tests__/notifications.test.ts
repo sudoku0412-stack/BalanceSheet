@@ -237,6 +237,23 @@ describe('checkBudgetsAndNotify', () => {
     );
   });
 
+  it('alerts when line-item categories push a budget over, even if the receipt category differs', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Subscriptions: 100 });
+    mockGetReceiptsByMonth.mockResolvedValue([
+      receipt({
+        totalAmount: 100,
+        category: 'Groceries',
+        lineItems: [{ id: 'i1', name: 'Streaming', amount: 100, category: 'Subscriptions' }],
+      }),
+    ]);
+    await checkBudgetsAndNotify();
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({ body: expect.stringContaining('Over: Subscriptions') }),
+      }),
+    );
+  });
+
   it('a custom category under its limit does not alert', async () => {
     mockGetCategoryBudgets.mockResolvedValue({ Subscriptions: 200 });
     mockGetReceiptsByMonth.mockResolvedValue([receipt({ totalAmount: 50, category: 'Subscriptions' })]);

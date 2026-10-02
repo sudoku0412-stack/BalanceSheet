@@ -1089,59 +1089,62 @@ export default function SettingsScreen() {
               </View>
             </View>
           ))}
+          {/* Custom categories are shared with the whole household, so every
+              member can see them and set their budget; only Premium
+              members can create or remove them. */}
+          {customCategories.map((c) => (
+            <View key={c.name} style={styles.budgetRow} testID={`custom-budget-row-${c.name}`}>
+              <View style={[styles.categoryDot, { backgroundColor: c.color }]} />
+              <Text style={styles.categoryName} numberOfLines={1}>
+                {c.name}
+              </Text>
+              <View style={styles.budgetInputBox}>
+                <Text style={styles.budgetCurrencyPrefix}>{CURRENCY_SYMBOLS[currency]}</Text>
+                <TextInput
+                  value={budgetInputs[c.name] ?? ''}
+                  onChangeText={(v) => updateCategoryBudget(c.name, v)}
+                  placeholder="0"
+                  placeholderTextColor={theme.colors.textMuted}
+                  keyboardType="numeric"
+                  style={styles.budgetInput}
+                />
+              </View>
+              {isPremium && (
+                <Pressable
+                  testID={`custom-remove-${c.name}`}
+                  onPress={async () => {
+                    const hid = getCurrentHouseholdId();
+                    if (!hid) return;
+                    setCustomCategories(await removeCustomCategory(hid, c.name));
+                    void syncCustomCategoriesToCloud(hid, { remove: [c] });
+                    // Drop its budget too — with the row gone the user
+                    // could never clear a leftover limit otherwise.
+                    if (categoryBudgetsUsd[c.name] > 0) {
+                      const nextBudgets = { ...categoryBudgetsUsd, [c.name]: 0 };
+                      setCategoryBudgetsUsd(nextBudgets);
+                      setBudgetInputs((prev) => ({ ...prev, [c.name]: '' }));
+                      setCategoryBudget(hid, c.name, 0);
+                      pushBudgetsToCloud(nextBudgets, budgetAlertsEnabled);
+                    }
+                  }}
+                  hitSlop={8}
+                  accessibilityLabel={`Remove ${c.name}`}
+                >
+                  <Ionicons name="close-circle-outline" size={20} color={theme.colors.textMuted} />
+                </Pressable>
+              )}
+            </View>
+          ))}
           {isPremium ? (
-            <>
-              {customCategories.map((c) => (
-                <View key={c.name} style={styles.budgetRow} testID={`custom-budget-row-${c.name}`}>
-                  <View style={[styles.categoryDot, { backgroundColor: c.color }]} />
-                  <Text style={styles.categoryName} numberOfLines={1}>
-                    {c.name}
-                  </Text>
-                  <View style={styles.budgetInputBox}>
-                    <Text style={styles.budgetCurrencyPrefix}>{CURRENCY_SYMBOLS[currency]}</Text>
-                    <TextInput
-                      value={budgetInputs[c.name] ?? ''}
-                      onChangeText={(v) => updateCategoryBudget(c.name, v)}
-                      placeholder="0"
-                      placeholderTextColor={theme.colors.textMuted}
-                      keyboardType="numeric"
-                      style={styles.budgetInput}
-                    />
-                  </View>
-                  <Pressable
-                    testID={`custom-remove-${c.name}`}
-                    onPress={async () => {
-                      const hid = getCurrentHouseholdId();
-                      if (!hid) return;
-                      setCustomCategories(await removeCustomCategory(hid, c.name));
-                      void syncCustomCategoriesToCloud(hid, { remove: [c] });
-                      // Drop its budget too — with the row gone the user
-                      // could never clear a leftover limit otherwise.
-                      if (categoryBudgetsUsd[c.name] > 0) {
-                        const nextBudgets = { ...categoryBudgetsUsd, [c.name]: 0 };
-                        setCategoryBudgetsUsd(nextBudgets);
-                        setBudgetInputs((prev) => ({ ...prev, [c.name]: '' }));
-                        setCategoryBudget(hid, c.name, 0);
-                        pushBudgetsToCloud(nextBudgets, budgetAlertsEnabled);
-                      }
-                    }}
-                    hitSlop={8}
-                    accessibilityLabel={`Remove ${c.name}`}
-                  >
-                    <Ionicons name="close-circle-outline" size={20} color={theme.colors.textMuted} />
-                  </Pressable>
-                </View>
-              ))}
-              <CustomCategoryPicker
-                householdId={getCurrentHouseholdId()}
-                customs={[]}
-                selected=""
-                isPremium
-                onSelect={() => {}}
-                onCustomsChange={setCustomCategories}
-                onUpgrade={() => {}}
-              />
-            </>
+            <CustomCategoryPicker
+              householdId={getCurrentHouseholdId()}
+              customs={[]}
+              selected=""
+              isPremium
+              onSelect={() => {}}
+              onCustomsChange={setCustomCategories}
+              onUpgrade={() => {}}
+            />
           ) : (
             <Pressable
               testID="custom-categories-locked"

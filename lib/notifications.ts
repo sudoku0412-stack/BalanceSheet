@@ -11,7 +11,7 @@ import {
 } from './secureStorage';
 import { getCurrentHouseholdId, getReceiptsByMonth } from './database';
 import { getHouseholdMemberPushTokens, getHouseholdMembers, getPushTokensForUids } from './cloudSync';
-import { RECURRING_BUDGET_KEY, isRecurringExpense } from './recurring';
+import { computeBudgetSpend } from './budgetSpend';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -132,18 +132,7 @@ function computeBudgetStatusSummary(
   const categoriesWithBudgets = Object.entries(budgets).filter(([, limit]) => limit > 0);
   if (categoriesWithBudgets.length === 0) return null;
 
-  const spentByCategory: Record<string, number> = {};
-  for (const r of receipts) {
-    spentByCategory[r.category] = (spentByCategory[r.category] ?? 0) + r.totalAmount;
-    // "Recurring" is normally a separate axis, not a real category —
-    // mirrors app/(tabs)/index.tsx's categorySpendForBudgets exactly,
-    // including the same guard against double-adding a receipt whose
-    // category IS literally "Recurring" (the selectable category).
-    if (isRecurringExpense(r) && r.category !== RECURRING_BUDGET_KEY) {
-      spentByCategory[RECURRING_BUDGET_KEY] =
-        (spentByCategory[RECURRING_BUDGET_KEY] ?? 0) + r.totalAmount;
-    }
-  }
+  const spentByCategory = computeBudgetSpend(receipts);
 
   const over: string[] = [];
   const watch: string[] = [];
