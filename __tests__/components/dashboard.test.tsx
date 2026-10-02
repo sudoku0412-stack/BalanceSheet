@@ -205,6 +205,23 @@ describe('DashboardScreen', () => {
     expect(screen.getAllByTestId('budget-ring')).toHaveLength(4);
   });
 
+  it('Investments action opens the portfolio for Premium and the paywall for free users', async () => {
+    render(<DashboardScreen />);
+    await waitFor(() => screen.getByTestId('home-investments'));
+    fireEvent.press(screen.getByTestId('home-investments'));
+    expect(router.push).toHaveBeenCalledWith('/investments');
+    expect(screen.getByText('Investments')).toBeTruthy();
+  });
+
+  it('Investments action routes free users to the paywall', async () => {
+    mockEntitlements.isPremium = false;
+    render(<DashboardScreen />);
+    await waitFor(() => screen.getByTestId('home-investments'));
+    fireEvent.press(screen.getByTestId('home-investments'));
+    expect(router.push).toHaveBeenCalledWith('/paywall');
+    expect(screen.getByText('Investments · Pro')).toBeTruthy();
+  });
+
   it('shows a review banner linking to /review when expenses await review', async () => {
     mockGetReviewQueueCount.mockResolvedValue(3);
     render(<DashboardScreen />);

@@ -266,6 +266,18 @@ function RootStack() {
         }}
       />
       <Stack.Screen
+        name="investments"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="investment/[id]"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
         name="edit-income/[id]"
         options={{
           headerShown: false,

@@ -185,6 +185,22 @@ describe('SettingsScreen', () => {
     expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
   });
 
+  it('Investments row is Premium: paywall for free users, portfolio for Premium', async () => {
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('settings-investments'));
+    expect(screen.getByText('Investments · Pro')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('settings-investments'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
+  });
+
+  it('Premium user opens the investments portfolio from Settings', async () => {
+    mockIsPremium = true;
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('settings-investments'));
+    fireEvent.press(screen.getByTestId('settings-investments'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/investments');
+  });
+
   it('language picker offers System / English / Français and saves the choice', async () => {
     render(<SettingsScreen />);
     await waitFor(() => screen.getByTestId('language-fr'));

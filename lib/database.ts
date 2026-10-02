@@ -1,6 +1,16 @@
 import * as SQLite from 'expo-sqlite';
 import { calendarMonthSql, calendarMonthSqlParams } from './calendarDate';
-import { Receipt, LineItem, Settlement, Income, IncomeCategory, SavingsGoal } from '../types';
+import {
+  Receipt,
+  LineItem,
+  Settlement,
+  Income,
+  IncomeCategory,
+  SavingsGoal,
+  InvestmentAccount,
+  InvestmentKind,
+  InvestmentSnapshot,
+} from '../types';
 import {
   syncReceiptDeletionToCloud,
   syncReceiptToCloud,
@@ -253,6 +263,32 @@ export async function initDatabase(): Promise<void> {
       household_id  TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_savings_goals_user ON savings_goals(user_id);
+
+    -- Investment holdings (Premium). Personal and local-only: never shared
+    -- with household members and not cloud-synced, so they are scoped by
+    -- user_id alone. Wiped with the account.
+    CREATE TABLE IF NOT EXISTS investment_accounts (
+      id              TEXT PRIMARY KEY,
+      name            TEXT NOT NULL,
+      kind            TEXT NOT NULL DEFAULT 'other',
+      contributed_usd REAL NOT NULL DEFAULT 0,
+      value_usd       REAL NOT NULL DEFAULT 0,
+      notes           TEXT,
+      created_at      TEXT NOT NULL,
+      updated_at      TEXT NOT NULL,
+      user_id         TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_investment_accounts_user ON investment_accounts(user_id);
+    CREATE TABLE IF NOT EXISTS investment_snapshots (
+      id              TEXT PRIMARY KEY,
+      account_id      TEXT NOT NULL,
+      date            TEXT NOT NULL,
+      value_usd       REAL NOT NULL DEFAULT 0,
+      contributed_usd REAL NOT NULL DEFAULT 0,
+      created_at      TEXT NOT NULL,
+      user_id         TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_investment_snapshots_account ON investment_snapshots(account_id);
   `);
 
   // Review inbox. Receipts auto-created by the recurring processor land
@@ -656,6 +692,8 @@ export async function deleteAllReceipts(): Promise<void> {
     await db.runAsync(`DELETE FROM receipt_corrections WHERE user_id = ?`, [uid]);
     await db.runAsync(`DELETE FROM incomes WHERE user_id = ?`, [uid]);
     await db.runAsync(`DELETE FROM savings_goals WHERE user_id = ?`, [uid]);
+    await db.runAsync(`DELETE FROM investment_snapshots WHERE user_id = ?`, [uid]);
+    await db.runAsync(`DELETE FROM investment_accounts WHERE user_id = ?`, [uid]);
   });
 }
 
@@ -1721,4 +1759,120 @@ export async function deleteSavingsGoalFromCloud(
     uid,
     householdId,
   ]);
+}
+
+// ─── investments (Premium, personal, local-only) ───────────────────────────
+
+type InvestmentAccountRow = {
+  id: string;
+  name: string;
+  kind: string;
+  contributed_usd: number;
+  value_usd: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function rowToInvestmentAccount(row: InvestmentAccountRow): InvestmentAccount {
+  return {
+    id: row.id,
+    name: row.name,
+    kind: row.kind as InvestmentKind,
+    contributedUsd: row.contributed_usd,
+    valueUsd: row.value_usd,
+    notes: row.notes ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function saveInvestmentAccount(account: InvestmentAccount): Promise<void> {
+  const uid = requireUserId('saveInvestmentAccount');
+  await db.runAsync(
+    `INSERT OR REPLACE INTO investment_accounts (
+      id, name, kind, contributed_usd, value_usd, notes, created_at, updated_at, user_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      account.id,
+      account.name,
+      account.kind,
+      account.contributedUsd,
+      account.valueUsd,
+      account.notes ?? null,
+      account.createdAt,
+      account.updatedAt,
+      uid,
+    ],
+  );
+}
+
+export async function getAllInvestmentAccounts(): Promise<InvestmentAccount[]> {
+  const uid = requireUserId('getAllInvestmentAccounts');
+  const rows = await db.getAllAsync<InvestmentAccountRow>(
+    `SELECT * FROM investment_accounts WHERE user_id=? ORDER BY created_at ASC`,
+    [uid],
+  );
+  return rows.map(rowToInvestmentAccount);
+}
+
+export async function getInvestmentAccountById(id: string): Promise<InvestmentAccount | null> {
+  const uid = requireUserId('getInvestmentAccountById');
+  const row = await db.getFirstAsync<InvestmentAccountRow>(
+    `SELECT * FROM investment_accounts WHERE id=? AND user_id=?`,
+    [id, uid],
+  );
+  return row ? rowToInvestmentAccount(row) : null;
+}
+
+/** Deletes the account and its value history. */
+export async function deleteInvestmentAccount(id: string): Promise<void> {
+  const uid = requireUserId('deleteInvestmentAccount');
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM investment_snapshots WHERE account_id=? AND user_id=?`, [id, uid]);
+    await db.runAsync(`DELETE FROM investment_accounts WHERE id=? AND user_id=?`, [id, uid]);
+  });
+}
+
+export async function addInvestmentSnapshot(snapshot: InvestmentSnapshot): Promise<void> {
+  const uid = requireUserId('addInvestmentSnapshot');
+  await db.runAsync(
+    `INSERT OR REPLACE INTO investment_snapshots (
+      id, account_id, date, value_usd, contributed_usd, created_at, user_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      snapshot.id,
+      snapshot.accountId,
+      snapshot.date,
+      snapshot.valueUsd,
+      snapshot.contributedUsd,
+      snapshot.createdAt,
+      uid,
+    ],
+  );
+}
+
+/** Newest first. */
+export async function getInvestmentSnapshots(accountId: string): Promise<InvestmentSnapshot[]> {
+  const uid = requireUserId('getInvestmentSnapshots');
+  const rows = await db.getAllAsync<{
+    id: string;
+    account_id: string;
+    date: string;
+    value_usd: number;
+    contributed_usd: number;
+    created_at: string;
+  }>(
+    `SELECT * FROM investment_snapshots WHERE account_id=? AND user_id=?
+     ORDER BY date DESC, created_at DESC`,
+    [accountId, uid],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    accountId: r.account_id,
+    date: r.date,
+    valueUsd: r.value_usd,
+    contributedUsd: r.contributed_usd,
+    createdAt: r.created_at,
+  }));
 }
