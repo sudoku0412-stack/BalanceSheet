@@ -219,12 +219,23 @@ describe('SettingsScreen', () => {
     expect(mockSettingsPush).not.toHaveBeenCalledWith('/paywall');
   });
 
-  it('free user: custom categories & budgets row is locked and opens the paywall', async () => {
+  it('free user: sees the household\'s shared custom categories and can set their budget, but not remove or add', async () => {
     render(<SettingsScreen />);
-    await waitFor(() => screen.getByTestId('custom-categories-locked'));
-    expect(screen.queryByTestId('custom-budget-row-Pets')).toBeNull();
+    await waitFor(() => screen.getByTestId('custom-budget-row-Pets'));
+    // no remove control and the create affordance is the locked upsell
+    expect(screen.queryByTestId('custom-remove-Pets')).toBeNull();
+    expect(screen.queryByTestId('custom-category-add')).toBeNull();
     fireEvent.press(screen.getByTestId('custom-categories-locked'));
     expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
+  });
+
+  it('free user: can set the budget for a shared custom category', async () => {
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('custom-budget-row-Pets'));
+    const row = screen.getByTestId('custom-budget-row-Pets');
+    const input = row.findByType(require('react-native').TextInput);
+    fireEvent.changeText(input, '75');
+    await waitFor(() => expect(setCategoryBudget).toHaveBeenCalledWith('hh1', 'Pets', 75));
   });
 
   it('premium user: shows custom category budget rows and can remove one', async () => {

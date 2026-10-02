@@ -25,7 +25,8 @@ import { useStyles, useTheme } from '../../constants/theme';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { computeStats } from '../../lib/dashboardStats';
 import { computeCashflow } from '../../lib/cashflowStats';
-import { RECURRING_BUDGET_KEY, isRecurringExpense } from '../../lib/recurring';
+import { RECURRING_BUDGET_KEY } from '../../lib/recurring';
+import { computeBudgetSpend } from '../../lib/budgetSpend';
 import { useAuth } from '../../lib/AuthContext';
 import { useEntitlements } from '../../lib/EntitlementsContext';
 import type { Profile } from '../../lib/profile';
@@ -702,28 +703,11 @@ export default function DashboardScreen() {
       ? Math.round(((stats.totalSpent - lastMonthTotal) / lastMonthTotal) * 100)
       : null;
 
-  // Budgets track against what actually left the wallet — each receipt's
-  // full totalAmount (tax included) under its PRIMARY category. This is
-  // deliberately NOT stats.categories: that breakdown sums per-LINE-ITEM
-  // amounts (pre-tax, split across a receipt's multiple categories) for
-  // Reports' finer-grained view, which is correct there but means a
-  // receipt's tax never shows up anywhere — confusing for a "spent X of
-  // Y limit" budget number, which should match the real total spent.
-  const categorySpendForBudgets: Record<string, number> = {};
-  for (const r of receipts) {
-    categorySpendForBudgets[r.category] =
-      (categorySpendForBudgets[r.category] ?? 0) + r.totalAmount;
-    // "Recurring" is normally a separate axis, not a real category — a
-    // receipt still counts toward its own category's budget too. Skip
-    // the double-add for a receipt whose category IS literally
-    // "Recurring" (the selectable category, which auto-enables the
-    // repeat toggle) — the loop above already added it once under
-    // that exact same key.
-    if (isRecurringExpense(r) && r.category !== RECURRING_BUDGET_KEY) {
-      categorySpendForBudgets[RECURRING_BUDGET_KEY] =
-        (categorySpendForBudgets[RECURRING_BUDGET_KEY] ?? 0) + r.totalAmount;
-    }
-  }
+  // Budgets track against what actually left the wallet: each receipt's
+  // full totalAmount (tax included), split across the categories of its
+  // line items (see lib/budgetSpend.ts) so item-level categories — built-in
+  // or custom — count toward their own budgets.
+  const categorySpendForBudgets = computeBudgetSpend(receipts);
   const budgetRows = Object.entries(categorySpendForBudgets)
     .filter(([category]) => (budgets[category] ?? 0) > 0)
     .sort((a, b) => b[1] - a[1])

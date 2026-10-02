@@ -166,6 +166,25 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('On track')).toBeTruthy();
   });
 
+  it('counts a line-item category toward its own budget, split from the receipt total', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Subscriptions: 100 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({
+          id: 'mix',
+          totalAmount: 100,
+          category: 'Groceries',
+          lineItems: [
+            { id: 'a', name: 'Milk', amount: 60, category: 'Groceries' },
+            { id: 'b', name: 'Streaming', amount: 40, category: 'Subscriptions' },
+          ],
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+    await waitFor(() => expect(screen.getByText('$40.00 of $100.00')).toBeTruthy());
+  });
+
   it('shows every budgeted category with spend, not just the top three', async () => {
     mockGetCategoryBudgets.mockResolvedValue({
       Groceries: 100,
