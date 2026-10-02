@@ -153,6 +153,39 @@ describe('DashboardScreen', () => {
     expect(screen.getByText('2 expenses this month')).toBeTruthy();
   });
 
+  it('shows budget progress for a custom category once something is added to it', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Subscriptions: 200 });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({ id: 's1', storeName: 'Netflix', totalAmount: 50, category: 'Subscriptions' }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+    await waitFor(() => expect(screen.getByText('$50.00 of $200.00')).toBeTruthy());
+    expect(screen.getAllByText('Subscriptions').length).toBeGreaterThan(0);
+    expect(screen.getByText('On track')).toBeTruthy();
+  });
+
+  it('shows every budgeted category with spend, not just the top three', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({
+      Groceries: 100,
+      Dining: 100,
+      Gas: 100,
+      Subscriptions: 100,
+    });
+    mockGetReceiptsByMonth
+      .mockResolvedValueOnce([
+        makeReceipt({ id: 'a', totalAmount: 40, category: 'Groceries' }),
+        makeReceipt({ id: 'b', totalAmount: 30, category: 'Dining' }),
+        makeReceipt({ id: 'c', totalAmount: 20, category: 'Gas' }),
+        makeReceipt({ id: 'd', totalAmount: 10, category: 'Subscriptions' }),
+      ])
+      .mockResolvedValueOnce([]);
+    render(<DashboardScreen />);
+    await waitFor(() => expect(screen.getByText('$10.00 of $100.00')).toBeTruthy());
+    expect(screen.getAllByTestId('budget-ring')).toHaveLength(4);
+  });
+
   it('shows a review banner linking to /review when expenses await review', async () => {
     mockGetReviewQueueCount.mockResolvedValue(3);
     render(<DashboardScreen />);

@@ -31,7 +31,7 @@ import { useEntitlements } from '../../lib/EntitlementsContext';
 import type { Profile } from '../../lib/profile';
 import { onLocalDataChanged } from '../../lib/dataSync';
 import { getHouseholdMembers, HouseholdMember } from '../../lib/cloudSync';
-import { CATEGORY_ICONS, ALL_CATEGORIES } from '../../constants/categories';
+import { categoryIcon, ALL_CATEGORIES } from '../../constants/categories';
 
 import { useT, useLanguage, type TFn } from '../../lib/I18nContext';
 import { categoryLabel } from '../../lib/categoryLabel';
@@ -727,7 +727,6 @@ export default function DashboardScreen() {
   const budgetRows = Object.entries(categorySpendForBudgets)
     .filter(([category]) => (budgets[category] ?? 0) > 0)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
     .map(([category, spent]) => ({
       category,
       spent,
@@ -1208,7 +1207,12 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.list}>
               {recentReceipts.map((r) => {
-                const color = theme.colors.category[r.category as keyof typeof theme.colors.category];
+                const color = resolveCategoryColor(
+                  r.category,
+                  theme.colors.category,
+                  customCategories,
+                  theme.colors.accent,
+                );
                 return (
                   <TouchableOpacity
                     key={r.id}
@@ -1219,7 +1223,7 @@ export default function DashboardScreen() {
                     <View style={styles.rowLeft}>
                       <View style={[styles.avatar, { backgroundColor: `${color}26` }]}>
                         <Text style={styles.avatarText}>
-                          {CATEGORY_ICONS[r.category as keyof typeof CATEGORY_ICONS] ?? '🧾'}
+                          {categoryIcon(r.category, '🧾')}
                         </Text>
                       </View>
                       <View style={styles.rowInfo}>

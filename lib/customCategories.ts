@@ -53,18 +53,34 @@ function isCustomCategory(v: unknown): v is CustomCategory {
   );
 }
 
+// Last list loaded or saved, for synchronous color/icon lookups in list
+// rows that can't await (see cachedCustomCategories). Kept fresh by every
+// read and write below.
+let lastLoaded: CustomCategory[] = [];
+
+/** Most recently loaded custom categories (may be empty before the first
+ *  load). Safe to call during render; not a source of truth. */
+export function cachedCustomCategories(): CustomCategory[] {
+  return lastLoaded;
+}
+
 export async function getCustomCategories(householdId: string): Promise<CustomCategory[]> {
   const raw = await SecureStore.getItemAsync(storageKey(householdId));
-  if (!raw) return [];
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter(isCustomCategory) : [];
-  } catch {
-    return [];
+  let list: CustomCategory[] = [];
+  if (raw) {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      list = Array.isArray(parsed) ? parsed.filter(isCustomCategory) : [];
+    } catch {
+      list = [];
+    }
   }
+  lastLoaded = list;
+  return list;
 }
 
 async function save(householdId: string, list: CustomCategory[]): Promise<void> {
+  lastLoaded = list;
   await SecureStore.setItemAsync(storageKey(householdId), JSON.stringify(list));
 }
 

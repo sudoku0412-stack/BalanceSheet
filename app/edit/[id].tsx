@@ -647,7 +647,7 @@ function EditReceiptScreen() {
   const [storeName, setStoreName] = useState('');
   const [date, setDate] = useState('');
   const [amount, setAmount] = useState('');
-  const [category, setCategory] = useState<Category>('Other');
+  const [category, setCategory] = useState<Category | string>('Other');
   const [categoryTags, setCategoryTags] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   // True once the <Image> reports it couldn't load — likely a stale
@@ -963,10 +963,12 @@ function EditReceiptScreen() {
       // Derive primary category from the tag list — first standard
       // category found, fall back to existing primary if all tags
       // are custom strings.
-      const primary: Category =
-        (categoryTags.find((t) =>
-          (ALL_CATEGORIES as readonly string[]).includes(t),
-        ) as Category | undefined) ?? category;
+      const primary: Category | string =
+        categoryTags.find(
+          (t) =>
+            (ALL_CATEGORIES as readonly string[]).includes(t) ||
+            customCategories.some((c) => c.name === t),
+        ) ?? category;
 
       // Build the split payload from the current split UI state — this
       // now actually persists (Receipt.split, types/index.ts). Store the
@@ -1425,7 +1427,14 @@ function EditReceiptScreen() {
           <View
             style={[
               styles.categoryDot,
-              { backgroundColor: theme.colors.category[category] },
+              {
+                backgroundColor: resolveCategoryColor(
+                  category,
+                  theme.colors.category,
+                  customCategories,
+                  theme.colors.accent,
+                ),
+              },
             ]}
           />
           <Text style={styles.categoryRowLabel}>{categoryLabel(category)}</Text>
@@ -1435,7 +1444,11 @@ function EditReceiptScreen() {
             </View>
           )}
         </View>
-        <CategoryTagsPicker tags={categoryTags} onChange={setCategoryTags} />
+        <CategoryTagsPicker
+          tags={categoryTags}
+          onChange={setCategoryTags}
+          customCategories={customCategories}
+        />
       </Card>
 
       {/* Recurring — mirrors Receipt.recurring (types/index.ts). Turning

@@ -1,3 +1,5 @@
+import { cachedCustomCategories, resolveCategoryColor } from '../lib/customCategories';
+import { useCustomCategories } from '../lib/useCustomCategories';
 import React, { useCallback, useState } from 'react';
 import { Alert, ScrollView, Text, TouchableOpacity, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -6,7 +8,7 @@ import { format } from 'date-fns';
 import { ModalHeader } from '../components/ui/ModalHeader';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useStyles, useTheme } from '../constants/theme';
-import { CATEGORY_ICONS } from '../constants/categories';
+import { categoryIcon } from '../constants/categories';
 import {
   clearReviewQueue,
   deleteReceipt,
@@ -26,6 +28,7 @@ import { categoryLabel } from '../lib/categoryLabel';
  *  them — so an auto-added charge never silently skews the month. */
 export default function ReviewScreen() {
   const t = useT();
+  useCustomCategories(); // refresh colors when custom categories change
   const { language } = useLanguage();
   const theme = useTheme();
   const router = useRouter();
@@ -112,16 +115,16 @@ export default function ReviewScreen() {
             <View
               key={r.id}
               testID={`review-row-${r.id}`}
-              style={[styles.card, { borderLeftColor: theme.colors.category[r.category] }]}
+              style={[styles.card, { borderLeftColor: resolveCategoryColor(r.category, theme.colors.category, cachedCustomCategories(), theme.colors.accent) }]}
             >
               <View style={styles.row}>
                 <View
                   style={[
                     styles.categoryIcon,
-                    { backgroundColor: `${theme.colors.category[r.category]}26` },
+                    { backgroundColor: `${resolveCategoryColor(r.category, theme.colors.category, cachedCustomCategories(), theme.colors.accent)}26` },
                   ]}
                 >
-                  <Text style={styles.categoryIconGlyph}>{CATEGORY_ICONS[r.category] ?? '🔁'}</Text>
+                  <Text style={styles.categoryIconGlyph}>{categoryIcon(r.category, '🔁')}</Text>
                 </View>
                 <View style={{ flex: 1, marginLeft: theme.spacing.md }}>
                   <Text style={styles.name} numberOfLines={1}>{r.storeName}</Text>

@@ -220,6 +220,30 @@ describe('checkBudgetsAndNotify', () => {
     );
   });
 
+  it('alerts for a custom category whose budget is exceeded', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Subscriptions: 200 });
+    mockGetReceiptsByMonth.mockResolvedValue([
+      receipt({ id: 'c1', totalAmount: 120, category: 'Subscriptions' }),
+      receipt({ id: 'c2', totalAmount: 90, category: 'Subscriptions' }),
+    ]);
+    await checkBudgetsAndNotify();
+    expect(mockScheduleNotificationAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          title: 'Over budget',
+          body: expect.stringContaining('Over: Subscriptions'),
+        }),
+      }),
+    );
+  });
+
+  it('a custom category under its limit does not alert', async () => {
+    mockGetCategoryBudgets.mockResolvedValue({ Subscriptions: 200 });
+    mockGetReceiptsByMonth.mockResolvedValue([receipt({ totalAmount: 50, category: 'Subscriptions' })]);
+    await checkBudgetsAndNotify();
+    expect(mockScheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
   it('joins multiple over categories and lists watch categories separately', async () => {
     mockGetCategoryBudgets.mockResolvedValue({ Groceries: 100, Gas: 100, Dining: 100 });
     mockGetReceiptsByMonth.mockResolvedValue([

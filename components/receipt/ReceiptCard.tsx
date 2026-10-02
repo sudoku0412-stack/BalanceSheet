@@ -1,3 +1,4 @@
+import { cachedCustomCategories, resolveCategoryColor } from '../../lib/customCategories';
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -82,7 +83,7 @@ export function ReceiptCard({ receipt, onDelete }: Props) {
     },
   }));
   const router = useRouter();
-  const color = theme.colors.category[receipt.category];
+  const color = resolveCategoryColor(receipt.category, theme.colors.category, cachedCustomCategories(), theme.colors.accent);
 
   return (
     <TouchableOpacity

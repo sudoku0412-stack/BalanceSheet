@@ -70,6 +70,12 @@ jest.mock('../../lib/database', () => ({
 
 jest.mock('../../lib/cloudSync', () => ({
   getHouseholdMembers: jest.fn(async () => []),
+  syncCustomCategoriesToCloud: jest.fn(async () => true),
+}));
+
+jest.mock('../../lib/customCategories', () => ({
+  ...jest.requireActual('../../lib/customCategories'),
+  getCustomCategories: jest.fn(async () => [{ name: 'Subscriptions', color: '#D6336C' }]),
 }));
 
 jest.mock('../../lib/AuthContext', () => ({
@@ -124,6 +130,7 @@ jest.mock('uuid', () => ({
 }));
 
 import ScanScreen from '../../app/(tabs)/scan';
+import { saveReceipt } from '../../lib/database';
 
 describe('ScanScreen (smoke test)', () => {
   let alertSpy: jest.SpyInstance;
@@ -225,6 +232,47 @@ describe('ScanScreen (smoke test)', () => {
       const toggles = screen.UNSAFE_getAllByType(Switch);
       expect(toggles.length).toBeGreaterThan(0);
       toggles.forEach((toggle) => expect(toggle.props.thumbColor).toBeUndefined());
+    });
+  });
+
+  describe('custom categories on the manual Add Expense form', () => {
+    async function openManualForm() {
+      render(<ScanScreen />);
+      await waitFor(() => expect(screen.getByText('Align receipt within frame')).toBeTruthy());
+      const createButton = screen
+        .UNSAFE_getAllByType(TouchableOpacity)
+        .find((el) => el.props.onPress?.name === 'showCreateOptions');
+      await act(async () => {
+        fireEvent.press(createButton!);
+      });
+      const buttons = alertSpy.mock.calls[0][2] as { text: string; onPress?: () => void }[];
+      await act(async () => {
+        buttons.find((b) => b.text === 'Add expense')?.onPress?.();
+      });
+      await waitFor(() => expect(screen.getByText('Repeat this expense')).toBeTruthy());
+    }
+
+    it('shows the household custom categories next to the built-in ones', async () => {
+      await openManualForm();
+      await waitFor(() => expect(screen.getByTestId('custom-chip-Subscriptions')).toBeTruthy());
+      // free user: the add affordance is the Premium-labelled one
+      expect(screen.getByText('Custom category · Premium')).toBeTruthy();
+    });
+
+    it('saves the receipt under the chosen custom category (so its budget tracks it)', async () => {
+      await openManualForm();
+      await waitFor(() => screen.getByTestId('custom-chip-Subscriptions'));
+      fireEvent.changeText(screen.getByPlaceholderText('e.g. Whole Foods Market'), 'Netflix');
+      fireEvent.changeText(screen.getByPlaceholderText('0.00'), '19.99');
+      fireEvent.press(screen.getByTestId('custom-chip-Subscriptions'));
+      await act(async () => {
+        fireEvent.press(screen.getByText('Save Expense'));
+      });
+      await waitFor(() => expect(saveReceipt).toHaveBeenCalled());
+      const saved = (saveReceipt as jest.Mock).mock.calls[0][0];
+      expect(saved.category).toBe('Subscriptions');
+      expect(saved.categoryTags[0]).toBe('Subscriptions');
+      expect(saved.storeName).toBe('Netflix');
     });
   });
 });

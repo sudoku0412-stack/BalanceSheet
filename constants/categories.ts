@@ -616,3 +616,8 @@ export const ALL_CATEGORIES: Category[] = [
   'Recurring',
   'Other',
 ];
+
+/** Emoji for any category name; custom categories (and unknown names) get `fallback`. */
+export function categoryIcon(name: string, fallback = '🏷️'): string {
+  return (CATEGORY_ICONS as Record<string, string>)[name] ?? fallback;
+}

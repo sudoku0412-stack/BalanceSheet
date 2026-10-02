@@ -1,3 +1,4 @@
+import { cachedCustomCategories, resolveCategoryColor } from '../../lib/customCategories';
 import { categoryLabel } from '../../lib/categoryLabel';
 import { useLanguage } from '../../lib/I18nContext';
 import React from 'react';
@@ -54,7 +55,7 @@ export function TagChip({
   const standard = isStandardCategory(tag);
   const accent = standard
     ? theme.colors.category[tag as Category]
-    : theme.colors.accent;
+    : resolveCategoryColor(tag, {}, cachedCustomCategories(), theme.colors.accent);
   const iconName = standard ? null : 'pricetag-outline';
   const emoji = standard ? CATEGORY_ICONS[tag as Category] : '';
 

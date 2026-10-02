@@ -28,8 +28,12 @@ import { getCurrency } from '../../lib/secureStorage';
 import { formatCurrency, CurrencyCode } from '../../lib/currency';
 import { Income, Receipt, Category } from '../../types';
 import { useStyles, useTheme } from '../../constants/theme';
-import { ALL_CATEGORIES, CATEGORY_ICONS } from '../../constants/categories';
-import { getCustomCategories, type CustomCategory } from '../../lib/customCategories';
+import { ALL_CATEGORIES, categoryIcon } from '../../constants/categories';
+import {
+  getCustomCategories,
+  resolveCategoryColor,
+  type CustomCategory,
+} from '../../lib/customCategories';
 import { INCOME_CATEGORY_ICONS, incomeCategoryLabel } from '../../constants/incomeCategories';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { ReceiptListSkeleton } from '../../components/ui/Skeleton';
@@ -790,15 +794,18 @@ export default function HistoryScreen() {
                             styles.avatar,
                             {
                               backgroundColor: `${
-                                theme.colors.category[
-                                  r.category as keyof typeof theme.colors.category
-                                ] ?? theme.colors.accent
+                                resolveCategoryColor(
+                                  r.category,
+                                  theme.colors.category,
+                                  customs,
+                                  theme.colors.accent,
+                                )
                               }26`,
                             },
                           ]}
                         >
                           <Text style={styles.avatarText}>
-                            {CATEGORY_ICONS[r.category as keyof typeof CATEGORY_ICONS] ?? '🧾'}
+                            {categoryIcon(r.category, '🧾')}
                           </Text>
                         </View>
                         <View style={styles.rowInfo}>
