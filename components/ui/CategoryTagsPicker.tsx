@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ALL_CATEGORIES } from '../../constants/categories';
 import { useStyles, useTheme } from '../../constants/theme';
 import { TagChip } from './TagChip';
+import type { CustomCategory } from '../../lib/customCategories';
 
 import { useT } from '../../lib/I18nContext';
 /**
@@ -24,9 +25,14 @@ import { useT } from '../../lib/I18nContext';
 export function CategoryTagsPicker({
   tags,
   onChange,
+  customCategories = [],
 }: {
   tags: string[];
   onChange: (next: string[]) => void;
+  /** Premium custom categories offered as one-tap options. Picking one puts
+   *  it first, which makes it the receipt's primary category (and so what
+   *  its budget and alerts track). */
+  customCategories?: CustomCategory[];
 }) {
   const t = useT();
   const theme = useTheme();
@@ -98,7 +104,11 @@ export function CategoryTagsPicker({
 
   const selectedSet = new Set(tags);
   const standardUnselected = ALL_CATEGORIES.filter((c) => !selectedSet.has(c));
-  const customSelected = tags.filter((t) => !(ALL_CATEGORIES as readonly string[]).includes(t));
+  const customNames = new Set(customCategories.map((c) => c.name));
+  const customUnselected = customCategories.filter((c) => !selectedSet.has(c.name));
+  const customSelected = tags.filter(
+    (t) => !(ALL_CATEGORIES as readonly string[]).includes(t) && !customNames.has(t),
+  );
 
   const toggle = (tag: string) => {
     if (selectedSet.has(tag)) {
@@ -138,6 +148,23 @@ export function CategoryTagsPicker({
             />
           ))}
         </View>
+      )}
+
+      {customUnselected.length > 0 && (
+        <>
+          <Text style={styles.sectionHint}>{t('yourCategories')}</Text>
+          <View style={styles.row}>
+            {customUnselected.map((c) => (
+              <TagChip
+                key={`c:${c.name}`}
+                tag={c.name}
+                selected={false}
+                size="sm"
+                onToggle={() => onChange([c.name, ...tags])}
+              />
+            ))}
+          </View>
+        </>
       )}
 
       {standardUnselected.length > 0 && (

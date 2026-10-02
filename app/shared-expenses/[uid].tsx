@@ -1,3 +1,5 @@
+import { cachedCustomCategories, resolveCategoryColor } from '../../lib/customCategories';
+import { useCustomCategories } from '../../lib/useCustomCategories';
 import { tr } from '../../lib/i18n';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, Text, TouchableOpacity, View } from 'react-native';
@@ -39,6 +41,7 @@ type Row =
  *  screen shows for this person. */
 export default function SharedExpensesScreen() {
   const t = useT();
+  useCustomCategories(); // refresh colors when custom categories change
   const { language } = useLanguage();
   const theme = useTheme();
   const router = useRouter();
@@ -175,7 +178,7 @@ export default function SharedExpensesScreen() {
                   onPress={() => router.push(`/edit/${r.id}`)}
                   style={[styles.row, idx < rows.length - 1 && styles.rowDivider]}
                 >
-                  <View style={[styles.avatar, { backgroundColor: theme.colors.category[r.category] }]}>
+                  <View style={[styles.avatar, { backgroundColor: resolveCategoryColor(r.category, theme.colors.category, cachedCustomCategories(), theme.colors.accent) }]}>
                     <Text style={styles.avatarText}>{r.storeName.charAt(0).toUpperCase()}</Text>
                   </View>
                   <View style={styles.rowInfo}>

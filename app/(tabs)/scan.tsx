@@ -753,7 +753,7 @@ export default function ScanScreen() {
   const [amount, setAmount] = useState('');
   const [subtotal, setSubtotal] = useState('');
   const [tax, setTax] = useState('');
-  const [category, setCategory] = useState<Category>('Other');
+  const [category, setCategory] = useState<Category | string>('Other');
   const [categoryTags, setCategoryTags] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   // ── Recurring expense (Add Expense / manual entry only) ──
@@ -815,6 +815,19 @@ export default function ScanScreen() {
         .catch(() => {});
     }, []),
   );
+  // Sets the receipt's primary category (built-in or custom) and promotes
+  // it to the front of categoryTags, preserving other tags.
+  const selectCategory = (cat: string) => {
+    setCategory(cat);
+    setCategoryTags((prev) => [
+      cat,
+      ...prev.filter((t) => t.toLowerCase() !== cat.toLowerCase()),
+    ]);
+    // Picking "Recurring" as the category IS the intent to repeat this
+    // expense — auto-enable the toggle instead of making the user set
+    // both separately.
+    if (cat === 'Recurring') setRecurringEnabled(true);
+  };
   const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([]);
 
   // Gates the household switcher (app/households.tsx) while this screen
@@ -1306,10 +1319,12 @@ export default function ScanScreen() {
       // Primary category for dashboard aggregation: prefer the first
       // standard category present in the tag list, otherwise the
       // dominant item category, otherwise 'Other'.
-      const primaryCategory: Category =
-        (categoryTags.find((t) =>
-          (ALL_CATEGORIES as readonly string[]).includes(t),
-        ) as Category | undefined) ??
+      const primaryCategory: Category | string =
+        categoryTags.find(
+          (t) =>
+            (ALL_CATEGORIES as readonly string[]).includes(t) ||
+            customCategories.some((c) => c.name === t),
+        ) ??
         pickDominantCategory(items) ??
         'Other';
       const finalTags = categoryTags.length ? categoryTags : [primaryCategory];
@@ -1473,7 +1488,7 @@ export default function ScanScreen() {
 
       notifySuccess();
       toast.show({
-        message: t('savedToCategory', { category: primaryCategory }),
+        message: t('savedToCategory', { category: categoryLabel(primaryCategory) }),
         kind: 'success',
       });
       resetState();
@@ -2069,17 +2084,7 @@ export default function ScanScreen() {
             return (
               <TouchableOpacity
                 key={cat}
-                onPress={() => {
-                  setCategory(cat);
-                  setCategoryTags((prev) => [
-                    cat,
-                    ...prev.filter((t) => t.toLowerCase() !== cat.toLowerCase()),
-                  ]);
-                  // Picking "Recurring" as the category IS the intent
-                  // to repeat this expense — auto-enable the toggle
-                  // instead of making the user set both separately.
-                  if (cat === 'Recurring') setRecurringEnabled(true);
-                }}
+                onPress={() => selectCategory(cat)}
                 activeOpacity={0.7}
                 style={[
                   styles.categoryChip,
@@ -2104,6 +2109,15 @@ export default function ScanScreen() {
             );
           })}
         </View>
+        <CustomCategoryPicker
+          householdId={getCurrentHouseholdId()}
+          customs={customCategories}
+          selected={category}
+          isPremium={isPremium}
+          onSelect={selectCategory}
+          onCustomsChange={setCustomCategories}
+          onUpgrade={() => router.push('/paywall')}
+        />
       </Card>
 
       {/* Notes */}

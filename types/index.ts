@@ -52,8 +52,9 @@ export interface Receipt {
   /** Tax (HST/GST/VAT/sales tax) extracted from the receipt. Optional. */
   taxAmount?: number;
   /** Primary category — the dominant tag, used by the dashboard for
-   *  aggregation. Always one of the standard 10 enum values. */
-  category: Category;
+   *  aggregation and budgets. One of the standard `Category` values, or the
+   *  name of a Premium custom category (lib/customCategories.ts). */
+  category: Category | string;
   /** Multi-select tags for this receipt. Includes the standard category
    *  values AND any custom user / AI-suggested tags ("Pet Food", "Home
    *  Decor", etc.). Old rows fall back to [category] at read time. */

@@ -47,6 +47,7 @@ jest.mock('../../lib/database', () => ({
 }));
 
 jest.mock('../../lib/customCategories', () => ({
+  ...jest.requireActual('../../lib/customCategories'),
   getCustomCategories: jest.fn(async () => [{ name: 'Pets', color: '#D6336C' }]),
 }));
 

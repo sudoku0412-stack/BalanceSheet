@@ -571,4 +571,5 @@ export const en = {
   pdfFooterReceipts_other: '{count} receipts',
   pdfTotalSuffix: '{amount} total',
   amountsShownInLive: 'Amounts are shown in {currency} at approximate exchange rates. Premium: a receipt entered in another currency uses that day\'s live rate, saved with the receipt.',
+  yourCategories: 'Your categories',
 } as const;
