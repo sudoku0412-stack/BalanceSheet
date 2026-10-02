@@ -153,10 +153,13 @@ jest.mock('expo-sqlite', () => ({
         const incoming = mockRowFromCloudParams(params);
         const existing = mockReceipts.get(incoming.id);
         if (existing) {
+          // Matches production ON CONFLICT: created_by, original_currency,
+          // and fx_rate are local-only and must not be overwritten.
           mockReceipts.set(incoming.id, {
             ...incoming,
             created_by: existing.created_by,
             original_currency: existing.original_currency,
+            fx_rate: existing.fx_rate,
           });
         } else {
           mockReceipts.set(incoming.id, incoming);
@@ -377,6 +380,31 @@ describe('upsertReceiptFromCloud', () => {
       updated_at: '2026-03-17T00:00:00.000Z',
     });
     expect(mockLineItems.map((i) => i.name)).toEqual(['Milk']);
+  });
+
+  it('does not wipe a frozen fxRate or originalCurrency on a later cloud snapshot', async () => {
+    seed({
+      original_currency: 'EUR',
+      fx_rate: 0.95,
+      updated_at: '2026-03-15T00:00:00.000Z',
+    });
+
+    await upsertReceiptFromCloud(
+      cloudReceipt({
+        storeName: 'Paris Cafe',
+        totalAmount: 90,
+        updatedAt: '2026-03-18T00:00:00.000Z',
+      }),
+      'user-1',
+      'hh1',
+    );
+
+    expect(mockReceipts.get('r1')).toMatchObject({
+      store_name: 'Paris Cafe',
+      total_amount: 90,
+      original_currency: 'EUR',
+      fx_rate: 0.95,
+    });
   });
 });
 
