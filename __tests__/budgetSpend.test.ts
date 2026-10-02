@@ -1,3 +1,5 @@
+jest.mock('../lib/database', () => ({}));
+
 import { computeBudgetSpend } from '../lib/budgetSpend';
 import type { Receipt } from '../types';
 
