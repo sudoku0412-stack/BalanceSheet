@@ -15,7 +15,7 @@ FIREBASE_PROJECT_ID = "balancesheet-android"
 # then paste the id below.
 [[kv_namespaces]]
 binding = "BANK_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "a7b7b1641d474d76b872b77fb1164b2b"
 
 # Secrets are NOT stored here. Set each one in your own terminal:
 #   npx wrangler secret put PLAID_CLIENT_ID
