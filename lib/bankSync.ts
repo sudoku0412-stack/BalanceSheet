@@ -69,6 +69,17 @@ export async function listBankItems(): Promise<BankItem[]> {
   return (await request<{ items: BankItem[] }>('/v1/items', 'GET')).items;
 }
 
+/** Revokes every connection and deletes this user's stored bank data on the
+ *  server. Used when the account is deleted; never throws. */
+export async function deleteAllBankData(): Promise<void> {
+  if (!isBankSyncConfigured()) return;
+  try {
+    await request('/v1/delete-all', 'POST', {});
+  } catch {
+    // the account deletion must not be blocked by this
+  }
+}
+
 export function removeBankItem(itemId: string) {
   return request<{ ok: boolean }>('/v1/remove', 'POST', { itemId });
 }
@@ -114,7 +125,20 @@ const untouched = (r: { createdAt: string; updatedAt: string }) => r.updatedAt =
  * changes were saved, so a failure just retries (imports are de-duplicated
  * by transaction id).
  */
-export async function syncBankTransactions(profileCurrency: CurrencyCode): Promise<BankSyncSummary> {
+let syncInFlight: Promise<BankSyncSummary> | null = null;
+
+export function syncBankTransactions(profileCurrency: CurrencyCode): Promise<BankSyncSummary> {
+  // One sync at a time: two overlapping runs could both pass the
+  // "already imported?" check and create duplicates.
+  if (!syncInFlight) {
+    syncInFlight = runSync(profileCurrency).finally(() => {
+      syncInFlight = null;
+    });
+  }
+  return syncInFlight;
+}
+
+async function runSync(profileCurrency: CurrencyCode): Promise<BankSyncSummary> {
   const { items } = await request<{ items: SyncItem[] }>('/v1/sync', 'POST', {});
   const summary: BankSyncSummary = { imported: 0, updated: 0, removed: 0, notReady: 0 };
   const cursors: Record<string, string> = {};

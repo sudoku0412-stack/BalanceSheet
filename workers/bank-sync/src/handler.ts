@@ -199,6 +199,20 @@ export async function handleRequest(request: Request, env: Env, deps: Deps = {})
       return json({ ok: true });
     }
 
+    // ── account deletion: revoke everything and forget the user ────────────
+    if (path === '/v1/delete-all' && request.method === 'POST') {
+      const rec = await loadUser(env, uid);
+      for (const item of rec.items) {
+        try {
+          await plaid.removeItem(await decryptString(item.accessToken, env.TOKEN_ENC_KEY));
+        } catch {
+          // best effort: still delete our copy below
+        }
+      }
+      await env.BANK_KV.delete(userKey(uid));
+      return json({ ok: true, removed: rec.items.length });
+    }
+
     // ── disconnect ─────────────────────────────────────────────────────────
     if (path === '/v1/remove' && request.method === 'POST') {
       const { itemId } = await readBody<{ itemId?: string }>(request);

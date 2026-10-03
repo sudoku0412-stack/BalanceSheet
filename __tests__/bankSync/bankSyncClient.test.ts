@@ -49,6 +49,7 @@ import {
   BankSyncError,
   clearPendingLinkToken,
   completeBankLink,
+  deleteAllBankData,
   getBankSyncEndpoint,
   getPendingLinkToken,
   isBankSyncConfigured,
@@ -237,5 +238,46 @@ describe('syncBankTransactions', () => {
     const summary = await run([]);
     expect(summary).toEqual({ imported: 0, updated: 0, removed: 0, notReady: 0 });
     expect(ackBody()).toBeNull();
+  });
+});
+
+describe('overlapping syncs', () => {
+  it('shares one in-flight sync so the same transactions are never imported twice', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).endsWith('/v1/sync')) {
+        await gate;
+        return reply({ items: [syncItem({ added: [tx('a')] })] });
+      }
+      return reply({ ok: true });
+    });
+    const p1 = syncBankTransactions('USD');
+    const p2 = syncBankTransactions('USD');
+    expect(p2).toBe(p1);
+    release();
+    await p1;
+    expect(mockReceipts.size).toBe(1);
+    // a later sync starts fresh
+    mockFetch.mockImplementation(async () => reply({ items: [] }));
+    await expect(syncBankTransactions('USD')).resolves.toMatchObject({ imported: 0 });
+  });
+});
+
+describe('deleteAllBankData', () => {
+  it('asks the server to revoke and delete everything, and never throws', async () => {
+    mockFetch.mockResolvedValue(reply({ ok: true }));
+    await deleteAllBankData();
+    expect(mockFetch).toHaveBeenCalledWith('https://bank.example/v1/delete-all', expect.objectContaining({ method: 'POST' }));
+    mockFetch.mockRejectedValue(new Error('offline'));
+    await expect(deleteAllBankData()).resolves.toBeUndefined();
+  });
+
+  it('does nothing when bank connections are not configured', async () => {
+    mockEndpoint = undefined;
+    await deleteAllBankData();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 });

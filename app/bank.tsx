@@ -8,6 +8,7 @@ import { Card } from '../components/ui/Card';
 import { EmptyState } from '../components/ui/EmptyState';
 import { useStyles, useTheme } from '../constants/theme';
 import {
+  BankSyncError,
   clearPendingLinkToken,
   completeBankLink,
   getPendingLinkToken,
@@ -107,8 +108,14 @@ export default function BankScreen() {
       await reload();
       if (res.connected[0]) Alert.alert(t('bankTitle'), t('bankConnectedName', { name: res.connected[0].institution }));
       await runSync();
-    } catch {
-      // keep the pending token; the next focus/foreground retries
+    } catch (e) {
+      if (e instanceof BankSyncError && e.code === 'unknown link') {
+        // The server no longer knows this link (already completed or expired).
+        await clearPendingLinkToken();
+        setWaiting(false);
+        await reload();
+      }
+      // otherwise keep the pending token; the next focus/foreground retries
     } finally {
       checking.current = false;
     }

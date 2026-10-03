@@ -214,6 +214,30 @@ describe('remove', () => {
   });
 });
 
+describe('delete-all (account deletion)', () => {
+  it('revokes every connection at Plaid and deletes the stored record', async () => {
+    const { call, plaid, kv } = await linked();
+    const res = await call('POST', '/v1/delete-all', 'tok-alice', {});
+    expect(await res.json()).toEqual({ ok: true, removed: 1 });
+    expect(plaid.removeItem).toHaveBeenCalledWith('access-secret');
+    expect(kv.store.has('u:alice')).toBe(false);
+  });
+
+  it('still deletes our copy when Plaid cannot revoke, and is a no-op for users with nothing', async () => {
+    const { call, plaid, kv } = await linked();
+    plaid.removeItem.mockRejectedValueOnce(new PlaidError('ITEM_NOT_FOUND', 'x', 400));
+    expect((await call('POST', '/v1/delete-all', 'tok-alice', {})).status).toBe(200);
+    expect(kv.store.has('u:alice')).toBe(false);
+    expect(await (await call('POST', '/v1/delete-all', 'tok-bob', {})).json()).toEqual({ ok: true, removed: 0 });
+  });
+
+  it("cannot touch another user's connections", async () => {
+    const { call, kv } = await linked();
+    await call('POST', '/v1/delete-all', 'tok-bob', {});
+    expect(kv.store.has('u:alice')).toBe(true);
+  });
+});
+
 describe('PlaidClient', () => {
   it('posts credentials in the body to the right host and maps errors', async () => {
     const calls: { url: string; body: Record<string, unknown> }[] = [];

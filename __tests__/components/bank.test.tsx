@@ -27,6 +27,13 @@ jest.mock('../../lib/EntitlementsContext', () => ({
 jest.mock('../../lib/secureStorage', () => ({ getCurrency: jest.fn(async () => 'CAD') }));
 
 jest.mock('../../lib/bankSync', () => ({
+  BankSyncError: class BankSyncError extends Error {
+    code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
   isBankSyncConfigured: () => mockConfigured,
   listBankItems: jest.fn(),
   startBankLink: jest.fn(),
@@ -40,6 +47,7 @@ jest.mock('../../lib/bankSync', () => ({
 
 import BankScreen from '../../app/bank';
 import * as bank from '../../lib/bankSync';
+import { BankSyncError as RealBankSyncError } from '../../lib/bankSync';
 
 const m = bank as unknown as Record<string, jest.Mock>;
 
@@ -95,6 +103,14 @@ describe('BankScreen', () => {
     expect(alertSpy).toHaveBeenCalledWith('Bank connections', 'RBC connected');
     await waitFor(() => expect(m.syncBankTransactions).toHaveBeenCalledWith('CAD'));
     alertSpy.mockRestore();
+  });
+
+  it('drops a pending link the server no longer knows instead of waiting forever', async () => {
+    m.getPendingLinkToken.mockResolvedValue('stale');
+    m.completeBankLink.mockRejectedValue(new RealBankSyncError('unknown link', 'gone'));
+    render(<BankScreen />);
+    await waitFor(() => expect(m.clearPendingLinkToken).toHaveBeenCalled());
+    expect(screen.queryByTestId('bank-waiting')).toBeNull();
   });
 
   it('keeps waiting (and the pending token) while the user has not finished', async () => {
