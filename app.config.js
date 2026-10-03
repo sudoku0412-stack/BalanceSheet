@@ -59,7 +59,7 @@ module.exports = ({ config }) => {
       // precedence over app.json's ios.buildNumber, which is kept in
       // sync here purely for a human reader, not because anything
       // reads it.
-      buildNumber: '43',
+      buildNumber: '44',
       googleServicesFile: process.env.GOOGLE_SERVICES_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
         NSCameraUsageDescription:
@@ -273,7 +273,12 @@ module.exports = ({ config }) => {
       // See scripts/parse-receipt-worker.ts for the deploy guide.
       // URL of the deployed bank-sync Cloudflare Worker (workers/bank-sync).
       // Unset = the Bank connections screen shows "not available".
-      bankSyncEndpoint: process.env.BANK_SYNC_ENDPOINT,
+      // The URL is public (it only works with a signed-in app user's token), so
+      // a literal fallback is safe — and needed: a local Xcode archive has no
+      // EAS env vars, which would otherwise ship a build with bank
+      // connections silently disabled. An env var still wins when set.
+      bankSyncEndpoint:
+        process.env.BANK_SYNC_ENDPOINT ?? 'https://nestexpensetracker-bank-sync.kmaz285.workers.dev',
       parseEndpoint: process.env.PARSE_ENDPOINT,
       parseEndpointSecret: process.env.PARSE_ENDPOINT_SECRET,
       // EmailJS credentials for sending household-invite emails from

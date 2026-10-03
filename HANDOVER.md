@@ -11,7 +11,7 @@ Repo renamed from `BalanceSheet` to `NestExpenseTracker` (2026-10-01); the local
 
 ## State as of 2026-10-01 (HEAD `ab1d207`, main)
 
-**Versions**: `app.config.js` / pbxproj = marketing version **1.0.9**, iOS build **43**, Android `versionCode` **29**. `app.json` mirrors `app.config.js` (kept in sync) but `app.config.js` is what EAS/CI reads. Bump `app.config.js`, `app.json`, and `ios/*/project.pbxproj` together.
+**Versions**: `app.config.js` / pbxproj = marketing version **1.0.9**, iOS build **44**, Android `versionCode` **29**. `app.json` mirrors `app.config.js` (kept in sync) but `app.config.js` is what EAS/CI reads. Bump `app.config.js`, `app.json`, and `ios/*/project.pbxproj` together.
 
 **CI (latest main push `ab1d207`)**: `Release build + submit` and `Android build` both succeeded. `release-build.yml` now builds a local production Android `.aab` on the GitHub runner on every non-docs push to main (no EAS cloud credits, no auto-submit). Download the artifact from the run and upload to Play Console by hand. iOS stays local Xcode archive → TestFlight.
 
@@ -19,7 +19,7 @@ Repo renamed from `BalanceSheet` to `NestExpenseTracker` (2026-10-01); the local
 
 **Open PRs**: #35 and #34 (draft, Cursor agent "missing test coverage" branches: receipt cloud upsert/household isolation/month SQL bounds; cloud snapshot listeners/push tokens/receipt migration). Review before merging.
 
-**Pending / ask the user**: whether 1.0.9 (iOS 43, Android 29) was uploaded to TestFlight / Play Console. This file does not know.
+**Pending / ask the user**: whether 1.0.9 (iOS 44, Android 29) was uploaded to TestFlight / Play Console. This file does not know.
 
 ## What changed since the 1.0.4 handover (Sept 23 → Sept 29; ~150 commits)
 
@@ -30,7 +30,7 @@ Repo renamed from `BalanceSheet` to `NestExpenseTracker` (2026-10-01); the local
 - **Households**: switch is bounded by the same timeout as create/rename; Active badge is explicit state; membership `isDefault` is exclusive across households; household switch race with Firebase token refresh fixed (#32); `backfillHouseholdIdForRows` failures are logged.
 - **Security**: npm dependency vulnerabilities patched via `overrides`.
 - **Tests**: many Cursor-agent "missing test coverage" PRs merged (auth, AuthContext, entitlements, incomes, invites/join/discovery, sign-out, household switch).
-- **Versions**: 1.0.6 → 1.0.7 → 1.0.8 → 1.0.9; iOS builds 20 → 43.
+- **Versions**: 1.0.6 → 1.0.7 → 1.0.8 → 1.0.9; iOS builds 20 → 44.
 
 ## This session: PrimeTestLab QA report (closed-testing report #5241) — all items fixed
 
@@ -122,7 +122,7 @@ Same structure as before (`unit`/`component`/`performance`/`regression` projects
 
 ## Suggested first steps in a new session
 
-1. Ask the user whether 1.0.9 (iOS 43 / Android 29) was uploaded to TestFlight / Play Console.
+1. Ask the user whether 1.0.9 (iOS 44 / Android 29) was uploaded to TestFlight / Play Console.
 2. If a build is needed: follow the "Release loop" section (Android `.aab` now also comes from every push to main via `release-build.yml`).
 3. Run `npx jest` and `npx tsc --noEmit -p .` before any code change.
 4. Review draft PRs #34 and #35.
