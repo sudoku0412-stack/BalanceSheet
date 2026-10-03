@@ -19,6 +19,7 @@ import {
   updateAuthDisplayName,
 } from './auth';
 import { Profile, getProfile, deleteProfile, saveProfile } from './profile';
+import { deleteAllBankData } from './bankSync';
 import {
   bootstrapHouseholdId,
   deleteAllReceipts,
@@ -641,6 +642,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!uid) return;
         // Wipe CLOUD data first while we still have an authenticated
         // Firebase token — deleteCurrentAccount() invalidates it.
+        // Bank connections first: revoke access at Plaid and drop stored tokens.
+        await deleteAllBankData();
         const householdId = getCurrentHouseholdId();
         try {
           await deleteCloudUserData({

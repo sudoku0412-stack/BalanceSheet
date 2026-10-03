@@ -185,6 +185,22 @@ describe('SettingsScreen', () => {
     expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
   });
 
+  it('Bank connections row is Premium: paywall for free users, screen for Premium', async () => {
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('settings-bank'));
+    expect(screen.getByText('Bank connections · Pro')).toBeTruthy();
+    fireEvent.press(screen.getByTestId('settings-bank'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/paywall');
+  });
+
+  it('Premium user opens Bank connections from Settings', async () => {
+    mockIsPremium = true;
+    render(<SettingsScreen />);
+    await waitFor(() => screen.getByTestId('settings-bank'));
+    fireEvent.press(screen.getByTestId('settings-bank'));
+    expect(mockSettingsPush).toHaveBeenCalledWith('/bank');
+  });
+
   it('Investments row is Premium: paywall for free users, portfolio for Premium', async () => {
     render(<SettingsScreen />);
     await waitFor(() => screen.getByTestId('settings-investments'));

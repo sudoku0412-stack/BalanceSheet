@@ -1,0 +1,23 @@
+name = "nestexpensetracker-bank-sync"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Non-secret settings. PLAID_ENV is "sandbox" for testing and "production"
+# once Plaid approves your Production access.
+[vars]
+PLAID_ENV = "sandbox"
+FIREBASE_PROJECT_ID = "balancesheet-android"
+# Optional: where Plaid sends the user after linking (must be allow-listed in
+# the Plaid dashboard). Leave unset to have the user close the browser tab.
+# LINK_REDIRECT_URI = "https://your-domain.example/bank-linked"
+
+# Create with:  npx wrangler kv namespace create BANK_KV
+# then paste the id below.
+[[kv_namespaces]]
+binding = "BANK_KV"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+# Secrets are NOT stored here. Set each one in your own terminal:
+#   npx wrangler secret put PLAID_CLIENT_ID
+#   npx wrangler secret put PLAID_SECRET
+#   npx wrangler secret put TOKEN_ENC_KEY     (openssl rand -base64 32)
