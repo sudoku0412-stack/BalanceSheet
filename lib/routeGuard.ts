@@ -33,7 +33,6 @@ export const STICKY_VOLUNTARY = new Set([
   'review',
   'investments',
   'investment',
-  'bank',
 ]);
 
 export function pickTarget(s: RouteState): RouteTarget {

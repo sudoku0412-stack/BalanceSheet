@@ -271,14 +271,6 @@ module.exports = ({ config }) => {
       // PARSE_ENDPOINT to e.g. https://...workers.dev/parse and
       // PARSE_ENDPOINT_SECRET to the same secret the worker validates.
       // See scripts/parse-receipt-worker.ts for the deploy guide.
-      // URL of the deployed bank-sync Cloudflare Worker (workers/bank-sync).
-      // Unset = the Bank connections screen shows "not available".
-      // The URL is public (it only works with a signed-in app user's token), so
-      // a literal fallback is safe — and needed: a local Xcode archive has no
-      // EAS env vars, which would otherwise ship a build with bank
-      // connections silently disabled. An env var still wins when set.
-      bankSyncEndpoint:
-        process.env.BANK_SYNC_ENDPOINT ?? 'https://nestexpensetracker-bank-sync.kmaz285.workers.dev',
       parseEndpoint: process.env.PARSE_ENDPOINT,
       parseEndpointSecret: process.env.PARSE_ENDPOINT_SECRET,
       // EmailJS credentials for sending household-invite emails from

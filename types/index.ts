@@ -83,9 +83,6 @@ export interface Receipt {
    *  change it. Absent = the fixed table's rate. Local to this device, like
    *  `originalCurrency`. */
   fxRate?: number;
-  /** Plaid transaction id when this receipt was imported from a connected
-   *  bank; used to avoid importing the same transaction twice. Local only. */
-  bankTxnId?: string;
   lineItems?: LineItem[];
   /** Splitwise-style split state. Absent/enabled=false means the expense
    *  isn't split. Participant ids are 'self' (the signed-in user, always
