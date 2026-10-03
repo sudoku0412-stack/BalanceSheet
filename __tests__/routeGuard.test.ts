@@ -121,3 +121,12 @@ describe('hrefForAuthGuard — sign-out from Settings', () => {
     ).toBeNull();
   });
 });
+
+describe('hrefForAuthGuard — pushed screens stay put for signed-in users', () => {
+  it.each(['review', 'investments', 'investment', 'bank', 'savings-goals', 'recurring'])(
+    'does not bounce %s back to Home',
+    (current) => {
+      expect(hrefForAuthGuard({ user: { uid: 'u' }, onboardingSeen: true, current })).toBeNull();
+    },
+  );
+});

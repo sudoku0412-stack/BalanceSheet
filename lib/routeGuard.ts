@@ -30,6 +30,10 @@ export const STICKY_VOLUNTARY = new Set([
   'scan-paystub',
   'savings-goals',
   'incomes',
+  'review',
+  'investments',
+  'investment',
+  'bank',
 ]);
 
 export function pickTarget(s: RouteState): RouteTarget {
