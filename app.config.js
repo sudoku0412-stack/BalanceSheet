@@ -271,6 +271,9 @@ module.exports = ({ config }) => {
       // PARSE_ENDPOINT to e.g. https://...workers.dev/parse and
       // PARSE_ENDPOINT_SECRET to the same secret the worker validates.
       // See scripts/parse-receipt-worker.ts for the deploy guide.
+      // URL of the deployed bank-sync Cloudflare Worker (workers/bank-sync).
+      // Unset = the Bank connections screen shows "not available".
+      bankSyncEndpoint: process.env.BANK_SYNC_ENDPOINT,
       parseEndpoint: process.env.PARSE_ENDPOINT,
       parseEndpointSecret: process.env.PARSE_ENDPOINT_SECRET,
       // EmailJS credentials for sending household-invite emails from

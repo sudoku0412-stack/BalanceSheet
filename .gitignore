@@ -44,3 +44,7 @@ skills-lock.json
 
 expo-env.d.ts
 # @end expo-cli.claude/worktrees/
+
+# Wrangler local secrets (never commit)
+.dev.vars
+workers/**/.dev.vars

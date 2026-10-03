@@ -338,6 +338,8 @@ export async function initDatabase(): Promise<void> {
     // a foreign-currency receipt was entered with Premium live rates. Local
     // only, like original_currency. See Receipt['fxRate'].
     `ALTER TABLE receipts             ADD COLUMN fx_rate REAL`,
+    // Plaid transaction id for receipts imported from a connected bank.
+    `ALTER TABLE receipts             ADD COLUMN bank_txn_id TEXT`,
     // Optional verified phone number (E.164), added anytime from Settings.
     // See Profile['phone']/['phoneVerified'] in lib/profile.ts.
     `ALTER TABLE profiles             ADD COLUMN phone            TEXT`,
@@ -779,8 +781,9 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
          (id, store_name, date, total_amount, subtotal_amount, tax_amount,
           category, category_tags, raw_text, image_uri, photo_url, notes,
           split_json, recurring_json, original_currency, paid_by, created_by,
-          is_recurring_occurrence, created_at, updated_at, user_id, household_id, fx_rate)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          is_recurring_occurrence, created_at, updated_at, user_id, household_id, fx_rate,
+          bank_txn_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         receipt.id,
         receipt.storeName,
@@ -805,6 +808,7 @@ export async function saveReceipt(receipt: Receipt): Promise<void> {
         uid,
         hid,
         receipt.fxRate ?? null,
+        receipt.bankTxnId ?? null,
       ],
     );
 
@@ -1049,6 +1053,18 @@ export async function clearReviewQueue(): Promise<void> {
   );
 }
 
+/** The receipt imported from a given bank transaction, if any. */
+export async function getReceiptByBankTxnId(txnId: string): Promise<Receipt | null> {
+  const uid = requireUserId('getReceiptByBankTxnId');
+  const row = await db.getFirstAsync<RawRow>(
+    `SELECT * FROM receipts WHERE bank_txn_id=? AND user_id=?`,
+    [txnId, uid],
+  );
+  if (!row) return null;
+  const [withItems] = await attachLineItems([row]);
+  return withItems ?? rowToReceipt(row);
+}
+
 export async function getReceiptById(id: string): Promise<Receipt | null> {
   const uid = requireUserId('getReceiptById');
   const hid = currentHouseholdId;
@@ -1151,6 +1167,7 @@ interface RawRow {
   recurring_json: string | null;
   original_currency: string | null;
   fx_rate: number | null;
+  bank_txn_id?: string | null;
   paid_by: string | null;
   created_by: string | null;
   is_recurring_occurrence: number | null;
@@ -1176,6 +1193,7 @@ function rowToReceipt(row: RawRow): Receipt {
     notes: row.notes ?? undefined,
     originalCurrency: (row.original_currency as Receipt['originalCurrency']) ?? undefined,
     fxRate: row.fx_rate ?? undefined,
+    bankTxnId: row.bank_txn_id ?? undefined,
     split: parseSplit(row.split_json),
     recurring: parseRecurring(row.recurring_json),
     paidBy: row.paid_by ?? undefined,
