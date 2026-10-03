@@ -10,13 +10,6 @@ import { render, waitFor, screen, act, fireEvent } from '@testing-library/react-
 // file would be assigned. References are recovered via the (now-mocked)
 // module's exports and reconfigured per-test in beforeEach.
 
-jest.mock('uuid', () => ({ v4: () => 'mock-uuid' }));
-
-const mockDeleteAllBankData = jest.fn(async () => undefined);
-jest.mock('../../lib/bankSync', () => ({
-  deleteAllBankData: () => mockDeleteAllBankData(),
-}));
-
 jest.mock('expo-constants', () => ({
   get expoConfig() {
     return { extra: { googleWebClientId: 'web-client-id' } };
@@ -640,29 +633,6 @@ describe('AuthProvider profile + account actions', () => {
     expect(order.indexOf('secure')).toBeGreaterThan(order.indexOf('profile'));
   });
 
-  it('deleteAccount revokes bank connections first, while the Firebase token is still valid', async () => {
-    const order: string[] = [];
-    mockDeleteAllBankData.mockImplementation(async () => {
-      order.push('bank');
-    });
-    mockDeleteCloudUserData.mockImplementation(async () => {
-      order.push('cloud');
-    });
-    mockDeleteCurrentAccount.mockImplementation(async () => {
-      order.push('auth');
-    });
-
-    renderProvider();
-    await emitAuth(makeUser());
-    await waitForReady();
-    fireEvent.press(screen.getByTestId('btn-delete'));
-    await waitFor(() => expect(mockDeleteCurrentAccount).toHaveBeenCalled());
-
-    expect(order.indexOf('bank')).toBe(0);
-    expect(order.indexOf('bank')).toBeLessThan(order.indexOf('cloud'));
-    expect(order[order.length - 1]).toBe('auth');
-    mockDeleteAllBankData.mockImplementation(async () => undefined);
-  });
 
   it('signOut clears local session and tears down listeners without waiting for onAuthStateChanged', async () => {
     // iOS: Google/Firebase sign-out can resolve while onAuthStateChanged

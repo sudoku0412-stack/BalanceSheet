@@ -266,12 +266,6 @@ function RootStack() {
         }}
       />
       <Stack.Screen
-        name="bank"
-        options={{
-          headerShown: false,
-        }}
-      />
-      <Stack.Screen
         name="investments"
         options={{
           headerShown: false,

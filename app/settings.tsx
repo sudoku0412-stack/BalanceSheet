@@ -1200,16 +1200,6 @@ export default function SettingsScreen() {
             </Text>
           </Pressable>
           <Pressable
-            testID="settings-bank"
-            onPress={() => router.push(isPremium ? '/bank' : '/paywall')}
-            style={styles.leaveHouseholdBtn}
-            hitSlop={4}
-          >
-            <Text style={styles.leaveHouseholdText}>
-              {isPremium ? t('bankTitle') : t('bankConnectionsPro')}
-            </Text>
-          </Pressable>
-          <Pressable
             testID="settings-investments"
             onPress={() => router.push(isPremium ? '/investments' : '/paywall')}
             style={styles.leaveHouseholdBtn}
